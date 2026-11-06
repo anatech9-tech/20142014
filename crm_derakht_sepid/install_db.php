@@ -75,8 +75,10 @@ function schema_statements(): array {
         `avatar` VARCHAR(255) NULL,
         `description` TEXT NULL,
         `is_karigar` TINYINT(2) NOT NULL DEFAULT 0,
+        `team_id` INT(11) NULL,
         `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY `uq_users_username` (`username`)
+        UNIQUE KEY `uq_users_username` (`username`),
+        KEY `idx_users_team` (`team_id`)
     ) $T";
 
     $S['user_permissions'] = "CREATE TABLE IF NOT EXISTS `user_permissions` (
@@ -793,6 +795,139 @@ function schema_statements(): array {
         KEY `idx_notif_created` (`created_at`)
     ) $T";
 
+
+    // ══ §phase2: تیم‌ها و CRM فروش ═══════════════════════════
+    $S['teams'] = "CREATE TABLE IF NOT EXISTS `teams` (
+        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        `code` VARCHAR(30) NOT NULL,
+        `name` VARCHAR(150) NOT NULL,
+        `manager_user_id` INT(11) NULL,
+        `status` VARCHAR(20) NOT NULL DEFAULT 'active',
+        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY `uq_teams_code` (`code`)
+    ) $T";
+
+    $S['crm_customers'] = "CREATE TABLE IF NOT EXISTS `crm_customers` (
+        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        `type` ENUM('company','person') NOT NULL DEFAULT 'company',
+        `name` VARCHAR(200) NOT NULL,
+        `economic_code` VARCHAR(30) NULL,
+        `national_id` VARCHAR(20) NULL,
+        `registration_no` VARCHAR(50) NULL,
+        `phone` VARCHAR(30) NULL,
+        `mobile` VARCHAR(30) NULL,
+        `email` VARCHAR(150) NULL,
+        `website` VARCHAR(150) NULL,
+        `city` VARCHAR(100) NULL,
+        `address` TEXT NULL,
+        `industry` VARCHAR(150) NULL,
+        `source` VARCHAR(100) NULL,
+        `status` VARCHAR(20) NOT NULL DEFAULT 'active',
+        `owner_user_id` INT(11) NULL,
+        `team_id` INT(11) NULL,
+        `notes` TEXT NULL,
+        `created_by` INT(11) NULL,
+        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `updated_at` DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+        `deleted_at` TIMESTAMP NULL DEFAULT NULL,
+        KEY `idx_crm_cust_owner` (`owner_user_id`),
+        KEY `idx_crm_cust_team` (`team_id`),
+        KEY `idx_crm_cust_name` (`name`)
+    ) $T";
+
+    $S['crm_contacts'] = "CREATE TABLE IF NOT EXISTS `crm_contacts` (
+        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        `customer_id` INT(11) NOT NULL,
+        `name` VARCHAR(150) NOT NULL,
+        `position` VARCHAR(150) NULL,
+        `phone` VARCHAR(30) NULL,
+        `mobile` VARCHAR(30) NULL,
+        `email` VARCHAR(150) NULL,
+        `is_primary` TINYINT(1) NOT NULL DEFAULT 0,
+        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY `idx_crm_cont_cust` (`customer_id`)
+    ) $T";
+
+    $S['crm_leads'] = "CREATE TABLE IF NOT EXISTS `crm_leads` (
+        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        `name` VARCHAR(150) NOT NULL,
+        `company` VARCHAR(200) NULL,
+        `phone` VARCHAR(30) NULL,
+        `mobile` VARCHAR(30) NULL,
+        `source` VARCHAR(100) NULL,
+        `product_interest` VARCHAR(255) NULL,
+        `status` ENUM('new','contacted','qualified','converted','lost') NOT NULL DEFAULT 'new',
+        `owner_user_id` INT(11) NULL,
+        `team_id` INT(11) NULL,
+        `notes` TEXT NULL,
+        `converted_customer_id` INT(11) NULL,
+        `created_by` INT(11) NULL,
+        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY `idx_crm_lead_owner` (`owner_user_id`),
+        KEY `idx_crm_lead_status` (`status`)
+    ) $T";
+
+    $S['crm_deal_stages'] = "CREATE TABLE IF NOT EXISTS `crm_deal_stages` (
+        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        `name` VARCHAR(100) NOT NULL,
+        `sort_order` INT(11) NOT NULL DEFAULT 0,
+        `probability` TINYINT(3) NOT NULL DEFAULT 0,
+        `color` VARCHAR(20) NOT NULL DEFAULT '#1e3a5f'
+    ) $T";
+
+    $S['crm_deals'] = "CREATE TABLE IF NOT EXISTS `crm_deals` (
+        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        `customer_id` INT(11) NULL,
+        `title` VARCHAR(255) NOT NULL,
+        `product_name` VARCHAR(255) NULL,
+        `estimated_value` DECIMAL(18,2) NOT NULL DEFAULT 0,
+        `currency` VARCHAR(3) NOT NULL DEFAULT 'USD',
+        `stage_id` INT(11) NULL,
+        `expected_close_date` DATE NULL,
+        `owner_user_id` INT(11) NULL,
+        `team_id` INT(11) NULL,
+        `status` ENUM('open','won','lost') NOT NULL DEFAULT 'open',
+        `notes` TEXT NULL,
+        `created_by` INT(11) NULL,
+        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `updated_at` DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+        KEY `idx_crm_deal_stage` (`stage_id`),
+        KEY `idx_crm_deal_owner` (`owner_user_id`),
+        KEY `idx_crm_deal_team` (`team_id`),
+        KEY `idx_crm_deal_customer` (`customer_id`)
+    ) $T";
+
+    $S['crm_activities'] = "CREATE TABLE IF NOT EXISTS `crm_activities` (
+        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        `customer_id` INT(11) NULL,
+        `lead_id` INT(11) NULL,
+        `deal_id` INT(11) NULL,
+        `user_id` INT(11) NULL,
+        `type` ENUM('call','meeting','note','email','visit','sms') NOT NULL DEFAULT 'note',
+        `subject` VARCHAR(255) NOT NULL,
+        `body` TEXT NULL,
+        `activity_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `duration_min` INT(11) NULL,
+        `outcome` VARCHAR(255) NULL,
+        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY `idx_crm_act_cust` (`customer_id`, `activity_date`)
+    ) $T";
+
+    $S['crm_tasks'] = "CREATE TABLE IF NOT EXISTS `crm_tasks` (
+        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        `user_id` INT(11) NOT NULL,
+        `customer_id` INT(11) NULL,
+        `lead_id` INT(11) NULL,
+        `deal_id` INT(11) NULL,
+        `title` VARCHAR(255) NOT NULL,
+        `due_date` DATE NULL,
+        `priority` ENUM('low','normal','high') NOT NULL DEFAULT 'normal',
+        `status` ENUM('pending','done','cancelled') NOT NULL DEFAULT 'pending',
+        `created_by` INT(11) NULL,
+        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY `idx_crm_task_user` (`user_id`, `status`, `due_date`)
+    ) $T";
+
     return $S;
 }
 
@@ -806,6 +941,25 @@ function run_install(PDO $pdo): array {
     foreach ($tables as $name => $sql) {
         $pdo->exec($sql);
         $log[] = '✓ جدول `' . $name . '` بررسی/ساخته شد.';
+    }
+
+    // ── ارتقای بی‌خطر دیتابیس‌های قدیمی: ستون team_id برای users
+    $hasTeamCol = false;
+    try {
+        $stc = $pdo->prepare("SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'team_id' LIMIT 1");
+        $stc->execute();
+        $hasTeamCol = (bool)$stc->fetchColumn();
+    } catch (Throwable $e) {
+        $hasTeamCol = true; // اگر قابل بررسی نبود، دست نزن
+    }
+    if (!$hasTeamCol) {
+        try {
+            $pdo->exec("ALTER TABLE users ADD COLUMN team_id INT(11) NULL DEFAULT NULL AFTER role");
+            try { $pdo->exec("ALTER TABLE users ADD INDEX idx_users_team (team_id)"); } catch (Throwable $e) {}
+            $log[] = '✓ ستون users.team_id به دیتابیس اضافه شد.';
+        } catch (Throwable $e) {
+            $log[] = '⚠ افزودن ستون users.team_id ناموفق بود: ' . $e->getMessage();
+        }
     }
 
     // ── دادهٔ اولیه: یک کارگاه/دفتر پیش‌فرض
@@ -826,11 +980,40 @@ function run_install(PDO $pdo): array {
         $log[] = '✓ کاربر «admin» (مدیر کل) ساخته شد.';
     }
 
+    // ── تیم‌های فروش (قابل تغییر در تنظیمات بعداً)
+    $teamCount = (int)$pdo->query("SELECT COUNT(*) FROM teams")->fetchColumn();
+    if ($teamCount === 0) {
+        $pdo->prepare("INSERT INTO teams (code, name) VALUES (?,?)")->execute(['phone', 'تیم فروش تلفنی']);
+        $pdo->prepare("INSERT INTO teams (code, name) VALUES (?,?)")->execute(['digital', 'تیم فروش دیجیتال']);
+        $pdo->prepare("INSERT INTO teams (code, name) VALUES (?,?)")->execute(['field', 'تیم فروش حضوری']);
+        $log[] = '✓ تیم‌های فروش تلفنی/دیجیتال/حضوری ساخته شدند.';
+    }
+
+    // ── مراحل پایپ‌لاین واردات (پیش‌فاکتور تا تحویل)
+    $stageCount = (int)$pdo->query("SELECT COUNT(*) FROM crm_deal_stages")->fetchColumn();
+    if ($stageCount === 0) {
+        $stages = [
+            ['سرنخ (لید)', 10, 10, '#64748b'],
+            ['ثبت درخواست', 20, 25, '#0ea5e9'],
+            ['پیش‌فاکتور', 30, 40, '#6366f1'],
+            ['سورس‌یابی و خرید', 40, 55, '#8b5cf6'],
+            ['حمل (دریایی/هوایی/زمینی)', 50, 70, '#f59e0b'],
+            ['ترخیص', 60, 80, '#d97706'],
+            ['حواله و تسویه ارزی', 70, 90, '#dc2626'],
+            ['تحویل به مشتری', 80, 100, '#16a34a'],
+        ];
+        $stStage = $pdo->prepare("INSERT INTO crm_deal_stages (name, sort_order, probability, color) VALUES (?,?,?,?)");
+        foreach ($stages as $stRow) { $stStage->execute($stRow); }
+        $log[] = '✓ مراحل ۸گانهٔ پایپ‌لاین واردات ثبت شد.';
+    }
+
     // ── تنظیمات پیش‌فرض
     $defaults = [
         'app_name'     => 'درخت سپید تجارت پارس',
         'app_timezone' => 'Asia/Tehran',
         'app_lang'     => 'fa',
+        'crm_default_currency' => 'USD',
+        'disabled_pages'     => '',
     ];
     $st = $pdo->prepare("INSERT IGNORE INTO settings (setting_key, setting_value) VALUES (?, ?)");
     foreach ($defaults as $k => $v) { $st->execute([$k, $v]); }

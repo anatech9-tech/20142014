@@ -133,6 +133,11 @@ if (!access_is_special_account()) {
                 'daily_reports'  => ['daily_reports', 'file-text', t('nav_daily_reports'), true],
                 'archive'        => ['archive', 'folder', t('nav_archive'), $is_nazer || access_mode('archive') !== null || $is_admin],
                 'forms'          => ['forms', 'file-text', t('nav_forms'), $is_nazer || $is_yaser || $is_javidhse || access_group_mode('forms') !== null || $is_admin],
+                // §phase2 CRM: درخت سپید
+                'crm_customers'  => ['crm_customers', 'building-2', t('nav_crm_customers'), true],
+                'crm_leads'      => ['crm_leads', 'magnet', t('nav_crm_leads'), true],
+                'crm_deals'      => ['crm_deals', 'trending-up', t('nav_crm_deals'), true],
+                'crm_tasks'      => ['crm_tasks', 'list-todo', t('nav_crm_tasks'), true],
             ];
 
             // ترتیب دلخواه از تنظیمات (menu_order) + آیتم‌های جدید ته لیست
@@ -155,6 +160,23 @@ if (!access_is_special_account()) {
                 $ordered_keys = ['forms', 'profile'];
                 $nav_map['forms'][3] = true;
                 $nav_map['profile'][3] = true;
+            }
+
+            // §phase2: صفحات غیرفعال‌شده برای غیرادمین‌ها (تنظیمات: disabled_pages — فهرستی از کلیدهای nav_map با ویرگول)
+            if (!$is_admin) {
+                try {
+                    $stdp = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'disabled_pages'");
+                    $stdp->execute();
+                    $disabled_raw = (string)$stdp->fetchColumn();
+                } catch (Exception $e) {
+                    $disabled_raw = '';
+                }
+                $disabled_keys = array_filter(array_map('trim', explode(',', $disabled_raw)));
+                if ($disabled_keys) {
+                    $ordered_keys = array_values(array_filter($ordered_keys, function ($k) use ($disabled_keys) {
+                        return !in_array($k, $disabled_keys, true) || $k === 'dashboard';
+                    }));
+                }
             }
 
             foreach ($ordered_keys as $nav_key):

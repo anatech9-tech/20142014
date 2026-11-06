@@ -622,6 +622,77 @@ function can_edit() {
     return !is_nazer_kol() && !is_karfarma();
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  §phase2: تیم‌های فروش + مسئول مالی + دامنهٔ CRM
+//  سازمان: ۳ تیم فروش (تلفنی/دیجیتال/حضوری) هر کدام با مدیر + مسئول مالی + مدیر کل
+// ═══════════════════════════════════════════════════════════════
+
+/** شناسهٔ تیم کاربر جاری (۰ = بدون تیم) */
+function current_team_id(PDO $pdo): int {
+    static $cache = null;
+    if ($cache === null) {
+        $cache = 0;
+        try {
+            $st = $pdo->prepare('SELECT team_id FROM users WHERE id = ?');
+            $st->execute([(int)($_SESSION['user_id'] ?? 0)]);
+            $cache = (int)$st->fetchColumn();
+        } catch (Throwable $e) { $cache = 0; }
+    }
+    return $cache;
+}
+
+/** آیا کاربر مدیر یکی از تیم‌هاست؟ */
+function is_team_manager(PDO $pdo): bool {
+    static $cache = null;
+    if ($cache === null) {
+        $cache = false;
+        try {
+            $st = $pdo->prepare('SELECT 1 FROM teams WHERE manager_user_id = ? LIMIT 1');
+            $st->execute([(int)($_SESSION['user_id'] ?? 0)]);
+            $cache = (bool)$st->fetchColumn();
+        } catch (Throwable $e) { $cache = false; }
+    }
+    return $cache;
+}
+
+/** مسئول مالی / حسابداری / بیمه / مالیات — دسترسی کامل خواندن همهٔ داده‌ها */
+function is_finance_officer(): bool {
+    return (($_SESSION['role'] ?? '') === 'finance') || has_permission('finance');
+}
+
+/** تیم‌هایی که کاربر جاری مدیریتشان می‌کند (برای اسکوپ) */
+function managed_team_ids(PDO $pdo): array {
+    try {
+        $st = $pdo->prepare('SELECT id FROM teams WHERE manager_user_id = ?');
+        $st->execute([(int)($_SESSION['user_id'] ?? 0)]);
+        return array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+    } catch (Throwable $e) { return []; }
+}
+
+/**
+ * دامنهٔ دیدن رکوردهای CRM:
+ * مدیر کل و مسئول مالی → همه | مدیر تیم → رکوردهای تیم‌هایش | بقیه → فقط رکوردهای خودش
+ * خروجی: [sql, params] با alias داده‌شده
+ */
+function crm_scope_where(PDO $pdo, string $alias = 'c'): array {
+    $a = $alias;
+    if (is_strict_admin() || is_finance_officer()) return ['1=1', []];
+    $uid = (int)($_SESSION['user_id'] ?? 0);
+    $managed = managed_team_ids($pdo);
+    if ($managed) {
+        $ph = implode(',', array_fill(0, count($managed), '?'));
+        return ["$a.team_id IN ($ph)", $managed];
+    }
+    return ["$a.owner_user_id = ?", [$uid]];
+}
+
+/** لیست تیم‌ها (برای فرم‌ها) */
+function all_teams(PDO $pdo): array {
+    try {
+        return $pdo->query("SELECT id, code, name, manager_user_id FROM teams WHERE status = 'active' ORDER BY FIELD(code,'phone','digital','field'), id")->fetchAll();
+    } catch (Throwable $e) { return []; }
+}
+
 /**
  * بررسی دسترسی کاربر به مدیریت ساعت کاری یک کارگاه خاص
  */
@@ -773,6 +844,11 @@ function nav_menu_labels() {
         'daily_reports'  => t('nav_daily_reports'),
         'archive'        => t('nav_archive'),
         'forms'          => t('nav_forms'),
+        // §phase2: ماژول CRM فروش
+        'crm_customers'  => t('nav_crm_customers'),
+        'crm_leads'      => t('nav_crm_leads'),
+        'crm_deals'      => t('nav_crm_deals'),
+        'crm_tasks'      => t('nav_crm_tasks'),
     ];
 }
 

@@ -280,6 +280,22 @@ switch ($page) {
         require_login();
         include 'pages/inventory_count_print.php';
         break;
+    case 'crm_customers':
+        require_login();
+        include 'pages/crm_customers.php';
+        break;
+    case 'crm_leads':
+        require_login();
+        include 'pages/crm_leads.php';
+        break;
+    case 'crm_deals':
+        require_login();
+        include 'pages/crm_deals.php';
+        break;
+    case 'crm_tasks':
+        require_login();
+        include 'pages/crm_tasks.php';
+        break;
     default:
         if (is_logged_in()) {
             redirect('index.php?page=dashboard');
