@@ -1,0 +1,33 @@
+{
+    "name": "سیستم مدیریت کارگاه",
+    "short_name": "کارگاه",
+    "description": "مدیریت پرسنل، حقوق، انبار، پیمانکاران، HSE و گزارش‌های روزانه کارگاه",
+    "start_url": "index.php?page=dashboard",
+    "scope": "./",
+    "display": "standalone",
+    "dir": "rtl",
+    "lang": "fa",
+    "background_color": "#0f172a",
+    "theme_color": "#f59e0b",
+    "orientation": "portrait-primary",
+    "icons": [
+        {
+            "src": "assets/icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "assets/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "assets/icons/icon-512-maskable.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}

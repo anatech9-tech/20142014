@@ -1,0 +1,4 @@
+{
+    "public": "YOUR_VAPID_PUBLIC_KEY",
+    "private_pem": "-----BEGIN PRIVATE KEY-----\nYOUR_VAPID_PRIVATE_KEY_PEM\n-----END PRIVATE KEY-----\n"
+}

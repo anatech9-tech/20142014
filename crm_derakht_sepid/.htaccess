@@ -1,0 +1,87 @@
+# ────────────────────────────────────────────────
+#  امنیت
+# ────────────────────────────────────────────────
+
+DirectoryIndex index.php
+
+# بلاک فایل‌های حساس
+<FilesMatch "\.(sql|log|md|lock)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# بلاک فایل تنظیمات دیتابیس
+<Files "config.php">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</Files>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Force HTTPS (بعد از نصب SSL، این دو خط رو از کامنت خارج کنید)
+    # RewriteCond %{HTTPS} off
+    # RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+    # بلاک پوشه بکاپ
+    RewriteRule ^backups/ - [F,L]
+
+    # بلاک پوشه includes
+    RewriteRule ^includes/ - [F,L]
+</IfModule>
+
+# جلوگیری از لیست شدن فایل‌های پوشه
+# (اگر هاست شما این خط رو قبول نکرد و ارور 500 داد، فقط همین یک خط رو حذف کنید)
+Options -Indexes
+
+# تنظیمات PHP (فقط اگر mod_php فعال باشه)
+<IfModule mod_php.c>
+    php_value upload_max_filesize 10M
+    php_value post_max_size 12M
+    php_value max_execution_time 60
+</IfModule>
+
+# فشرده‌سازی
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/css application/javascript application/json
+</IfModule>
+
+# کش مرورگر
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+</IfModule>
+
+# ────────────────────────────────────────────────
+#  PWA (اپلیکیشن تحت وب)
+# ────────────────────────────────────────────────
+# پسوند webmanifest روی خیلی از هاست‌ها شناخته شده نیست — بدون این خط manifest خونده نمیشه
+<IfModule mod_mime.c>
+    AddType application/manifest+json .webmanifest
+</IfModule>
+
+# سرویس‌ورکر و مانیفست هرگز کش نمیشن (بدون این، آپدیت‌ها دیر اعمال میشن)
+<FilesMatch "^(sw\.js|manifest\.webmanifest)$">
+    <IfModule mod_headers.c>
+        Header set Cache-Control "no-cache, must-revalidate"
+    </IfModule>
+    <IfModule mod_expires.c>
+        ExpiresActive Off
+    </IfModule>
+</FilesMatch>
+
+# نکته: اجرای PHP داخل پوشه uploads با فایل uploads/.htaccess غیرفعال شده
+# (تگ <Directory> داخل .htaccess مجاز نیست و باعث ارور 500 میشه)

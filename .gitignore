@@ -32,6 +32,25 @@ npm-debug.log*
 *.sqlite3
 /database/*.sqlite
 
+# --- Project-local secrets & runtime (crm_derakht_sepid) ---
+crm_derakht_sepid/config.local.php
+crm_derakht_sepid/push/vapid.json
+crm_derakht_sepid/push/send.log
+crm_derakht_sepid/push/state.json
+crm_derakht_sepid/push/push.log
+crm_derakht_sepid/backups/*
+!crm_derakht_sepid/backups/.htaccess
+crm_derakht_sepid/uploads/**/*.jpg
+crm_derakht_sepid/uploads/**/*.jpeg
+crm_derakht_sepid/uploads/**/*.png
+crm_derakht_sepid/uploads/**/*.gif
+crm_derakht_sepid/uploads/**/*.webp
+crm_derakht_sepid/uploads/**/*.pdf
+crm_derakht_sepid/uploads/**/*.xlsx
+crm_derakht_sepid/uploads/**/*.doc
+crm_derakht_sepid/uploads/**/*.docx
+crm_derakht_sepid/uploads/**/*.zip
+
 # --- IDE / OS ---
 .idea/
 .vscode/
