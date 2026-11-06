@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   Arash Coin — visual identity, 3D reward animation and wallet UI
+   WTTP COIN — visual identity, 3D reward animation and wallet UI
    ═══════════════════════════════════════════════════════════════ */
 .arash-coin-inline {
     width: 27px;
@@ -81,7 +81,7 @@
 
 .arash-reward-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:14px; }
 .arash-reward-card { position:relative; overflow:hidden; padding:17px; min-height:195px; display:flex; flex-direction:column; border:1px solid rgba(195,130,18,.25); border-radius:16px; background:linear-gradient(145deg,#fffdf8,#fff1c7); box-shadow:0 7px 20px rgba(115,74,11,.08); }
-.arash-reward-card:before { content:''; position:absolute; left:-12px; bottom:-25px; width:94px; height:94px; background:url('../icons/arash-coin-small.png') center/contain no-repeat; opacity:.1; transform:rotate(-18deg); }
+.arash-reward-card:before { content:''; position:absolute; left:-12px; bottom:-25px; width:94px; height:94px; background:url('../icons/wttp-coin-small.png') center/contain no-repeat; opacity:.1; transform:rotate(-18deg); }
 .arash-reward-card h4 { position:relative; z-index:1; font-size:15px; margin:0 0 8px; color:#613a03; }
 .arash-reward-card p { position:relative; z-index:1; margin:0; color:#785d32; font-size:12px; line-height:1.8; flex:1; }
 .arash-reward-cost { position:relative; z-index:1; display:inline-flex; align-items:center; gap:5px; margin-top:12px; color:#8b5400; font-size:14px; font-weight:900; }

@@ -356,7 +356,7 @@ include 'includes/header.php';
     <div class="card mt-4 animate-in">
         <div class="card-header"><h3 class="card-title">💳 <?= t('تنظیمات صفحه حقوق') ?></h3></div>
         <p class="text-muted mb-3" style="font-size:12px"><?= t('پیمانکاران و نیروهای بدون حقوق ثبت‌شده خودکار حذف می‌شوند. این‌ها هم از صفحه حقوق حذف می‌شوند:') ?></p>
-        <div class="form-row"><div class="form-group"><label class="form-label"><?= t('سهم مرخصی ماهانه برای آرش‌کوین (روز)') ?></label><input type="number" name="arash_coin_monthly_leave_days" class="form-control" value="<?= $settings['arash_coin_monthly_leave_days'] ?? 2 ?>" min="0" step="1"><small class="text-muted" style="font-size:10px"><?= t('برای هر روز استفاده‌نشده در آخر ماه، ۱۰ آرش‌کوین پاداش داده می‌شود.') ?></small></div></div>
+        <div class="form-row"><div class="form-group"><label class="form-label"><?= t('سهم مرخصی ماهانه برای WTTP COIN (روز)') ?></label><input type="number" name="arash_coin_monthly_leave_days" class="form-control" value="<?= $settings['arash_coin_monthly_leave_days'] ?? 2 ?>" min="0" step="1"><small class="text-muted" style="font-size:10px"><?= t('برای هر روز استفاده‌نشده در آخر ماه، ۱۰ WTTP COIN پاداش داده می‌شود.') ?></small></div></div>
         <div class="form-group">
             <label class="form-label"><?= t('نام‌های کاربری مستثنی از صفحه حقوق (با کاما جدا کنید)') ?></label>
             <input type="text" name="payroll_excluded_usernames" class="form-control" dir="ltr" value="<?= htmlspecialchars($settings['payroll_excluded_usernames'] ?? 'yaser') ?>" placeholder="yaser,nazer,arash">

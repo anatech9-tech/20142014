@@ -566,7 +566,7 @@ function schema_statements(): array {
         KEY `idx_sp_sub` (`subcontractor_id`, `payment_date`)
     ) $T";
 
-    // ── سیستم سکه/گیمیفیکیشن (Arash Coin) ────────────────────
+    // ── سیستم سکه/گیمیفیکیشن (WTTP COIN) ────────────────────
     $S['arash_coin_transactions'] = "CREATE TABLE IF NOT EXISTS `arash_coin_transactions` (
         `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
         `user_id` INT(11) NOT NULL,
@@ -812,8 +812,8 @@ function run_install(PDO $pdo): array {
     $wsCount = (int)$pdo->query("SELECT COUNT(*) FROM workshops")->fetchColumn();
     if ($wsCount === 0) {
         $pdo->prepare("INSERT INTO workshops (name, employer_name, status, description) VALUES (?,?,?,?)")
-            ->execute(['دفتر مرکزی', 'درخت سپید تجارت پارس', 'active', 'واحد سازمانی پیش‌فرض — می‌توانید در تنظیمات تغییر دهید']);
-        $log[] = '✓ کارگاه «دفتر مرکزی» به‌صورت پیش‌فرض ساخته شد.';
+            ->execute(['ستاد مرکزی', 'درخت سپید تجارت پارس', 'active', 'واحد سازمانی پیش‌فرض — می‌توانید در تنظیمات تغییر دهید']);
+        $log[] = '✓ واحد «ستاد مرکزی» به‌صورت پیش‌فرض ساخته شد.';
     }
 
     // ── دادهٔ اولیه: ادمین اصلی (فقط اگر هیچ ادمینی وجود ندارد)
@@ -828,7 +828,7 @@ function run_install(PDO $pdo): array {
 
     // ── تنظیمات پیش‌فرض
     $defaults = [
-        'app_name'     => 'CRM درخت سپید تجارت پارس',
+        'app_name'     => 'درخت سپید تجارت پارس',
         'app_timezone' => 'Asia/Tehran',
         'app_lang'     => 'fa',
     ];

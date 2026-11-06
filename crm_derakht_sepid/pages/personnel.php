@@ -540,7 +540,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             try { $pdo->prepare("UPDATE work_orders SET completed_by=NULL WHERE completed_by=?")->execute([$purge_id]); } catch(Throwable $ignore) {}
 
-            // مالی، حضور، گزارش، مرخصی و آرش‌کوین.
+            // مالی، حضور، گزارش، مرخصی و WTTP COIN.
             $advance_ids=[];
             try { $st=$pdo->prepare("SELECT id FROM advances WHERE user_id=?"); $st->execute([$purge_id]); $advance_ids=array_map('intval',$st->fetchAll(PDO::FETCH_COLUMN)); } catch(Throwable $ignore) {}
             foreach ($advance_ids as $aid) { try { $pdo->prepare("DELETE FROM advance_expenses WHERE advance_id=?")->execute([$aid]); } catch(Throwable $ignore) {} }

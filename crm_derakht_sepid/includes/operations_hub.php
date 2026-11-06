@@ -121,7 +121,7 @@ function operations_scan_coin_anomalies(PDO $pdo,int $workshop_id,?string $date=
 
 /** پیام رسمی در چت عمومی کارگاه؛ در صورت نبود ستون‌های جدید، بی‌صدا نادیده گرفته می‌شود. */
 /**
- * §fix: پیام‌های خودکار (گزارش کار، آرش‌کوین، اضافه‌کاری، چالش و فصل) دیگر در چت‌روم ارسال نمی‌شوند.
+ * §fix: پیام‌های خودکار (گزارش کار، WTTP COIN، اضافه‌کاری، چالش و فصل) دیگر در چت‌روم ارسال نمی‌شوند.
  * فقط اگر $force=true باشد ثبت می‌شود (فعلاً فقط اعلان‌های «درخواست خرید» با این حالت صدا زده می‌شوند).
  */
 function operations_system_chat_message(PDO $pdo,int $workshop_id,int $actor_id,string $message,?int $channel_id=null,bool $force=false): void {

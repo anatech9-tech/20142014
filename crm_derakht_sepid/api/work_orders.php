@@ -194,12 +194,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'complete_item') {
                     ->execute([$user_id, $ws_id, $report_date, $report_text, $item['description'], $progress, $next_day, $category, $rep_shift, $item_id]);
                 $__rid = (int)$pdo->lastInsertId();
             }
-            // §fix: گزارش دستور کار بدون تأیید مدیر نهایی و آرش‌کوین پرداخت می‌شود
+            // §fix: گزارش دستور کار بدون تأیید مدیر نهایی و WTTP COIN پرداخت می‌شود
             $__auto = daily_report_auto_approve($pdo, $__rid, (int)$user_id);
         } else {
             // پس‌گرفتن تیک «انجام شد» → حذف از گزارش روزانه
             if (db_has_column($pdo, 'daily_reports', 'source_item_id')) {
-                // §fix: آرش‌کوینِ گزارش هم با حذف گزارش برگردد
+                // §fix: WTTP COINِ گزارش هم با حذف گزارش برگردد
                 $__old = $pdo->prepare("SELECT id FROM daily_reports WHERE source_item_id = ? AND workshop_id = ?");
                 $__old->execute([$item_id, $ws_id]);
                 foreach ($__old->fetchAll(PDO::FETCH_COLUMN) as $__oid) daily_report_reverse_coins($pdo, (int)$__oid, (int)$user_id, 'برگشت وضعیت انجام کار');
@@ -305,7 +305,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'save_manual_report') {
             $pdo->prepare("INSERT INTO daily_reports (user_id, workshop_id, report_date, report_text, wo_description, wo_progress, wo_next_day, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")->execute([$user_id, $ws_id, $report_date_g, $display_text, $wo_desc, $wo_prog, $wo_next, $category]);
             $__rid = (int)$pdo->lastInsertId();
         }
-        // §fix: گزارش کار بدون تأیید مدیر نهایی و آرش‌کوین پرداخت می‌شود
+        // §fix: گزارش کار بدون تأیید مدیر نهایی و WTTP COIN پرداخت می‌شود
         daily_report_auto_approve($pdo, $__rid, (int)$user_id);
 
         if (!$is_ajax && empty($_GET['ajax'])) {

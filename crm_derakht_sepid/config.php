@@ -12,7 +12,7 @@ if (!defined('DB_PASS')) define('DB_PASS', 'CHANGE_ME');
 if (!defined('DB_CHARSET')) define('DB_CHARSET', 'utf8mb4');
 
 // App Settings
-define('APP_NAME', 'CRM درخت سپید تجارت پارس');
+define('APP_NAME', 'درخت سپید تجارت پارس');
 define('APP_VERSION', '18.0.0');
 define('UPLOAD_DIR', __DIR__ . '/uploads/');
 define('BACKUP_DIR', __DIR__ . '/backups/');
@@ -81,7 +81,7 @@ require_once __DIR__ . '/includes/lang.php';
 
 // Salary calculation functions
 require_once __DIR__ . '/includes/salary_calc.php';
-// Arash Coin ledger helpers (safe no-op until migrate.php has been run)
+// WTTP COIN ledger helpers (safe no-op until migrate.php has been run)
 require_once __DIR__ . '/includes/arash_coin.php';
 // Operational helpers: backups, anti-cheat, system messages and audit utilities
 require_once __DIR__ . '/includes/operations_hub.php';
@@ -395,7 +395,7 @@ function page_access_registry() {
                 'leaves'        => '📅 ' . t('مرخصی'),
                 'daily_reports' => '📝 ' . t('گزارش کار روزانه'),
                 'work_orders'   => '📋 ' . t('دستور کار'),
-                'arash_coins'   => arash_coin_icon_markup('arash-coin-nav-icon') . t('کیف آرش‌کوین'),
+                'arash_coins'   => arash_coin_icon_markup('arash-coin-nav-icon') . t('کیف WTTP COIN'),
             ],
         ],
         'manage' => [
@@ -411,7 +411,7 @@ function page_access_registry() {
                 'archive'        => '🗃️ ' . t('بایگانی'),
                 'audit'          => '📜 ' . t('لاگ تغییرات'),
                 'settings'       => '⚙️ ' . t('تنظیمات'),
-                'arash_coin_admin'=> arash_coin_icon_markup('arash-coin-nav-icon') . t('مدیریت آرش‌کوین'),
+                'arash_coin_admin'=> arash_coin_icon_markup('arash-coin-nav-icon') . t('مدیریت WTTP COIN'),
                 'reports'        => '📊 ' . t('گزارش‌ها'),
                 'forms'          => '🧾 ' . t('فرم‌ها'),
             ],

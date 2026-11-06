@@ -1,6 +1,6 @@
 <?php
 /**
- * آرش‌کوین — موتور پاداش، دفترکل کیف پول، محدودیت روزانه، چالش‌ها و رتبه‌بندی.
+ * WTTP COIN — موتور پاداش، دفترکل کیف پول، محدودیت روزانه، چالش‌ها و رتبه‌بندی.
  * موجودی همیشه از جمع دفترکل به‌دست می‌آید تا با ویرایش ساعت/گزارش همگام بماند.
  */
 
@@ -13,11 +13,11 @@ function arash_coin_tables_ready(PDO $pdo): bool {
 }
 
 /**
- * آیکون پایدار آرش‌کوین برای اندازه‌های کوچک؛ به‌جای ایموجیِ وابسته به فونت.
+ * آیکون پایدار WTTP COIN برای اندازه‌های کوچک؛ به‌جای ایموجیِ وابسته به فونت.
  */
 function arash_coin_icon_markup(string $class = 'arash-coin-tiny', string $alt = ''): string {
-    if ($alt === '') $alt = t('آرش‌کوین');
-    return '<img src="assets/icons/arash-coin-small.png" class="' . htmlspecialchars($class, ENT_QUOTES, 'UTF-8') . '" alt="' . htmlspecialchars($alt, ENT_QUOTES, 'UTF-8') . '">';
+    if ($alt === '') $alt = t('WTTP COIN');
+    return '<img src="assets/icons/wttp-coin-small.png" class="' . htmlspecialchars($class, ENT_QUOTES, 'UTF-8') . '" alt="' . htmlspecialchars($alt, ENT_QUOTES, 'UTF-8') . '">';
 }
 function arash_coin_has_event_date(PDO $pdo): bool {
     return arash_coin_tables_ready($pdo) && function_exists('db_has_column') && db_has_column($pdo, 'arash_coin_transactions', 'event_date');
@@ -107,7 +107,7 @@ function arash_coin_set_event_amount(PDO $pdo,int $user_id,int $amount,string $t
     }catch(Throwable $e){return null;}
 }
 
-/** قانون فعال از صفحهٔ مدیریت آرش‌کوین. */
+/** قانون فعال از صفحهٔ مدیریت WTTP COIN. */
 function arash_coin_event_rule(PDO $pdo,int $workshop_id,string $event_type,string $subject,string $team,string $event_date):?array {
     if(!arash_coin_tables_ready($pdo))return null;
     try{
@@ -216,7 +216,7 @@ function arash_coin_team_leaderboard(PDO $pdo,int $workshop_id,string $start,str
 
 /**
  * §fix: گزارش کار (اجرا/HSE/انبار) دیگر به تأیید مدیر نیاز ندارد.
- * گزارش بلافاصله «تأییدشده» می‌شود و آرش‌کوینِ گزارش (و اگر از دستور کار آمده، آرش‌کوینِ آن آیتم) پرداخت می‌شود.
+ * گزارش بلافاصله «تأییدشده» می‌شود و WTTP COINِ گزارش (و اگر از دستور کار آمده، WTTP COINِ آن آیتم) پرداخت می‌شود.
  * @return array{coin:?array,task_coin:?array}
  */
 function daily_report_auto_approve(PDO $pdo, int $report_id, int $actor_id): array {
@@ -239,7 +239,7 @@ function daily_report_auto_approve(PDO $pdo, int $report_id, int $actor_id): arr
     return $out;
 }
 
-/** آرش‌کوینِ یک گزارش (و آیتم دستور کارِ متصل به آن) را برمی‌گرداند؛ قبل از حذف گزارش صدا زده شود. */
+/** WTTP COINِ یک گزارش (و آیتم دستور کارِ متصل به آن) را برمی‌گرداند؛ قبل از حذف گزارش صدا زده شود. */
 function daily_report_reverse_coins(PDO $pdo, int $report_id, ?int $actor_id = null, string $reason = ''): void {
     if ($report_id <= 0) return;
     try {

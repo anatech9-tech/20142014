@@ -1,14 +1,14 @@
 {
-    "name": "سیستم مدیریت کارگاه",
-    "short_name": "کارگاه",
-    "description": "مدیریت پرسنل، حقوق، انبار، پیمانکاران، HSE و گزارش‌های روزانه کارگاه",
+    "name": "درخت سپید تجارت پارس | CRM",
+    "short_name": "درخت سپید",
+    "description": "سامانه جامع درخت سپید تجارت پارس: CRM، مدیریت فروش، مشتریان، واردات، حقوق و دستمزد، حسابداری و فروشگاه",
     "start_url": "index.php?page=dashboard",
     "scope": "./",
     "display": "standalone",
     "dir": "rtl",
     "lang": "fa",
-    "background_color": "#0f172a",
-    "theme_color": "#f59e0b",
+    "background_color": "#0b1220",
+    "theme_color": "#16233f",
     "orientation": "portrait-primary",
     "icons": [
         {

@@ -67,8 +67,8 @@ $translations = [
         'nav_archive' => 'بایگانی',
         'nav_logout' => 'خروج',
         'nav_switch_workshop' => 'تغییر کارگاه',
-        'app_name' => 'سیستم مدیریت کارگاه',
-        'nav_arash_coins' => 'آرش‌کوین',
+        'app_name' => 'درخت سپید تجارت پارس',
+        'nav_arash_coins' => 'WTTP COIN',
         'nav_work_orders' => 'دستور کار',
         'nav_forms' => 'فرم‌ها',
         'ui_toggle_menu' => 'جمع/باز کردن منو',
@@ -338,7 +338,7 @@ $translations = [
 
         // Login
         'log_title' => 'ورود',
-        'log_subtitle' => 'برای ادامه وارد شوید',
+        'log_subtitle' => 'واردات • سورس‌یابی • حمل • ترخیص • تحویل',
         'log_username' => 'نام کاربری',
         'log_password' => 'رمز عبور',
         'log_button' => 'ورود',
@@ -423,7 +423,7 @@ $translations = [
         'nav_logout' => 'تسجيل الخروج',
         'nav_switch_workshop' => 'تغيير ورشة العمل',
         'app_name' => 'نظام إدارة الورشة',
-        'nav_arash_coins' => 'عملات آرش',
+        'nav_arash_coins' => 'عملة WTTP',
         'nav_work_orders' => 'أوامر العمل',
         'nav_forms' => 'النماذج',
         'ui_toggle_menu' => 'طي/فتح القائمة',
@@ -693,7 +693,7 @@ $translations = [
 
         // Login
         'log_title' => 'تسجيل الدخول',
-        'log_subtitle' => 'سجّل الدخول للمتابعة',
+        'log_subtitle' => 'الاستيراد • التوريد • الشحن • التخليص • التسليم',
         'log_username' => 'اسم المستخدم',
         'log_password' => 'كلمة المرور',
         'log_button' => 'دخول',
@@ -778,7 +778,7 @@ $translations = [
         'nav_logout' => 'Logout',
         'nav_switch_workshop' => 'Switch Workshop',
         'app_name' => 'Workshop Management System',
-        'nav_arash_coins' => 'Arash Coin',
+        'nav_arash_coins' => 'WTTP COIN',
         'nav_work_orders' => 'Work Orders',
         'nav_forms' => 'Forms',
         'ui_toggle_menu' => 'Expand/collapse menu',
@@ -1048,7 +1048,7 @@ $translations = [
 
         // Login
         'log_title' => 'Login',
-        'log_subtitle' => 'Sign in to continue',
+        'log_subtitle' => 'Import • Sourcing • Shipping • Customs • Delivery',
         'log_username' => 'Username',
         'log_password' => 'Password',
         'log_button' => 'Login',

@@ -1,14 +1,14 @@
-/* Arash Coin reward animation.  It is intentionally dependency-free so it also
+/* WTTP COIN reward animation.  It is intentionally dependency-free so it also
    works in the existing PHP pages and on low-end mobile devices. */
 (function () {
     'use strict';
-    var COIN_SRC = 'assets/icons/arash-coin.png';
+    var COIN_SRC = 'assets/icons/wttp-coin.png';
     var UI_LANG = (document.documentElement.lang || 'fa').toLowerCase().split('-')[0];
     var COIN_TEXT = {
-        fa: {unit: 'آرش‌کوین', done: 'کار انجام شد!', received: 'دریافت کردی!'},
-        ar: {unit: 'عملات آرش', done: 'تم إنجاز العمل!', received: 'تم الاستلام!'},
-        en: {unit: 'Arash Coin', done: 'Task completed!', received: 'received!'}
-    }[UI_LANG] || {unit: 'آرش‌کوین', done: 'کار انجام شد!', received: 'دریافت کردی!'};
+        fa: {unit: 'WTTP COIN', done: 'کار انجام شد!', received: 'دریافت کردی!'},
+        ar: {unit: 'عملة WTTP', done: 'تم إنجاز العمل!', received: 'تم الاستلام!'},
+        en: {unit: 'WTTP COIN', done: 'Task completed!', received: 'received!'}
+    }[UI_LANG] || {unit: 'WTTP COIN', done: 'کار انجام شد!', received: 'دریافت کردی!'};
     var NUMBER_LOCALE = UI_LANG === 'en' ? 'en-US' : (UI_LANG === 'ar' ? 'ar' : 'fa-IR');
 
     function coinNumber(value) { return Number(value || 0).toLocaleString(NUMBER_LOCALE); }
@@ -27,7 +27,7 @@
         var overlay = document.createElement('div');
         overlay.className = 'arash-coin-reward-overlay';
         overlay.innerHTML = '<div class="arash-coin-reward-core">'
-            + '<img class="arash-coin-reward-image" src="' + COIN_SRC + '" alt="Arash Coin">'
+            + '<img class="arash-coin-reward-image" src="' + COIN_SRC + '" alt="WTTP COIN">'
             + '<div class="arash-coin-reward-text">+' + coinNumber(amount) + ' ' + COIN_TEXT.unit + '</div>'
             + '<div class="arash-coin-reward-sub">🎉 ' + COIN_TEXT.done + (reward.rule_title ? ' — ' + escapeHtml(reward.rule_title) : '') + '</div>'
             + '</div>';

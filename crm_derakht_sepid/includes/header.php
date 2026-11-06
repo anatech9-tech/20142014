@@ -31,11 +31,12 @@ if (!access_is_special_account()) {
     <title><?= htmlspecialchars($pageTitle ?? t('app_name'), ENT_QUOTES, 'UTF-8') ?></title>
     <!-- ═══ §13: PWA ═══ -->
     <link rel="manifest" href="manifest.webmanifest">
-    <meta name="theme-color" content="#f59e0b">
+    <meta name="theme-color" content="#16233f">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="<?= htmlspecialchars(t('app_name'), ENT_QUOTES, 'UTF-8') ?>">
-    <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+    <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
     <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
     <link rel="stylesheet" href="assets/css/style.css?v=20260905">
     <link rel="stylesheet" href="assets/css/glass.css">
@@ -99,7 +100,7 @@ if (!access_is_special_account()) {
                 <?php if (!empty($_SESSION['workshop_logo'])): ?>
                 <img src="<?= $_SESSION['workshop_logo'] ?>" alt="logo" style="width:35px;height:35px;border-radius:8px;object-fit:cover">
                 <?php else: ?>
-                <span style="font-size:22px">🏗️</span>
+                <img src="assets/images/logo-96.png" alt="درخت سپید تجارت پارس" style="width:38px;height:38px;border-radius:9px;object-fit:cover">
                 <?php endif; ?>
                 <span class="workshop-name"><?= htmlspecialchars($_SESSION['workshop_name'] ?? t('app_name')) ?></span>
             </div>
@@ -176,11 +177,11 @@ if (!access_is_special_account()) {
             </div>
             <div class="topbar-right">
                 <?php
-                // آرش‌کوین جای آیکون چت در بالای سایت: موجودی همیشه از دفترکل خوانده می‌شود.
+                // WTTP COIN جای آیکون چت در بالای سایت: موجودی همیشه از دفترکل خوانده می‌شود.
                 $header_coin_balance = arash_coin_balance($pdo, (int)($_SESSION['user_id'] ?? 0));
                 ?>
-                <a href="index.php?page=arash_coins" class="arash-coin-balance-link" title="<?= htmlspecialchars(t('مشاهده کیف پول و فروشگاه آرش‌کوین'), ENT_QUOTES, 'UTF-8') ?>">
-                    <img src="assets/icons/arash-coin-small.png" class="arash-coin-inline" alt="Arash Coin">
+                <a href="index.php?page=arash_coins" class="arash-coin-balance-link" title="<?= htmlspecialchars(t('مشاهده کیف پول و فروشگاه WTTP COIN'), ENT_QUOTES, 'UTF-8') ?>">
+                    <img src="assets/icons/wttp-coin-small.png" class="arash-coin-inline" alt="WTTP COIN">
                     <span data-arash-coin-balance><?= number_format($header_coin_balance) ?></span>
                     <span style="font-size:10px">AC</span>
                 </a>
@@ -210,10 +211,10 @@ if (!access_is_special_account()) {
                 <style>
                 .topbar-right{position:relative;gap:8px;align-items:center;flex-wrap:nowrap}
                 .topbar-right>.icon-btn,.topbar-right>.topbar-control{width:38px;height:38px;min-width:38px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:10px;box-sizing:border-box;transition:transform .2s ease,box-shadow .2s ease,background .2s ease}
-                .topbar-right>.icon-btn:hover,.topbar-right>.topbar-control:hover,.topbar-right>.arash-coin-balance-link:hover,.topbar-right>.ws-switcher-btn:hover,#srvClock:hover{transform:translateY(-1px) scale(1.04);box-shadow:0 6px 18px rgba(99,102,241,.2)}
+                .topbar-right>.icon-btn:hover,.topbar-right>.topbar-control:hover,.topbar-right>.arash-coin-balance-link:hover,.topbar-right>.ws-switcher-btn:hover,#srvClock:hover{transform:translateY(-1px) scale(1.04);box-shadow:0 6px 18px rgba(30,58,95,.35)}
                 .topbar-right>div:not(#srvCalendar){height:38px;display:inline-flex;align-items:center}
                 .topbar-right>div:not(#srvCalendar)>#langBtn{border:1px solid var(--border);border-radius:10px;box-sizing:border-box;transition:transform .2s ease,box-shadow .2s ease,background .2s ease}
-                .topbar-right>div:not(#srvCalendar)>#langBtn:hover{transform:translateY(-1px) scale(1.04);box-shadow:0 6px 18px rgba(99,102,241,.2)}
+                .topbar-right>div:not(#srvCalendar)>#langBtn:hover{transform:translateY(-1px) scale(1.04);box-shadow:0 6px 18px rgba(30,58,95,.35)}
                 .lang-flag-svg{display:inline-flex;width:22px;height:15px;line-height:0;flex:0 0 auto}.lang-flag-svg svg{display:block;width:100%;height:100%;border-radius:2px;box-shadow:0 0 0 1px rgba(15,23,42,.18)}
                 #langDropdown .lang-flag-svg{width:24px;height:16px}
                 .topbar-right>.tour-header-btn{width:38px!important;height:38px!important;min-width:38px!important;border-radius:10px!important}

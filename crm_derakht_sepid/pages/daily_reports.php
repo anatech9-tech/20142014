@@ -66,9 +66,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $pdo->prepare("INSERT INTO daily_reports (user_id, workshop_id, report_date, report_text, wo_description, wo_progress, wo_next_day, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
                 $stmt->execute([$current_user_id, $ws_id, $report_date, $display_text, $wo_desc, $wo_prog, $wo_next, $rep_cat]);
             }
-            // §fix: گزارش نیاز به تأیید مدیر ندارد؛ بلافاصله نهایی و آرش‌کوین پرداخت می‌شود
+            // §fix: گزارش نیاز به تأیید مدیر ندارد؛ بلافاصله نهایی و WTTP COIN پرداخت می‌شود
             $__auto = daily_report_auto_approve($pdo, (int)$pdo->lastInsertId(), (int)$current_user_id);
-            showToast(t('گزارش ثبت شد') . (!empty($__auto['coin']['amount']) ? strtr(t(' + {amount} آرش‌کوین'), ['{amount}' => $__auto['coin']['amount']]) : ''));
+            showToast(t('گزارش ثبت شد') . (!empty($__auto['coin']['amount']) ? strtr(t(' + {amount} WTTP COIN'), ['{amount}' => $__auto['coin']['amount']]) : ''));
         } elseif (!empty($report_text)) {
             if ($dr_has_shift) {
                 $stmt = $pdo->prepare("INSERT INTO daily_reports (user_id, workshop_id, report_date, report_text, category, shift) VALUES (?, ?, ?, ?, ?, ?)");
@@ -78,12 +78,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$current_user_id, $ws_id, $report_date, $report_text, $rep_cat]);
             }
             $__auto = daily_report_auto_approve($pdo, (int)$pdo->lastInsertId(), (int)$current_user_id);
-            showToast(t('گزارش ثبت شد') . (!empty($__auto['coin']['amount']) ? strtr(t(' + {amount} آرش‌کوین'), ['{amount}' => $__auto['coin']['amount']]) : ''));
+            showToast(t('گزارش ثبت شد') . (!empty($__auto['coin']['amount']) ? strtr(t(' + {amount} WTTP COIN'), ['{amount}' => $__auto['coin']['amount']]) : ''));
         }
         redirect("index.php?page=daily_reports");
     }
 
-    // حذف گزارش: مالکِ گزارش یا مدیر/ناظر. آرش‌کوینِ گزارش (و آیتم دستور کارِ متصل) هم برگردانده می‌شود.
+    // حذف گزارش: مالکِ گزارش یا مدیر/ناظر. WTTP COINِ گزارش (و آیتم دستور کارِ متصل) هم برگردانده می‌شود.
     if ($action === 'delete_report') {
         $rid = (int)($_POST['report_id'] ?? 0);
         if ($rid) {
@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 daily_report_reverse_coins($pdo, $rid, (int)$current_user_id, 'حذف گزارش');
                 $stmt = $pdo->prepare("DELETE FROM daily_reports WHERE id = ? AND workshop_id = ?");
                 $stmt->execute([$rid, $ws_id]);
-                showToast(t('گزارش حذف شد') . ' — ' . t('آرش‌کوین این گزارش هم کسر شد'));
+                showToast(t('گزارش حذف شد') . ' — ' . t('WTTP COIN این گزارش هم کسر شد'));
             } else {
                 showToast(t('دسترسی غیرمجاز'), 'error');
             }
@@ -101,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect(dr_back_url());
     }
 
-    // تأیید / رد گزارش: فقط گزارش تأییدشده در فرم رسمی می‌آید و پاداش آرش‌کوین می‌گیرد.
+    // تأیید / رد گزارش: فقط گزارش تأییدشده در فرم رسمی می‌آید و پاداش WTTP COIN می‌گیرد.
     if ($action === 'set_report_status' && $can_manage) {
         $rid = (int)($_POST['report_id'] ?? 0);
         $stt = $_POST['status'] ?? '';
@@ -120,7 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $coin = arash_coin_award_daily_report($pdo, $rid, $current_user_id);
                     $task_coin = null;
                     if (!empty($report_row['source_item_id'])) $task_coin = arash_coin_award_work_order_item($pdo, (int)$report_row['source_item_id'], $current_user_id);
-                    $coin_msg = ($coin ? strtr(t(' + {amount} آرش‌کوین برای گزارش'), ['{amount}' => $coin['amount']]) : '') . ($task_coin ? strtr(t(' + {amount} آرش‌کوین برای دستور کار'), ['{amount}' => $task_coin['amount']]) : '');
+                    $coin_msg = ($coin ? strtr(t(' + {amount} WTTP COIN برای گزارش'), ['{amount}' => $coin['amount']]) : '') . ($task_coin ? strtr(t(' + {amount} WTTP COIN برای دستور کار'), ['{amount}' => $task_coin['amount']]) : '');
                     operations_system_chat_message($pdo, $ws_id, $current_user_id, strtr(t('✅ گزارش کار «{name}» تأیید شد'), ['{name}' => $report_row['full_name'] ?? t('نیرو')]) . $coin_msg);
                     showToast(t('گزارش تأیید شد و در فرم رسمی نمایش داده می‌شود') . $coin_msg);
                 } elseif ($stt === 'rejected') {

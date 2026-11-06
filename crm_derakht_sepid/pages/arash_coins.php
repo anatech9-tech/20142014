@@ -1,5 +1,5 @@
 <?php
-/** آرش‌کوین — کیف پول، فروشگاه، پاداش‌های خودکار و پنل مدیریت */
+/** WTTP COIN — کیف پول، فروشگاه، پاداش‌های خودکار و پنل مدیریت */
 $pageTitle = t('nav_arash_coins');
 $ws_id = (int)($_SESSION['workshop_id'] ?? 0);
 $user_id = (int)($_SESSION['user_id'] ?? 0);
@@ -67,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $coin_ready && $coin_v18_ready) {
             if (!$reward) throw new RuntimeException(t('این جایزه دیگر در دسترس نیست.'));
             if ($reward['stock'] !== null && (int)$reward['stock'] <= 0) throw new RuntimeException(t('موجودی این جایزه تمام شده است.'));
             $cost = max(1, (int)$reward['cost']);
-            if (arash_coin_balance($pdo, $user_id) < $cost) throw new RuntimeException(t('موجودی آرش‌کوین شما برای این جایزه کافی نیست.'));
+            if (arash_coin_balance($pdo, $user_id) < $cost) throw new RuntimeException(t('موجودی WTTP COIN شما برای این جایزه کافی نیست.'));
             $leave_date = null;
             if (($reward['reward_type'] ?? 'generic') === 'paid_leave') {
                 $leave_date = $gdate_or_null($_POST['leave_date'] ?? '');
@@ -80,9 +80,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $coin_ready && $coin_v18_ready) {
             if (!$tx) throw new RuntimeException(t('ثبت خرج سکه ناموفق بود.'));
             if ($reward['stock'] !== null) $pdo->prepare("UPDATE arash_coin_rewards SET stock=stock-1 WHERE id=? AND stock>0")->execute([$reward_id]);
             $pdo->prepare("INSERT INTO audit_log (user_id,action,entity_type,entity_id,new_value) VALUES (?, 'arash_coin_redeem','arash_coin_redemption',?,?)")
-                ->execute([$user_id,$redemption_id,'خرج '.$cost.' آرش‌کوین برای «'.$reward['title'].'»']);
+                ->execute([$user_id,$redemption_id,'خرج '.$cost.' WTTP COIN برای «'.$reward['title'].'»']);
             $pdo->commit();
-            showToast(t('درخواست جایزه ثبت شد 🎁 — ') . number_format($cost) . ' ' . t('آرش‌کوین از کیف شما کم شد.'));
+            showToast(t('درخواست جایزه ثبت شد 🎁 — ') . number_format($cost) . ' ' . t('WTTP COIN از کیف شما کم شد.'));
         } catch(Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             showToast($e->getMessage(), 'error');
@@ -106,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $coin_ready && $coin_v18_ready) {
             $priority = max(0, (int)normalize_digits($_POST['priority'] ?? 0));
             $st=$pdo->prepare("INSERT INTO arash_coin_rules (workshop_id,title,task_keyword,event_type,target_team,start_date,end_date,base_coins,multiplier,priority,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
             $st->execute([$ws_id,sanitize($title),sanitize($_POST['task_keyword']??''),$event_type,$team?:null,$start,$end,$base,$multiplier,$priority,$user_id]);
-            showToast(t('قانون پاداش/ضریب آرش‌کوین ذخیره شد.'));
+            showToast(t('قانون پاداش/ضریب WTTP COIN ذخیره شد.'));
         }
         redirect('index.php?page=arash_coins#coin-admin');
     }
@@ -140,7 +140,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $coin_ready && $coin_v18_ready) {
             } else {
                 $st=$pdo->prepare("INSERT INTO arash_coin_rewards (workshop_id,title,description,icon,reward_type,leave_days,cost,stock,created_by) VALUES (?,?,?,?,?,?,?,?,?)");
                 $st->execute([$ws_id,sanitize($title),sanitize($_POST['description']??''),$icon?:null,$reward_type,$leave_days,$cost,$stock,$user_id]);
-                showToast(t('جایزه به فروشگاه آرش‌کوین اضافه شد.'));
+                showToast(t('جایزه به فروشگاه WTTP COIN اضافه شد.'));
             }
         } catch(Throwable $e) { showToast($e->getMessage(), 'error'); }
         redirect('index.php?page=arash_coins#coin-admin');
@@ -163,7 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $coin_ready && $coin_v18_ready) {
         elseif($amount<0&&arash_coin_balance($pdo,$target)<abs($amount)) showToast(t('موجودی کاربر برای این کسر کافی نیست.'),'error');
         else {
             $tx = arash_coin_add_transaction($pdo, $target, $amount, 'manual_adjustment', t('مدیریت') . ': ' . sanitize($reason), $ws_id, $user_id);
-            if($tx) { $pdo->prepare("INSERT INTO audit_log (user_id,action,entity_type,entity_id,new_value) VALUES (?, 'arash_coin_adjust','arash_coin_transaction',?,?)")->execute([$user_id,$tx,($amount>0?'افزایش ':'کسر ').abs($amount).' آرش‌کوین: '.$reason]); showToast(t('موجودی آرش‌کوین کاربر اصلاح شد.')); }
+            if($tx) { $pdo->prepare("INSERT INTO audit_log (user_id,action,entity_type,entity_id,new_value) VALUES (?, 'arash_coin_adjust','arash_coin_transaction',?,?)")->execute([$user_id,$tx,($amount>0?'افزایش ':'کسر ').abs($amount).' WTTP COIN: '.$reason]); showToast(t('موجودی WTTP COIN کاربر اصلاح شد.')); }
         }
         redirect('index.php?page=arash_coins#coin-admin');
     }
@@ -172,7 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $coin_ready && $coin_v18_ready) {
         $limit = max(0, (int)normalize_digits($_POST['daily_limit'] ?? 50));
         $st = $pdo->prepare("INSERT INTO settings (setting_key,setting_value) VALUES ('arash_coin_daily_limit',?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)");
         $st->execute([(string)$limit]);
-        showToast($limit === 0 ? t('سقف روزانه غیرفعال شد.') : strtr(t('سقف دریافت روزانه روی {limit} آرش‌کوین تنظیم شد.'), ['{limit}' => number_format($limit)]));
+        showToast($limit === 0 ? t('سقف روزانه غیرفعال شد.') : strtr(t('سقف دریافت روزانه روی {limit} WTTP COIN تنظیم شد.'), ['{limit}' => number_format($limit)]));
         redirect('index.php?page=arash_coins#coin-admin');
     }
 
@@ -189,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $coin_ready && $coin_v18_ready) {
         } else {
             $st = $pdo->prepare("INSERT INTO arash_coin_challenges (workshop_id,title,description,event_type,target_team,task_keyword,multiplier,start_date,end_date,created_by) VALUES (?,?,?,?,?,?,?,?,?,?)");
             $st->execute([$ws_id, sanitize($title), sanitize($_POST['description'] ?? ''), $event_type, $team ?: null, sanitize($_POST['task_keyword'] ?? ''), $multiplier, $start, $end, $user_id]);
-            operations_system_chat_message($pdo, $ws_id, $user_id, strtr(t('🚀 چالش جدید آرش‌کوین: «{title}» با ضریب ×{multiplier} از {start} تا {end}'), ['{title}' => $title, '{multiplier}' => $multiplier, '{start}' => to_jalali($start), '{end}' => to_jalali($end)]));
+            operations_system_chat_message($pdo, $ws_id, $user_id, strtr(t('🚀 چالش جدید WTTP COIN: «{title}» با ضریب ×{multiplier} از {start} تا {end}'), ['{title}' => $title, '{multiplier}' => $multiplier, '{start}' => to_jalali($start), '{end}' => to_jalali($end)]));
             showToast(t('چالش کوتاه‌مدت ثبت شد و در بازهٔ انتخابی خودکار اعمال می‌شود.'));
         }
         redirect('index.php?page=arash_coins#coin-admin');
@@ -206,7 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $coin_ready && $coin_v18_ready) {
     if ($can_manage && $action === 'save_season') {
         $title=trim((string)($_POST['title']??''));$start=$gdate_or_null($_POST['start_date']??'');$end=$gdate_or_null($_POST['end_date']??'');
         if($title===''||!$start||!$end||$end<$start)showToast(t('اطلاعات فصل نامعتبر است.'),'error');
-        else{$st=$pdo->prepare("INSERT INTO arash_coin_seasons (workshop_id,title,description,start_date,end_date,created_by) VALUES (?,?,?,?,?,?)");$st->execute([$ws_id,sanitize($title),sanitize($_POST['description']??''),$start,$end,$user_id]);operations_system_chat_message($pdo,$ws_id,$user_id,strtr(t('🏆 فصل جدید آرش‌کوین «{title}» از {start} تا {end} آغاز شد.'), ['{title}' => $title, '{start}' => to_jalali($start), '{end}' => to_jalali($end)]));showToast(t('فصل مسابقه ثبت شد.'));}
+        else{$st=$pdo->prepare("INSERT INTO arash_coin_seasons (workshop_id,title,description,start_date,end_date,created_by) VALUES (?,?,?,?,?,?)");$st->execute([$ws_id,sanitize($title),sanitize($_POST['description']??''),$start,$end,$user_id]);operations_system_chat_message($pdo,$ws_id,$user_id,strtr(t('🏆 فصل جدید WTTP COIN «{title}» از {start} تا {end} آغاز شد.'), ['{title}' => $title, '{start}' => to_jalali($start), '{end}' => to_jalali($end)]));showToast(t('فصل مسابقه ثبت شد.'));}
         redirect('index.php?page=arash_coins#coin-admin');
     }
     if ($can_manage && $action === 'toggle_season') {$pdo->prepare("UPDATE arash_coin_seasons SET status=IF(status='active','inactive','active') WHERE id=? AND workshop_id=?")->execute([(int)$_POST['season_id'],$ws_id]);showToast(t('وضعیت فصل تغییر کرد.'));redirect('index.php?page=arash_coins#coin-admin');}
@@ -232,7 +232,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $coin_ready && $coin_v18_ready) {
                 $days=max(1,(int)$redemption['leave_days']);
                 $leave_end=date('Y-m-d',strtotime($redemption['leave_date'].' +'.($days-1).' day'));
                 $stLeave=$pdo->prepare("INSERT INTO leave_requests (user_id,workshop_id,start_date,end_date,reason,status,approved_by,approved_at,coin_redemption_id) VALUES (?,?,?,?,?,'approved',?,NOW(),?)");
-                $stLeave->execute([(int)$redemption['user_id'],$ws_id,$redemption['leave_date'],$leave_end,'مرخصی جایزهٔ آرش‌کوین: '.$redemption['title'],$user_id,$redemption_id]);
+                $stLeave->execute([(int)$redemption['user_id'],$ws_id,$redemption['leave_date'],$leave_end,'مرخصی جایزهٔ WTTP COIN: '.$redemption['title'],$user_id,$redemption_id]);
                 $leave_id=(int)$pdo->lastInsertId();
                 $pdo->prepare("UPDATE arash_coin_redemptions SET leave_request_id=? WHERE id=?")->execute([$leave_id,$redemption_id]);
                 $redemption['leave_request_id']=$leave_id;
@@ -241,7 +241,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $coin_ready && $coin_v18_ready) {
             if (!empty($_FILES['delivery_attachment']['name'])) $delivery_attachment = operations_upload_file($_FILES['delivery_attachment'], 'uploads/reward_deliveries', ['image/png'=>'png','image/jpeg'=>'jpg','application/pdf'=>'pdf'], 12_000_000);
             $pdo->prepare("UPDATE arash_coin_redemptions SET status=?,note=?,handled_by=?,handled_at=NOW(),delivery_attachment=? WHERE id=?")->execute([$status,sanitize($_POST['note']??''),$user_id,$delivery_attachment,$redemption_id]);
             if($is_refund) {
-                arash_coin_add_transaction($pdo, (int)$redemption['user_id'], (int)$redemption['cost'], 'reward_refund', strtr(t('بازگشت آرش‌کوینِ درخواست «{title}»'), ['{title}' => $redemption['title']]), $ws_id, $user_id, 'redemption:' . $redemption_id . ':refund');
+                arash_coin_add_transaction($pdo, (int)$redemption['user_id'], (int)$redemption['cost'], 'reward_refund', strtr(t('بازگشت WTTP COINِ درخواست «{title}»'), ['{title}' => $redemption['title']]), $ws_id, $user_id, 'redemption:' . $redemption_id . ':refund');
                 if($redemption['stock']!==null)$pdo->prepare("UPDATE arash_coin_rewards SET stock=stock+1 WHERE id=?")->execute([(int)$redemption['reward_id']]);
                 if(!empty($redemption['leave_request_id'])) $pdo->prepare("DELETE FROM leave_requests WHERE id=? AND coin_redemption_id=?")->execute([(int)$redemption['leave_request_id'],$redemption_id]);
             }
@@ -266,7 +266,7 @@ try {
     $st=$pdo->prepare("SELECT t.* FROM arash_coin_transactions t WHERE t.user_id=? ORDER BY t.created_at DESC,t.id DESC LIMIT 100");$st->execute([$user_id]);$ledger=$st->fetchAll();
     $st=$pdo->prepare("SELECT * FROM arash_coin_rewards WHERE status='active' AND (workshop_id=? OR workshop_id=0) ORDER BY created_at DESC,id DESC");$st->execute([$ws_id]);$rewards=$st->fetchAll();
     $st=$pdo->prepare("SELECT r.*,rw.title,rw.icon,rw.reward_type FROM arash_coin_redemptions r JOIN arash_coin_rewards rw ON rw.id=r.reward_id WHERE r.user_id=? ORDER BY r.created_at DESC LIMIT 30");$st->execute([$user_id]);$my_redemptions=$st->fetchAll();
-} catch(Throwable $e) { showToast(t('خواندن اطلاعات آرش‌کوین با خطا روبه‌رو شد.'),'error'); }
+} catch(Throwable $e) { showToast(t('خواندن اطلاعات WTTP COIN با خطا روبه‌رو شد.'),'error'); }
 ?>
 <?php
 [$coin_week_start, $coin_week_end] = arash_coin_week_bounds();
@@ -279,7 +279,7 @@ $current_season = null; $season_leaderboard = [];
 try { $st=$pdo->prepare("SELECT * FROM arash_coin_seasons WHERE workshop_id=? AND status='active' AND start_date<=? AND end_date>=? ORDER BY id DESC LIMIT 1");$st->execute([$ws_id,date('Y-m-d'),date('Y-m-d')]);$current_season=$st->fetch(); if($current_season)$season_leaderboard=arash_coin_period_leaderboard($pdo,$ws_id,$current_season['start_date'],$current_season['end_date'],5); }catch(Throwable $e){}
 $daily_cap = arash_coin_daily_limit_status($pdo, $user_id, date('Y-m-d'));
 ?>
-<div class="arash-wallet-hero animate-in"><div class="arash-wallet-hero-inner"><img src="assets/icons/arash-coin.png" class="arash-coin-hero-img" alt="Arash Coin"><div><div style="font-weight:800;font-size:15px"><?= t('کیف پول') ?> <?= t('nav_arash_coins') ?></div><div class="arash-wallet-count" data-arash-coin-balance><?= number_format($balance) ?></div><div class="arash-wallet-caption">Arash Coin · <?= t('پاداش تلاش، دقت و انجام کار') ?></div><div class="arash-wallet-note"><?= t('ورود زود، اضافه‌کاری، شب‌کاری، گزارش تأییدشده، دستورکار و فعالیت انبار همگی امتیاز دارند.') ?></div></div></div></div>
+<div class="arash-wallet-hero animate-in"><div class="arash-wallet-hero-inner"><img src="assets/icons/wttp-coin.png" class="arash-coin-hero-img" alt="WTTP COIN"><div><div style="font-weight:800;font-size:15px"><?= t('کیف پول') ?> <?= t('nav_arash_coins') ?></div><div class="arash-wallet-count" data-arash-coin-balance><?= number_format($balance) ?></div><div class="arash-wallet-caption">WTTP COIN · <?= t('پاداش تلاش، دقت و انجام کار') ?></div><div class="arash-wallet-note"><?= t('ورود زود، اضافه‌کاری، شب‌کاری، گزارش تأییدشده، دستورکار و فعالیت انبار همگی امتیاز دارند.') ?></div></div></div></div>
 
 <div class="stats-grid mt-4 animate-in">
     <div class="stat-card"><div class="stat-icon primary"><i data-lucide="gauge"></i></div><div class="stat-info"><h3><?= $daily_cap['limit'] <= 0 ? '∞' : number_format($daily_cap['remaining']) ?></h3><p><?= $daily_cap['limit'] <= 0 ? t('دریافت روزانه نامحدود') : strtr(t('باقی‌مانده از سقف روزانه {limit}'), ['{limit}' => number_format($daily_cap['limit'])]) ?></p></div></div>
@@ -290,7 +290,7 @@ $daily_cap = arash_coin_daily_limit_status($pdo, $user_id, date('Y-m-d'));
 <div class="coin-page-grid mt-4"><section class="card animate-in"><div class="card-header"><h3 class="card-title">🎁 <?= t('فروشگاه') ?> <?= t('nav_arash_coins') ?></h3><span class="text-muted" style="font-size:11px"><?= t('برای جایزه مرخصی، تاریخ موردنظر را هم انتخاب کنید.') ?></span></div>
 <?php if(empty($rewards)): ?><div class="arash-shop-empty"><?= t('هنوز') ?> <?= t('جایزه') ?><?= t('‌ای') ?> <?= t('در') ?> <?= t('فروشگاه') ?> <?= t('این') ?> <?= t('کارگاه') ?> <?= t('تعریف نشده') ?> <?= t('است') ?>.</div><?php else: ?><div class="arash-reward-grid">
 <?php foreach($rewards as $reward): $out=$reward['stock']!==null&&(int)$reward['stock']<=0; $is_leave=($reward['reward_type']??'generic')==='paid_leave'; ?>
-<article class="arash-reward-card"><div style="display:flex;gap:10px;align-items:flex-start"><div class="reward-icon"><?= arash_reward_icon_value($reward['icon']??'') ?></div><div><h4><?= htmlspecialchars($reward['title']) ?></h4><p><?= nl2br(htmlspecialchars($reward['description'] ?: t('جایزهٔ ویژهٔ آرش‌کوین'), ENT_QUOTES, 'UTF-8')) ?></p></div></div><div class="arash-reward-cost"><img src="assets/icons/arash-coin.png" alt=""> <?= number_format((int)$reward['cost']) ?> <?= t('آرش‌کوین') ?><?= $is_leave ? ' · ' . (int)$reward['leave_days'] . ' ' . t('روز مرخصی') : '' ?></div><form method="post" class="mt-2" onsubmit="return confirm('<?= t('این') ?> <?= t('جایزه') ?> <?= t('درخواست') ?> <?= t('شود') ?>؟')"><?= get_csrf_field() ?><input type="hidden" name="action" value="redeem_reward"><input type="hidden" name="reward_id" value="<?= (int)$reward['id'] ?>"><?php if($is_leave): ?><input type="text" name="leave_date" class="form-control jalali-date" required placeholder="<?= t('wh_date') ?> <?= t('nav_leaves') ?>" style="margin-bottom:7px;font-size:11px"><?php endif; ?><div class="d-flex justify-between align-center" style="gap:8px"><span class="text-muted" style="font-size:10px"><?= $reward['stock']===null ? t('موجودی نامحدود') : strtr(t('{count} عدد باقی‌مانده'), ['{count}' => (int)$reward['stock']]) ?></span><button class="btn btn-sm <?=($out||$balance<(int)$reward['cost'])?'btn-ghost':'btn-warning'?>" <?=($out||$balance<(int)$reward['cost'])?'disabled':''?>><?= $out ? t('اتمام موجودی') : ($balance < (int)$reward['cost'] ? t('سکه کافی نیست') : t('درخواست جایزه')) ?></button></div></form></article>
+<article class="arash-reward-card"><div style="display:flex;gap:10px;align-items:flex-start"><div class="reward-icon"><?= arash_reward_icon_value($reward['icon']??'') ?></div><div><h4><?= htmlspecialchars($reward['title']) ?></h4><p><?= nl2br(htmlspecialchars($reward['description'] ?: t('جایزهٔ ویژهٔ WTTP COIN'), ENT_QUOTES, 'UTF-8')) ?></p></div></div><div class="arash-reward-cost"><img src="assets/icons/wttp-coin.png" alt=""> <?= number_format((int)$reward['cost']) ?> <?= t('WTTP COIN') ?><?= $is_leave ? ' · ' . (int)$reward['leave_days'] . ' ' . t('روز مرخصی') : '' ?></div><form method="post" class="mt-2" onsubmit="return confirm('<?= t('این') ?> <?= t('جایزه') ?> <?= t('درخواست') ?> <?= t('شود') ?>؟')"><?= get_csrf_field() ?><input type="hidden" name="action" value="redeem_reward"><input type="hidden" name="reward_id" value="<?= (int)$reward['id'] ?>"><?php if($is_leave): ?><input type="text" name="leave_date" class="form-control jalali-date" required placeholder="<?= t('wh_date') ?> <?= t('nav_leaves') ?>" style="margin-bottom:7px;font-size:11px"><?php endif; ?><div class="d-flex justify-between align-center" style="gap:8px"><span class="text-muted" style="font-size:10px"><?= $reward['stock']===null ? t('موجودی نامحدود') : strtr(t('{count} عدد باقی‌مانده'), ['{count}' => (int)$reward['stock']]) ?></span><button class="btn btn-sm <?=($out||$balance<(int)$reward['cost'])?'btn-ghost':'btn-warning'?>" <?=($out||$balance<(int)$reward['cost'])?'disabled':''?>><?= $out ? t('اتمام موجودی') : ($balance < (int)$reward['cost'] ? t('سکه کافی نیست') : t('درخواست جایزه')) ?></button></div></form></article>
 <?php endforeach; ?></div><?php endif; ?></section>
 <aside class="card animate-in"><div class="card-header"><h3 class="card-title">📦 <?= t('درخواست') ?>‌<?= t('های') ?> <?= t('من') ?></h3></div><?php $status_labels=['requested'=>t('در انتظار بررسی'),'approved'=>t('تأیید شده'),'delivered'=>t('تحویل شد'),'rejected'=>t('رد شد'),'cancelled'=>t('لغو شد')]; foreach($my_redemptions as $request): ?><div style="padding:10px 0;border-bottom:1px solid var(--border);display:flex;gap:8px"><span style="font-size:21px"><?= arash_reward_icon_value($request['icon']??'🎁') ?></span><div style="flex:1"><strong style="font-size:13px"><?= htmlspecialchars($request['title']) ?></strong><?php if(($request['reward_type']??'')==='paid_leave'&&$request['leave_date']): ?><div class="text-muted" style="font-size:10px">📅 <?= to_jalali($request['leave_date']) ?></div><?php endif; ?><div class="d-flex justify-between mt-1" style="font-size:11px;color:var(--text-secondary)"><span><?= to_jalali(substr($request['created_at'],0,10)) ?></span><span class="arash-rule-badge"><?= $status_labels[$request['status']]??$request['status'] ?></span></div></div></div><?php endforeach; ?><?php if(empty($my_redemptions)): ?><p class="text-muted text-center" style="font-size:12px;padding:14px"><?= t('هنوز') ?> <?= t('جایزه') ?><?= t('‌ای') ?> <?= t('درخواست') ?> <?= t('نکرده‌اید.') ?></p><?php endif; ?></aside></div>
 
@@ -305,7 +305,7 @@ $daily_cap = arash_coin_daily_limit_status($pdo, $user_id, date('Y-m-d'));
 </div>
 <?php if(!empty($weekly_badges)): ?><div class="card mt-4 animate-in"><div class="card-header"><h3 class="card-title">🎖️ <?= t('نشان‌های افتخار هفته') ?></h3><span class="text-muted" style="font-size:11px"><?= t('بر مبنای') ?> <?= t('رویدادهای') ?> <?= t('ثبت') ?><?= t('‌شده') ?> <?= t('در') ?> <?= t('همین') ?> <?= t('کارگاه') ?></span></div><div class="stats-grid" style="margin:0"><?php foreach($weekly_badges as $badge): ?><div class="stat-card" style="background:linear-gradient(135deg,#fff7d6,#fff)"><div class="stat-icon warning" style="font-size:24px"><?= $badge['icon'] ?></div><div class="stat-info"><h3 style="font-size:16px"><?= htmlspecialchars($badge['user_name']) ?></h3><p><strong><?= $badge['title'] ?></strong> · <?= number_format($badge['score']) ?> <?= $badge['metric'] ?></p></div></div><?php endforeach; ?></div></div><?php endif; ?>
 
-<?php if($current_season): ?><div class="card mt-4 animate-in" style="background:linear-gradient(135deg,#1e1b4b,#312e81);color:#fff"><div class="card-header" style="border-color:rgba(255,255,255,.2)"><h3 class="card-title">🏆 <?= t('فصل فعال') ?>: <?= htmlspecialchars($current_season['title']) ?></h3><span style="font-size:11px;color:#c7d2fe"><?= to_jalali($current_season['start_date']) ?> <?= t('تا') ?> <?= to_jalali($current_season['end_date']) ?></span></div><p style="font-size:12px;color:#e0e7ff"><?= nl2br(htmlspecialchars($current_season['description'] ?: t('رقابت فصل جاری آرش‌کوین'))) ?></p><div class="d-flex gap-3" style="flex-wrap:wrap;margin-top:10px"><?php foreach($season_leaderboard as $i=>$row): ?><div style="padding:8px 12px;background:rgba(255,255,255,.12);border-radius:10px"><strong><?= $i===0?'🥇':($i+1) ?> <?= htmlspecialchars($row['full_name']) ?></strong> · <?= number_format((int)$row['earned']) ?> <?= arash_coin_icon_markup('arash-coin-tiny') ?></div><?php endforeach; ?><?php if(empty($season_leaderboard)): ?><span style="font-size:12px"><?= t('هنوز امتیازی در این فصل ثبت نشده است.') ?></span><?php endif; ?></div></div><?php endif; ?>
+<?php if($current_season): ?><div class="card mt-4 animate-in" style="background:linear-gradient(135deg,#1e1b4b,#312e81);color:#fff"><div class="card-header" style="border-color:rgba(255,255,255,.2)"><h3 class="card-title">🏆 <?= t('فصل فعال') ?>: <?= htmlspecialchars($current_season['title']) ?></h3><span style="font-size:11px;color:#c7d2fe"><?= to_jalali($current_season['start_date']) ?> <?= t('تا') ?> <?= to_jalali($current_season['end_date']) ?></span></div><p style="font-size:12px;color:#e0e7ff"><?= nl2br(htmlspecialchars($current_season['description'] ?: t('رقابت فصل جاری WTTP COIN'))) ?></p><div class="d-flex gap-3" style="flex-wrap:wrap;margin-top:10px"><?php foreach($season_leaderboard as $i=>$row): ?><div style="padding:8px 12px;background:rgba(255,255,255,.12);border-radius:10px"><strong><?= $i===0?'🥇':($i+1) ?> <?= htmlspecialchars($row['full_name']) ?></strong> · <?= number_format((int)$row['earned']) ?> <?= arash_coin_icon_markup('arash-coin-tiny') ?></div><?php endforeach; ?><?php if(empty($season_leaderboard)): ?><span style="font-size:12px"><?= t('هنوز امتیازی در این فصل ثبت نشده است.') ?></span><?php endif; ?></div></div><?php endif; ?>
 <?php if($team_leaderboard): ?><div class="card mt-4 animate-in"><div class="card-header"><h3 class="card-title">👥 <?= t('رتبه‌بندی') ?> <?= t('واحدها') ?> — <?= t('rep_month') ?> <?= t('جاری') ?></h3></div><div class="stats-grid" style="margin:0"><?php foreach($team_leaderboard as $i=>$team): ?><div class="stat-card"><div class="stat-icon <?= $i===0?'warning':'primary' ?>"><i data-lucide="users"></i></div><div class="stat-info"><h3><?= htmlspecialchars(t($team['team'])) ?></h3><p><?= number_format((int)$team['earned']) ?> <?= t('کوین') ?> <?= t('pet_income') ?></p></div></div><?php endforeach; ?></div></div><?php endif; ?>
 
 <div class="coin-section-title"><h3 style="margin:0">📜 <?= t('گردش کیف پول') ?></h3><span class="text-muted" style="font-size:11px"><?= t('inv_stock') ?> <?= t('lea_from') ?> <?= t('rep_total') ?> <?= t('دفترکل') ?> <?= t('btn_calculate') ?> <?= t('می‌شود') ?>.</span></div><div class="card animate-in"><div class="table-container"><table><thead><tr><th><?= t('wh_date') ?></th><th><?= t('شرح') ?></th><th><?= t('sal_type') ?></th><th><?= t('تغییر') ?></th></tr></thead><tbody><?php foreach($ledger as $row): ?><tr><td style="white-space:nowrap"><?= to_jalali(substr($row['created_at'],0,10)) ?> <?= substr($row['created_at'],11,5) ?></td><td><?= htmlspecialchars($row['description']?:'—') ?></td><td><span class="tag" style="font-size:10px"><?= htmlspecialchars(arash_coin_event_type_label($row['transaction_type'])) ?></span></td><td class="<?= (int)$row['amount']>=0?'arash-ledger-positive':'arash-ledger-negative' ?>"><?= (int)$row['amount']>=0?'+':'' ?><?= number_format((int)$row['amount']) ?> <?= arash_coin_icon_markup('arash-coin-tiny') ?></td></tr><?php endforeach; ?><?php if(empty($ledger)): ?><tr><td colspan="4" class="text-center text-muted" style="padding:28px"><?= t('هنوز') ?> <?= t('تراکنشی') ?> <?= t('ثبت نشده') ?> <?= t('است') ?>.</td></tr><?php endif; ?></tbody></table></div></div>
