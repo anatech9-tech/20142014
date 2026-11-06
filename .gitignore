@@ -1,0 +1,40 @@
+# --- Secrets (هرگز commit نشود) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+auth.json
+
+# --- PHP / Composer ---
+/vendor/
+composer.phar
+.phpunit.result.cache
+.phpunit.cache/
+
+# --- Node (asset build) ---
+/node_modules/
+/public/build/
+/public/hot
+npm-debug.log*
+
+# --- Runtime & storage ---
+/storage/*.log
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/storage/logs/*
+*.log
+
+# --- Database dumps / data ---
+*.sql
+*.sqlite
+*.sqlite3
+/database/*.sqlite
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
