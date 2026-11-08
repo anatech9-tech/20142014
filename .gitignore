@@ -57,3 +57,6 @@ crm_derakht_sepid/uploads/**/*.zip
 *.swp
 .DS_Store
 Thumbs.db
+
+# پکیج آمادهٔ آپلود هاست (ساختهٔ دستی)
+/derakht-sepid-crm-host.zip
