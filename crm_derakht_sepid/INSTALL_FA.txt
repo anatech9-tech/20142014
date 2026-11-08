@@ -1,0 +1,40 @@
+═══════════════════════════════════════════════════════════════
+  CRM درخت سپید تجارت پارس — راهنمای نصب روی هاست (cPanel)
+═══════════════════════════════════════════════════════════════
+
+۱) در cPanel → MySQL Databases: یک دیتابیس و یک کاربر بسازید و کاربر را
+   به دیتابیس با ALL PRIVILEGES وصل کنید. نام دیتابیس/کاربر و رمز را یادداشت کنید.
+
+۲) در File Manager: به پوشهٔ public_html بروید (یا ساب‌پوشهٔ دلخواهتان مثل crm.example.com)
+   و کل محتوای این فایل ZIP را در همان‌جا اکسترکت کنید (index.php باید مستقیم در ریشهٔ همان پوشه باشد).
+
+۳) کنار config.php یک فایل بسازید به نام exactly:  config.local.php
+   با این محتوا (مقادیر واقعی دیتابیس خودتان را جایگزین کنید):
+
+   <?php
+   define('DB_HOST', 'localhost');
+   define('DB_NAME', 'cpanel_dbname');
+   define('DB_USER', 'cpanel_dbuser');
+   define('DB_PASS', 'your_strong_password');
+
+۴) در مرورگر باز کنید:   https://YOUR-DOMAIN/install_db.php
+   همهٔ جدول‌ها و داده‌های اولیه (۳ تیم فروش، ۸ مرحلهٔ پایپ‌لاین واردات، ادمین) ساخته می‌شود.
+   ⚠️ رمز ادمین «فقط همان یک‌بار» نمایش داده می‌شود؛ نام کاربری: admin
+
+۵) بعد از نصب موفق حتماً install_db.php را از هاست حذف کنید (امنیت).
+
+۶) وارد شوید و از «تنظیمات» در صورت نیاز بازبینی کنید:
+   - disabled_pages : صفحاتی که مدیر می‌خواهد برای همه غیرادمین‌ها مخفی شوند (با ویرگول، مثلاً: salary,arash_coins)
+   - crm_default_currency : ارز پیش‌فرض معامله‌ها (پیش‌فرض USD)
+
+۷) مدیرِ تیم‌های فروش را مشخص کنید (از SQL صفحه phpMyAdmin):
+   UPDATE teams SET manager_user_id = <USER_ID> WHERE code IN ('phone','digital','field');
+   شناسهٔ کاربرها را از جدول users ببینید. کاربران را به تیم وصل کنید:
+   UPDATE users SET team_id = <TEAM_ID> WHERE id = <USER_ID>;
+
+۸) لاگ خطاها: display_errors خاموش است؛ جزئیات در error_log هاست ثبت می‌شود (MultiPHP INI Editor / Errors).
+
+نکات:
+- این پکیج از سورس قطعی‌شدهٔ گیت (f86bd99) ساخته شده و config.local.php / داده‌های شخصی ندارد.
+- برای ارتباط با تلفنچی (CDR/ClickToCall) یا درگاه پرداخت، بعداً بخش‌های جداگانه فعال می‌شود.
+- سند کامل پروژه: مخزن گیت docs/CRM_DERAKHT_SEPID.md
