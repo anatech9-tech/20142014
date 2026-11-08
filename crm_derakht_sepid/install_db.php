@@ -75,6 +75,7 @@ function schema_statements(): array {
         `avatar` VARCHAR(255) NULL,
         `description` TEXT NULL,
         `is_karigar` TINYINT(2) NOT NULL DEFAULT 0,
+        `status` VARCHAR(20) NOT NULL DEFAULT 'active',
         `team_id` INT(11) NULL,
         `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY `uq_users_username` (`username`),
@@ -941,6 +942,22 @@ function run_install(PDO $pdo): array {
     foreach ($tables as $name => $sql) {
         $pdo->exec($sql);
         $log[] = '✓ جدول `' . $name . '` بررسی/ساخته شد.';
+    }
+
+    // ── ارتقای بی‌خطر: ستون users.status (کد برنامه به آن متکی است)
+    $hasStatusCol = false;
+    try {
+        $sts = $pdo->prepare("SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'status' LIMIT 1");
+        $sts->execute();
+        $hasStatusCol = (bool)$sts->fetchColumn();
+    } catch (Throwable $e) { $hasStatusCol = true; }
+    if (!$hasStatusCol) {
+        try {
+            $pdo->exec("ALTER TABLE users ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active' AFTER is_karigar");
+            $log[] = '✓ ستون users.status به دیتابیس اضافه شد.';
+        } catch (Throwable $e) {
+            $log[] = '⚠ افزودن ستون users.status ناموفق بود: ' . $e->getMessage();
+        }
     }
 
     // ── ارتقای بی‌خطر دیتابیس‌های قدیمی: ستون team_id برای users
