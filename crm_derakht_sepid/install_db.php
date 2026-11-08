@@ -168,6 +168,9 @@ function schema_statements(): array {
         `note` VARCHAR(500) NULL,
         `mission_id` INT(11) NULL,
         `mission_source_ws` INT(11) NULL,
+        `protest_text` TEXT NULL,
+        `protest_status` VARCHAR(20) NOT NULL DEFAULT 'none',
+        `protest_by` INT(11) NULL,
         `created_by` INT(11) NULL,
         `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         KEY `idx_wh_user_date` (`user_id`, `work_date`),
@@ -182,6 +185,9 @@ function schema_statements(): array {
         `start_date` DATE NULL,
         `start_time` VARCHAR(19) NULL,
         `status` VARCHAR(20) NOT NULL DEFAULT 'active',
+        `end_date` DATE NULL,
+        `end_time` TIME NULL,
+        `completed_by` INT(11) NULL,
         `description` TEXT NULL,
         `created_by` INT(11) NULL,
         `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -418,6 +424,7 @@ function schema_statements(): array {
         `asset_purchase_date` DATE NULL,
         `useful_life_months` INT(11) NULL,
         `reissue_days` INT(11) NULL,
+        `status` VARCHAR(20) NOT NULL DEFAULT 'active',
         `deleted_at` TIMESTAMP NULL DEFAULT NULL,
         `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         KEY `idx_inv_ws` (`workshop_id`, `name`),
@@ -443,6 +450,10 @@ function schema_statements(): array {
         `early_reason` VARCHAR(255) NULL,
         `is_early_reissue` TINYINT(1) NOT NULL DEFAULT 0,
         `is_consumable` TINYINT(1) NOT NULL DEFAULT 0,
+        `delivered_by` VARCHAR(150) NULL,
+        `return_time` TIME NULL,
+        `approved_by` INT(11) NULL,
+        `return_condition` VARCHAR(50) NULL,
         `repair_cost` DECIMAL(15,2) NULL,
         `repair_subcontractor_id` INT(11) NULL,
         `notes` TEXT NULL,
@@ -477,6 +488,9 @@ function schema_statements(): array {
         `attachment` VARCHAR(255) NULL,
         `requested_by` INT(11) NULL,
         `status` VARCHAR(20) NOT NULL DEFAULT 'pending',
+        `approved_by` INT(11) NULL,
+        `approved_at` DATETIME NULL,
+        `rejection_reason` VARCHAR(255) NULL,
         `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) $T";
 
@@ -504,6 +518,8 @@ function schema_statements(): array {
         `description` TEXT NULL,
         `total_contract` DECIMAL(15,2) NOT NULL DEFAULT 0,
         `linked_user_id` INT(11) NULL,
+        `iban` VARCHAR(34) NULL,
+        `opening_balance` DECIMAL(15,2) NOT NULL DEFAULT 0,
         `status` VARCHAR(20) NOT NULL DEFAULT 'active',
         `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) $T";
@@ -658,6 +674,7 @@ function schema_statements(): array {
         `user_id` INT(11) NOT NULL,
         `workshop_id` INT(11) NULL,
         `flag_date` DATE NULL,
+        `status` VARCHAR(20) NOT NULL DEFAULT 'open',
         `severity` VARCHAR(20) NULL,
         `reason` VARCHAR(500) NULL,
         `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -702,6 +719,7 @@ function schema_statements(): array {
         `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
         `workshop_id` INT(11) NULL,
         `name` VARCHAR(150) NOT NULL,
+        `status` VARCHAR(20) NOT NULL DEFAULT 'active',
         `description` VARCHAR(255) NULL,
         `icon` VARCHAR(50) NULL,
         `created_by` INT(11) NULL,
@@ -792,6 +810,7 @@ function schema_statements(): array {
         `type` VARCHAR(50) NOT NULL DEFAULT 'info',
         `is_group` TINYINT(1) NOT NULL DEFAULT 0,
         `is_task` TINYINT(1) NOT NULL DEFAULT 0,
+        `target_user_id` INT(11) NULL,
         `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         KEY `idx_notif_created` (`created_at`)
     ) $T";
@@ -957,6 +976,46 @@ function run_install(PDO $pdo): array {
             $log[] = '✓ ستون users.status به دیتابیس اضافه شد.';
         } catch (Throwable $e) {
             $log[] = '⚠ افزودن ستون users.status ناموفق بود: ' . $e->getMessage();
+        }
+    }
+
+    // ── ارتقای بی‌خطر ستون‌های جاافتاده برای دیتابیس‌های قدیمی (کد برنامه به آن‌ها متکی است)
+    $crmUpgrades = [
+        ['work_hours', 'protest_text', "ALTER TABLE work_hours ADD COLUMN protest_text TEXT NULL"],
+        ['work_hours', 'protest_status', "ALTER TABLE work_hours ADD COLUMN protest_status VARCHAR(20) NOT NULL DEFAULT 'none'"],
+        ['work_hours', 'protest_by', "ALTER TABLE work_hours ADD COLUMN protest_by INT(11) NULL"],
+        ['missions', 'end_date', "ALTER TABLE missions ADD COLUMN end_date DATE NULL"],
+        ['missions', 'end_time', "ALTER TABLE missions ADD COLUMN end_time TIME NULL"],
+        ['missions', 'completed_by', "ALTER TABLE missions ADD COLUMN completed_by INT(11) NULL"],
+        ['chat_channels', 'status', "ALTER TABLE chat_channels ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'"],
+        ['notifications', 'target_user_id', "ALTER TABLE notifications ADD COLUMN target_user_id INT(11) NULL"],
+        ['inventory_transactions', 'delivered_by', "ALTER TABLE inventory_transactions ADD COLUMN delivered_by VARCHAR(150) NULL"],
+        ['inventory_transactions', 'return_time', "ALTER TABLE inventory_transactions ADD COLUMN return_time TIME NULL"],
+        ['inventory_transactions', 'approved_by', "ALTER TABLE inventory_transactions ADD COLUMN approved_by INT(11) NULL"],
+        ['inventory_transactions', 'return_condition', "ALTER TABLE inventory_transactions ADD COLUMN return_condition VARCHAR(50) NULL"],
+        ['inventory_items', 'status', "ALTER TABLE inventory_items ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'"],
+        ['purchase_requests', 'approved_by', "ALTER TABLE purchase_requests ADD COLUMN approved_by INT(11) NULL"],
+        ['purchase_requests', 'approved_at', "ALTER TABLE purchase_requests ADD COLUMN approved_at DATETIME NULL"],
+        ['purchase_requests', 'rejection_reason', "ALTER TABLE purchase_requests ADD COLUMN rejection_reason VARCHAR(255) NULL"],
+        ['arash_coin_flags', 'status', "ALTER TABLE arash_coin_flags ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'open'"],
+        ['subcontractors', 'iban', "ALTER TABLE subcontractors ADD COLUMN iban VARCHAR(34) NULL"],
+        ['subcontractors', 'opening_balance', "ALTER TABLE subcontractors ADD COLUMN opening_balance DECIMAL(15,2) NOT NULL DEFAULT 0"],
+    ];
+    foreach ($crmUpgrades as $crmUp) {
+        [$__tbl, $__col, $__sql] = $crmUp;
+        $__has = false;
+        try {
+            $__stc = $pdo->prepare("SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1");
+            $__stc->execute([$__tbl, $__col]);
+            $__has = (bool)$__stc->fetchColumn();
+        } catch (Throwable $e) { $__has = true; }
+        if (!$__has) {
+            try {
+                $pdo->exec($__sql);
+                $log[] = '✓ ستون `' . $__tbl . '.' . $__col . '` اضافه شد.';
+            } catch (Throwable $e) {
+                $log[] = '⚠ افزودن `' . $__tbl . '.' . $__col . '` ناموفق: ' . $e->getMessage();
+            }
         }
     }
 
