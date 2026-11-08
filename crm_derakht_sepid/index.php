@@ -296,6 +296,10 @@ switch ($page) {
         require_login();
         include 'pages/crm_tasks.php';
         break;
+    case 'crm_teams':
+        require_login();
+        include 'pages/crm_teams.php';
+        break;
     default:
         if (is_logged_in()) {
             redirect('index.php?page=dashboard');

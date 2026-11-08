@@ -849,6 +849,7 @@ function nav_menu_labels() {
         'crm_leads'      => t('nav_crm_leads'),
         'crm_deals'      => t('nav_crm_deals'),
         'crm_tasks'      => t('nav_crm_tasks'),
+        'crm_teams'      => t('nav_crm_teams'),
     ];
 }
 

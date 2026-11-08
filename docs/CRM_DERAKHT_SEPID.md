@@ -204,7 +204,9 @@ includes/ ───────────┘  lang.php/legacy_i18n* (fa/ar/en)
   - ✅ مراحل ۸گانهٔ پایپ‌لاین واردات seed شد (سرنخ → تحویل به مشتری) + تیم‌های فروش + `crm_default_currency=USD`
   - ✅ صفحات: `crm_customers` (CRUD + مخاطبین + تاریخچهٔ تعاملات)، `crm_leads` (ثبت/پیگیری/تبدیل به مشتری)، `crm_deals` (پایپ‌لاین Kanban + برد/باخت + ارزش کل)، `crm_tasks` (وظایف من + سررسید عقب‌افتاده)
   - ✅ دسترسی: مدیر کل/مالی → همه؛ مدیر تیم → تیم‌هایش؛ کارشناس → رکوردهای خودش • CSRF سراسری • ممیزی `operations_audit` روی ایجاد/تغییر وضعیت
-  - ⏳ باقی‌ماندهٔ فاز ۲: اتصال وبهوک تلفنچی + کش CDR + Click-to-Call • ثبت مدیر برای تیم‌ها از UI (فعلاً با SQL) • تست واقعی روی هاست
+  - ✅ صفحهٔ «تیم‌های فروش» (`crm_teams`, فقط مدیر کل): تعیین مدیر/وضعیت تیم + تخصیص اعضا به تیم از UI
+  - ✅ کارت‌های CRM در داشبورد اصلی (معاملات باز + ارزش پایپ‌لاین + کارهای عقب‌افتادهٔ من + سرنخ‌های ۷ روز اخیر) — با اسکوپ دید تیمی
+  - ⏳ باقی‌ماندهٔ فاز ۲: اتصال وبهوک تلفنچی + کش CDR + Click-to-Call • تست واقعی روی هاست
 - **فاز ۳ — سایت عمومی + فروشگاه:** صفحات معرفی/خدمات + فرم درخواست واردات + کاتالوگ + سبد + سفارش + درگاه پرداخت
 - **فاز ۴ — حسابداری + حقوق/کمیسیون:** کدینگ/سند/فاکتور/دفتر روزنامه + موتور درصد و فیش ترکیبی
 - **فاز ۵ — AI:** ai_client + خلاصهٔ مشتری + گزارش مدیریتی + تحلیل تماس
@@ -232,6 +234,7 @@ includes/ ───────────┘  lang.php/legacy_i18n* (fa/ar/en)
 | تاریخ | فاز | کار انجام‌شده |
 |---|---|---|
 | ۲۰۲۶-۱۱-۰۶ | ۰ | پوشهٔ `crm_derakht_sepid/` ساخته شد؛ فایل ارسالی (`htdocs.txt`=ZIP) استخراج و مستقیماً زیر آن ریخته شد؛ `htdocs/` و پوشهٔ آپلود حذف شدند؛ تحلیل کامل اتصالات کد (۷۴ فایل PHP)؛ `install_db.php` (۶۰+ جدول + seed: admin تصادفی + ستاد مرکزی + تنظیمات)؛ sanitization امنیتی: creds دیتابیس از `config.php` حذف، `vapid.json` واقعی حذف و نمونه ساخته شد، `config.local.php` (gitignored) با اطلاعات دیتابیس جدید، `.gitignore` تکمیل شد؛ این سند نوشته شد |
+| ۲۰۲۶-۱۱-۰۸ | فاز ۲ | صفحهٔ `crm_teams` (مدیریت تیم‌ها/تخصیص اعضا از UI) • کارت‌های خلاصهٔ CRM در داشبورد (پایپ‌لاین/وظایف معوق/سرنخ‌های هفته) • لینک‌های دانلود خام فایل‌ها برای جایگزینی روی هاست |
 | ۲۰۲۶-۱۱-۰۸ | رفع اشکال | تطبیق اسکیمای نصب با کدی که حتماً به ستون‌های users.status / work_hours.protest_* / missions.end_* / chat_channels.status / notifications.target_user_id / inventory_transactions.(delivered_by,return_time,approved_by,return_condition) / inventory_items.status / purchase_requests.(approved_by,approved_at,rejection_reason) / arash_coin_flags.status / subcontractors.(iban,opening_balance) متکی است • CREATEها تکمیل و ارتقای idempotent یکپارچه در install_db.php افزوده شد • ۷۷/۷۷ PHP سالم |
 | ۲۰۲۶-۱۱-۰۸ | استقرار | استقرار اولیه روی هاست `laki.m.ihweb.ir` (ihweb): PHP 8.4 / apache2handler، DB با sql208.m.ihweb.ir • نصب موفق ۶۲ جدول (✓ تیم‌ها ✓ ۸ مرحلهٔ پایپ‌لاین) • `config.local.php` فقط روی هاست ساخته شد (در گیت نیست) • `diag.php` موقت برای رفع اشکال • پوشهٔ `backups/` به مخزن افزوده شد |
 | ۲۰۲۶-۱۱-۰۶ | ۲ | ساخت برش اول «هستهٔ CRM فروش»: جدول‌های teams/crm_* + ستون users.team_id (با ارتقای idempotent در install_db.php) • صفحات crm_customers/crm_leads/crm_deals/crm_tasks • اسکوپ دید تیمی (ادمین/مالی/مدیر تیم/کارشناس) • منوی سایدبار CRM (t() fa/ar/en) + فیلتر disabled_pages برای غیرادمین‌ها • seed مراحل ۸گانهٔ پایپ‌لاین واردات و تیم‌ها • ۷۸ فایل PHP با php-parser سالم تأیید شد |

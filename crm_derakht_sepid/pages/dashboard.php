@@ -142,6 +142,32 @@ try {
     }
 }catch(Throwable $e){}
 
+// ═══ §phase2: خلاصهٔ CRM (در صورت هر خطا، کارت با صفر نمایش می‌یابد) ═══
+$crm_pipe_count = 0; $crm_pipe_value = 0.0; $crm_overdue_tasks = 0; $crm_new_leads = 0; $crm_default_currency = 'USD';
+try {
+    [$__ds, $__dp] = crm_scope_where($pdo, 'd');
+    $__st = $pdo->prepare("SELECT COUNT(*), COALESCE(SUM(d.estimated_value),0) FROM crm_deals d WHERE d.status = 'open' AND ($__ds)");
+    $__st->execute($__dp);
+    $__row = $__st->fetch(PDO::FETCH_NUM);
+    if ($__row) { $crm_pipe_count = (int)$__row[0]; $crm_pipe_value = (float)$__row[1]; }
+
+    $__st = $pdo->prepare("SELECT COUNT(*) FROM crm_tasks WHERE user_id = ? AND status = 'pending' AND due_date IS NOT NULL AND due_date < CURDATE()");
+    $__st->execute([(int)($_SESSION['user_id'] ?? 0)]);
+    $crm_overdue_tasks = (int)$__st->fetchColumn();
+
+    [$__ls, $__lp] = crm_scope_where($pdo, 'l');
+    $__st = $pdo->prepare("SELECT COUNT(*) FROM crm_leads l WHERE l.created_at >= (NOW() - INTERVAL 7 DAY) AND ($__ls)");
+    $__st->execute($__lp);
+    $crm_new_leads = (int)$__st->fetchColumn();
+
+    $__st = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'crm_default_currency'");
+    $__st->execute();
+    $__v = trim((string)$__st->fetchColumn());
+    if ($__v !== '') $crm_default_currency = $__v;
+} catch (Throwable $e) {
+    // جداول CRM هنوز موجود نیست یا خطایی رخ داد — کارت با صفر نمایش می‌یابد.
+}
+
 include 'includes/header.php';
 ?>
 <style>
@@ -192,6 +218,18 @@ include 'includes/header.php';
     <?php endif; ?>
     <button type="button" class="stat-card dashboard-stat-button" onclick="toggleDashboardPanel('missionPanel')" style="background:linear-gradient(135deg,#dbeafe,#bfdbfe);color:#1d4ed8" title="<?= t('btn_show') ?> <?= t('نیروهای در حال مأموریت') ?>"><div class="stat-icon" style="background:#60a5fa"><i data-lucide="rocket"></i></div><div class="stat-info"><h3><?= $on_mission ?></h3><p><?= t('نیروهای در حال مأموریت') ?> <?= t('· برای مشاهده کلیک کنید') ?></p></div></button>
     <button type="button" class="stat-card dashboard-stat-button" onclick="toggleDashboardPanel('smartAlertPanel')" style="background:linear-gradient(135deg,#fff7d6,#fee2e2);color:#92400e"><div class="stat-icon" style="background:#fbbf24"><i data-lucide="siren"></i></div><div class="stat-info"><h3><?= count($smart_alerts) ?></h3><p><?= t('هشدارهای') ?> <?= t('هوشمند') ?> <?= t('wh_today') ?> <?= t('· برای مشاهده کلیک کنید') ?></p></div></button>
+</div>
+
+<div class="card mb-4 animate-in" style="border-right:4px solid var(--primary)">
+    <div class="card-header d-flex justify-between align-center"><h3 class="card-title">🎯 پایپ‌لاین واردات</h3>
+        <div class="d-flex gap-2"><a href="index.php?page=crm_deals" class="btn btn-ghost btn-sm">پایپ‌لاین <i data-lucide="arrow-left"></i></a><a href="index.php?page=crm_leads" class="btn btn-ghost btn-sm">سرنخ‌ها <i data-lucide="arrow-left"></i></a><a href="index.php?page=crm_tasks" class="btn btn-ghost btn-sm">وظایف من <i data-lucide="arrow-left"></i></a></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;font-size:12px">
+        <div><div class="text-muted">معاملات باز</div><div style="font-size:22px;font-weight:800"><?= (int)$crm_pipe_count ?></div></div>
+        <div><div class="text-muted">ارزش تخمینی معاملات باز</div><div dir="ltr" style="font-size:17px;font-weight:800"><?= number_format($crm_pipe_value) ?> <?= htmlspecialchars($crm_default_currency) ?></div></div>
+        <div><div class="text-muted">کارهای عقب‌افتادهٔ من</div><div style="font-size:22px;font-weight:800;color:#dc2626"><?= (int)$crm_overdue_tasks ?></div></div>
+        <div><div class="text-muted">سرنخ‌های ۷ روز اخیر</div><div style="font-size:22px;font-weight:800"><?= (int)$crm_new_leads ?></div></div>
+    </div>
 </div>
 
 <!-- پنل‌های بازشوندهٔ کارت‌های داشبورد -->
