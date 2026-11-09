@@ -1,5 +1,6 @@
 <?php
 $pageTitle = t('nav_settings');
+require_once __DIR__ . '/../includes/letterhead.php';
 
 // Auto-migration: add hours and hourly_rate to bonuses_penalties
 try {
@@ -46,6 +47,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         showToast(t('تنظیمات اختصاصی کارگاه با موفقیت ذخیره شد'));
         redirect("index.php?page=settings");
+        exit;
+    }
+
+    // ─── پروفایل شرکت / سربرگ چاپ (لوگو/مهر/امضا + اطلاعات ثبتی) — فراکارگاه‌ها، به همه چاپ‌ها اعمال می‌شود ───
+    if ($action === 'save_letterhead') {
+        if (!is_strict_admin() && !is_project_manager()) {
+            showToast(t('دسترسی ندارید'), 'error');
+            redirect('index.php?page=settings');
+        }
+        $allowed = ['letterhead_company_name','letterhead_economic_code','letterhead_national_id','letterhead_reg_no','letterhead_phone','letterhead_address','letterhead_website'];
+        $stmt = $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+        foreach ($allowed as $k) {
+            if (isset($_POST[$k])) $stmt->execute([$k, trim(sanitize($_POST[$k]))]);
+        }
+        $getv = function ($key) use ($pdo) { try { $st = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = ?"); $st->execute([$key]); $v = $st->fetchColumn(); return $v === false ? '' : (string)$v; } catch (Throwable $e) { return ''; } };
+        $lh_dir = __DIR__ . '/../uploads/letterhead/';
+        if (!is_dir($lh_dir)) @mkdir($lh_dir, 0755, true);
+        $image_mimes = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+        foreach (['letterhead_logo', 'letterhead_stamp', 'letterhead_signature'] as $field) {
+            $old = $getv($field);
+            if (($_POST['remove_' . $field] ?? '') === '1') {
+                if ($old && is_file(__DIR__ . '/../' . $old)) @unlink(__DIR__ . '/../' . $old);
+                $stmt->execute([$field, '']);
+                $old = '';
+            }
+            $file = $_FILES[$field] ?? null;
+            if ($file && ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) continue;
+                if (($file['size'] ?? 0) > 8 * 1024 * 1024) { showToast(t('حجم فایل از ۸ مگابایت بیشتر است'), 'error'); continue; }
+                $mime = @mime_content_type($file['tmp_name']) ?: '';
+                if (!isset($image_mimes[$mime])) { showToast(t('فقط تصویر JPG/PNG/WEBP مجاز است'), 'error'); continue; }
+                $name = 'lh_' . $field . '_' . date('YmdHis') . '.' . $image_mimes[$mime];
+                if (move_uploaded_file($file['tmp_name'], $lh_dir . $name)) {
+                    compress_image($lh_dir . $name, 900, 85);
+                    if ($old && is_file(__DIR__ . '/../' . $old)) @unlink(__DIR__ . '/../' . $old);
+                    $stmt->execute([$field, 'uploads/letterhead/' . $name]);
+                }
+            }
+        }
+        showToast(t('پروفایل شرکت / سربرگ ذخیره شد'));
+        redirect('index.php?page=settings');
         exit;
     }
 
@@ -205,6 +247,36 @@ $backups = glob(BACKUP_DIR . '*.sql');
 
 include 'includes/header.php';
 ?>
+<?php $lh_company = letterhead_company(); $lh_logo = letterhead_image('letterhead_logo'); $lh_stamp = letterhead_image('letterhead_stamp'); $lh_sign = letterhead_image('letterhead_signature'); ?>
+<?php if (is_strict_admin() || is_project_manager()): ?>
+<div class="card mb-4 animate-in" style="border:2px solid #8b5cf6">
+    <div class="card-header"><h3 class="card-title">🏢 <?= t('پروفایل شرکت / سربرگ چاپ') ?></h3></div>
+    <p class="text-muted" style="font-size:12px;line-height:1.9">این اطلاعات و تصاویر، بالای اسناد چاپ‌شوندهٔ سیستم (لیست واریزی، صندوق، انبارگردانی، گزارش انبار و …) به‌عنوان سربرگ شرکت چاپ می‌شوند.</p>
+    <form method="POST" enctype="multipart/form-data"><?= get_csrf_field() ?><input type="hidden" name="action" value="save_letterhead">
+        <div class="grid-2">
+            <div class="form-group"><label class="form-label">نام شرکت (روی سربرگ)</label><input type="text" name="letterhead_company_name" class="form-control" value="<?= htmlspecialchars((string)$lh_company['letterhead_company_name'], ENT_QUOTES) ?>" placeholder="<?= htmlspecialchars((string)$lh_company['app_name'], ENT_QUOTES) ?>"></div>
+            <div class="form-group"><label class="form-label">وب‌سایت</label><input type="text" name="letterhead_website" class="form-control" value="<?= htmlspecialchars((string)$lh_company['letterhead_website'], ENT_QUOTES) ?>" placeholder="www.example.ir"></div>
+            <div class="form-group"><label class="form-label">کد اقتصادی</label><input type="text" name="letterhead_economic_code" class="form-control" value="<?= htmlspecialchars((string)$lh_company['letterhead_economic_code'], ENT_QUOTES) ?>"></div>
+            <div class="form-group"><label class="form-label">شناسهٔ ملی</label><input type="text" name="letterhead_national_id" class="form-control" value="<?= htmlspecialchars((string)$lh_company['letterhead_national_id'], ENT_QUOTES) ?>"></div>
+            <div class="form-group"><label class="form-label">شمارهٔ ثبت</label><input type="text" name="letterhead_reg_no" class="form-control" value="<?= htmlspecialchars((string)$lh_company['letterhead_reg_no'], ENT_QUOTES) ?>"></div>
+            <div class="form-group"><label class="form-label">تلفن شرکت</label><input type="text" name="letterhead_phone" class="form-control" value="<?= htmlspecialchars((string)$lh_company['letterhead_phone'], ENT_QUOTES) ?>"></div>
+            <div class="form-group" style="grid-column:1/-1"><label class="form-label">آدرس شرکت</label><input type="text" name="letterhead_address" class="form-control" value="<?= htmlspecialchars((string)$lh_company['letterhead_address'], ENT_QUOTES) ?>"></div>
+        </div>
+        <div class="grid-2">
+        <?php foreach ([['letterhead_logo','لوگوی شرکت',$lh_logo],['letterhead_stamp','مهر شرکت',$lh_stamp],['letterhead_signature','امضای مجاز / مدیرعامل',$lh_sign]] as $__lh_item): ?>
+            <div class="form-group">
+                <label class="form-label"><?= $__lh_item[1] ?></label>
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                    <?php if ($__lh_item[2]): ?><span style="display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:8px;padding:4px 10px"><img src="<?= htmlspecialchars($__lh_item[2]) ?>" style="max-height:48px" alt=""><label style="font-size:11px;display:flex;gap:4px;align-items:center"><input type="checkbox" name="remove_<?= $__lh_item[0] ?>" value="1"> حذف</label></span><?php endif; ?>
+                    <input type="file" name="<?= $__lh_item[0] ?>" accept="image/jpeg,image/png,image/webp" class="form-control" style="max-width:220px">
+                </div>
+            </div>
+        <?php endforeach; ?>
+        </div>
+        <button class="btn btn-primary mt-2">💾 ذخیرهٔ پروفایل شرکت</button>
+    </form>
+</div>
+<?php endif; ?>
 
 <div class="d-flex justify-between align-center mb-4 animate-in">
     <h2><?= t('set_title') ?></h2>

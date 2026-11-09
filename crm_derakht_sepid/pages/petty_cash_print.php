@@ -2,11 +2,11 @@
 /**
  * §11.2: فرم تنخواه ماهانه — کلیه واریزی‌ها و هزینه‌های یک ماه شمسی — A4
  */
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// display_errors عمداً روشن نیست — خطاها نباید روی اسناد چاپی دیده شوند
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/salary_calc.php';
+require_once __DIR__ . '/../includes/letterhead.php';
 require_login();
 
 $ws_id = $_SESSION['workshop_id'] ?? 0;
@@ -35,8 +35,6 @@ foreach ($rows as $r) {
 }
 $final_balance = $prev_balance + $income_total - $expense_total;
 
-$logo_path = $_SESSION['workshop_logo'] ?? '';
-if (!$logo_path || !file_exists(__DIR__ . '/../' . $logo_path)) $logo_path = 'uploads/logos/logo.png';
 ?>
 <!DOCTYPE html>
 <html lang="<?= htmlspecialchars($lang, ENT_QUOTES, 'UTF-8') ?>" dir="<?= htmlspecialchars($lang_dir, ENT_QUOTES, 'UTF-8') ?>">
@@ -109,17 +107,9 @@ if (!$logo_path || !file_exists(__DIR__ . '/../' . $logo_path)) $logo_path = 'up
             </select>
         </div>
 
-        <div class="print-header">
-            <div class="print-meta">
-                <div style="font-size:14px;font-weight:700"><?= to_jalali(date('Y-m-d')) ?></div>
-                <div style="font-size:11px;margin-top:4px"><?= date('H:i') ?></div>
-                <div style="font-size:12px;margin-top:4px"><?= $month_label ?></div>
-            </div>
-            <div class="print-title"><?= t('فرم') ?> <?= t('nav_petty_cash') ?> <?= t('sal_monthly') ?></div>
-            <div>
-                <?php if (file_exists(__DIR__ . '/../' . $logo_path)): ?><img src="<?= $logo_path ?>" alt="logo"><?php endif; ?>
-            </div>
-        </div>
+        <!-- Header (سربرگ شرکت) -->
+
+        <?php letterhead_header(t('فرم') . ' ' . t('nav_petty_cash') . ' ' . t('sal_monthly'), '<div style="font-size:14px;font-weight:700">' . to_jalali(date('Y-m-d')) . '</div><div style="font-size:11px;margin-top:4px">' . date('H:i') . '</div><div style="font-size:12px;margin-top:4px">' . $month_label . '</div>') ?>
 
         <div class="summary-cards">
             <div class="sc"><div class="l"><?= t('pet_balance') ?> <?= t('اول دوره') ?> (<?= t('lea_to') ?> <?= to_jalali($day_before) ?>)</div><div class="v"><?= number_format($prev_balance) ?></div></div>
@@ -169,6 +159,8 @@ if (!$logo_path || !file_exists(__DIR__ . '/../' . $logo_path)) $logo_path = 'up
         </table>
         <?php endif; ?>
 
+        <?php letterhead_signature_block() ?>
+        <?php letterhead_footer() ?>
         <div class="action-bar" style="margin-top:16px;display:flex;gap:8px;justify-content:center">
             <button onclick="window.print()" class="btn btn-print">🖨 <?= t('btn_print') ?> A4</button>
         </div>

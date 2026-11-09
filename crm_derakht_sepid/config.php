@@ -485,7 +485,7 @@ function user_access_map_for_admin(PDO $pdo) { // برای پرسنل: نقشه�
         foreach ($pdo->query("SELECT DISTINCT user_id FROM user_permissions WHERE permission = 'workshop_manager'") as $row) {
             $out[$row['user_id']]['@wm'] = 'editor';
         }
-        foreach ($pdo->query("SELECT id, role FROM users WHERE role IN ('project_manager', 'nazer_kol', 'nazer', 'karfarma')") as $row) {
+        foreach ($pdo->query("SELECT id, role FROM users WHERE role IN ('project_manager', 'nazer_kol', 'nazer', 'karfarma', 'finance')") as $row) {
             $out[$row['id']]['@role'] = $row['role'];
         }
     } catch (Throwable $e) {
@@ -496,7 +496,7 @@ function user_access_map_for_admin(PDO $pdo) { // برای پرسنل: نقشه�
             foreach ($pdo->query("SELECT DISTINCT user_id FROM user_permissions WHERE permission = 'workshop_manager'") as $row) {
                 $out[$row['user_id']]['@wm'] = 'editor';
             }
-            foreach ($pdo->query("SELECT id, role FROM users WHERE role IN ('project_manager', 'nazer_kol', 'nazer', 'karfarma')") as $row) {
+            foreach ($pdo->query("SELECT id, role FROM users WHERE role IN ('project_manager', 'nazer_kol', 'nazer', 'karfarma', 'finance')") as $row) {
                 $out[$row['id']]['@role'] = $row['role'];
             }
         } catch (Throwable $e2) {}

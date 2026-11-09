@@ -2,11 +2,11 @@
 /**
  * فرم لیست واریزی کارمندان - صفحه مستقل
  */
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// display_errors عمداً روشن نیست — خطاها نباید روی اسناد چاپی دیده شوند
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/salary_calc.php';
+require_once __DIR__ . '/../includes/letterhead.php';
 require_login();
 
 $ws_id = $_SESSION['workshop_id'] ?? 0;
@@ -49,11 +49,7 @@ foreach ($all_personnel as $p) {
 }
 $total_monthly = array_sum(array_column($results, 'monthly'));
 
-// لوگوی کارگاه فعال (با فallback به لوگوی پیش‌فرض)
-$logo_path = $_SESSION['workshop_logo'] ?? '';
-if (!$logo_path || !file_exists(__DIR__ . '/../' . $logo_path)) {
-    $logo_path = 'uploads/logos/logo.png';
-}
+// لوگو/سربرگ از تنظیمات شرکت (includes/letterhead.php)
 $print_mode = isset($_GET['print']);
 ?>
 <!DOCTYPE html>
@@ -144,20 +140,9 @@ $print_mode = isset($_GET['print']);
             </select>
         </div>
 
-        <!-- Header -->
-        <div class="print-header">
-            <div class="print-meta">
-                <div style="font-size:14px;font-weight:700"><?= to_jalali(date('Y-m-d')) ?></div>
-                <div style="font-size:11px;margin-top:4px"><?= date('H:i') ?></div>
-                <div style="font-size:12px;margin-top:4px"><?= $month_label ?></div>
-            </div>
-            <div class="print-title"><?= t('لیست واریزی') ?> <?= t('نیروهای') ?> <?= t('اداری') ?></div>
-            <div>
-                <?php if (file_exists(__DIR__ . '/../' . $logo_path)): ?>
-                    <img src="<?= $logo_path ?>" alt="logo">
-                <?php endif; ?>
-            </div>
-        </div>
+        <!-- Header (سربرگ شرکت) -->
+
+        <?php letterhead_header(t('لیست واریزی') . ' ' . t('نیروهای') . ' ' . t('اداری'), '<div style="font-size:14px;font-weight:700">' . to_jalali(date('Y-m-d')) . '</div><div style="font-size:11px;margin-top:4px">' . date('H:i') . '</div><div style="font-size:12px;margin-top:4px">' . $month_label . '</div>') ?>
 
         <?php if ($hidden_zero > 0): ?>
         <p class="zero-note" style="font-size:11px;color:#64748b;margin-bottom:8px">ⓘ <?= $hidden_zero ?> <?= t('per_count') ?> <?= t('با') ?> <?= t('مبلغ') ?> <?= t('قابل پرداخت') ?> <?= t('صفر') ?> <?= t('در') ?> <?= t('این') ?> <?= t('فرم') ?> <?= t('btn_show') ?> <?= t('داده') ?> <?= t('نشدند') ?>.</p>
@@ -209,6 +194,8 @@ $print_mode = isset($_GET['print']);
         <?php endif; ?>
 
         <!-- Action Bar -->
+        <?php letterhead_signature_block() ?>
+        <?php letterhead_footer() ?>
         <div class="action-bar" style="margin-top:16px;display:flex;gap:8px;justify-content:center">
             <button onclick="window.print()" class="btn btn-print"><?= t('btn_print') ?> A4</button>
             <a href="index.php?export=excel&type=employee_payment&year=<?= $sel_year ?>&month=<?= $sel_month ?>" class="btn btn-print" target="_blank"><?= t('btn_download') ?> <?= t('اکسل') ?></a>

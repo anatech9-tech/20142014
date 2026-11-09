@@ -3,10 +3,10 @@
  * فرم گزارش کار انباردار (اسناد §12) — صفحه مستقل A4
  * فقط لوگوی شرکت؛ داده‌های روز از انبار خودکار پر می‌شود
  */
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// display_errors عمداً روشن نیست — خطاها نباید روی اسناد چاپی دیده شوند
 
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/letterhead.php';
 require_login();
 
 $ws_id = $_SESSION['workshop_id'] ?? 0;
@@ -31,10 +31,6 @@ $day_names = localized_weekday_names();
 $report_day_name = $day_names[date('w', strtotime($report_date_g))];
 $print_mode = isset($_GET['print']);
 
-$company_logo = $_SESSION['workshop_logo'] ?? '';
-if (!$company_logo || !file_exists(__DIR__ . '/../' . $company_logo)) {
-    $company_logo = 'uploads/logos/logo.png';
-}
 
 // ─── ذخیره فیلدهای دستی ───
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_fields' && !$is_javidhse && !$is_yaser) {
@@ -185,6 +181,9 @@ $next_d = date('Y-m-d', strtotime($report_date_g . ' +1 day'));
         * { margin:0; padding:0; box-sizing:border-box; }
         body { font-family:'Vazirmatn',Tahoma,sans-serif; direction:<?= $lang_dir ?>; background:#eef1f6; color:#1a1a2e; }
         .a4 { max-width:210mm; margin:18px auto; background:#fff; border-radius:12px; box-shadow:0 4px 24px rgba(0,0,0,0.09); padding:20px 24px; }
+        .print-header { display:flex; justify-content:space-between; align-items:center; border-bottom:3px double #333; padding-bottom:10px; gap:14px; margin-bottom:4px; }
+        .print-header img { height:58px; }
+        .print-title { text-align:center; line-height:1.8; }
         .doc-header { display:flex; justify-content:space-between; align-items:center; border-bottom:3px double #333; padding-bottom:12px; gap:14px; }
         .doc-header img { height:58px; }
         .doc-title h1 { font-size:19px; font-weight:800; color:#7c2d12; }
@@ -250,19 +249,9 @@ $next_d = date('Y-m-d', strtotime($report_date_g . ' +1 day'));
 <form method="POST" id="anbForm" class="no-print"><?= get_csrf_field() ?><input type="hidden" name="action" value="save_fields"></form>
 
 <div class="a4">
-    <!-- سربرگ: فقط لوگوی شرکت (§12.2) -->
-    <div class="doc-header">
-        <div>
-            <?php if (file_exists(__DIR__ . '/../' . $company_logo)): ?>
-            <img src="<?= $company_logo ?>" alt="<?= htmlspecialchars(t('لوگوی شرکت'), ENT_QUOTES, 'UTF-8') ?>">
-            <?php endif; ?>
-        </div>
-        <div class="doc-title"><h1><?= t('فرم') ?> <?= t('nav_daily_reports') ?> <?= t('anbar_keeper') ?></h1></div>
-        <div class="doc-date">
-            <div><strong><?= t('wh_date') ?> <?= t('گزارش') ?>:</strong> <?= $report_date_j ?></div>
-            <div style="color:#666"><?= $report_day_name ?></div>
-        </div>
-    </div>
+    <!-- سربرگ شرکت (از تنظیمات پروفایل شرکت) -->
+    <?php letterhead_header('<h1 style="font-size:19px;font-weight:800;color:#7c2d12;margin:0">' . t('فرم') . ' ' . t('nav_daily_reports') . ' ' . t('anbar_keeper') . '</h1>',
+        '<div><strong>' . t('wh_date') . ' ' . t('گزارش') . ':</strong> ' . $report_date_j . '</div><div style="color:#666">' . $report_day_name . '</div>') ?>
 
     <!-- اطلاعات کلی (§12.3) -->
     <div class="info-grid">
@@ -384,6 +373,8 @@ $next_d = date('Y-m-d', strtotime($report_date_g . ' +1 day'));
             <?php endif; ?>
         </div>
     </div>
+
+    <?php letterhead_footer() ?>
 
     <?php if (!$print_mode && $next_step > 0):
         $step_labels = [1 => t('تأیید انباردار'), 2 => t('تأیید سرپرست کارگاه')];

@@ -74,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $system_role = 'worker';
         if ($person_type == 0 && !empty($_POST['system_role'])) {
             $sr = sanitize($_POST['system_role']);
-            if (in_array($sr, ['worker', 'project_manager', 'nazer_kol', 'karfarma', 'nazer'], true)) {
+            if (in_array($sr, ['worker', 'project_manager', 'nazer_kol', 'karfarma', 'nazer', 'finance'], true)) {
                 $system_role = $sr;
             }
         }
@@ -172,7 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (isset($_POST['system_role']) && (is_strict_admin() || is_project_manager())) {
             $sr = sanitize($_POST['system_role']);
-            if (in_array($sr, ['worker', 'project_manager', 'nazer_kol', 'karfarma', 'nazer'], true)) {
+            if (in_array($sr, ['worker', 'project_manager', 'nazer_kol', 'karfarma', 'nazer', 'finance'], true)) {
                 $pdo->prepare("UPDATE users SET role = ? WHERE id = ?")->execute([$sr, $user_id]);
             }
         }
@@ -439,7 +439,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         if (isset($_POST['system_role']) && (is_strict_admin() || is_project_manager())) {
             $sr = sanitize($_POST['system_role']);
-            if (in_array($sr, ['worker', 'project_manager', 'nazer_kol', 'karfarma', 'nazer'], true)) {
+            if (in_array($sr, ['worker', 'project_manager', 'nazer_kol', 'karfarma', 'nazer', 'finance'], true)) {
                 $pdo->prepare("UPDATE users SET role = ? WHERE id = ?")->execute([$sr, $user_id]);
                 $target['role'] = $sr;
             }
@@ -856,6 +856,8 @@ function access_row_html($key, $label, $indent = false) {
                         <span class="tag" style="background:#f3e8ff;color:#7e22ce" title="<?= t('کارفرما') ?>">🏢 <?= t('کارفرما') ?></span>
                     <?php elseif (($p['role'] ?? '') === 'nazer'): ?>
                         <span class="tag" style="background:#ecfdf5;color:#065f46" title="<?= t('ناظر کارگاه') ?>">🔍 <?= t('ناظر') ?></span>
+                    <?php elseif (($p['role'] ?? '') === 'finance'): ?>
+                        <span class="tag" style="background:#ecfeff;color:#155e75" title="<?= t('مسئول مالی — CRM کامل') ?>">🧮 <?= t('مسئول مالی') ?></span>
                     <?php endif; ?>
                     <?php if ($__ended): ?><span class="tag" style="background:#fee2e2;color:#991b1b" title="<?= t('wh_date') ?> <?= t('wh_end') ?> <?= t('کار') ?>">📅 <?= t('wh_end') ?>‌<?= t('کار') ?> <?= !empty($p['ended_at']) ? to_jalali($p['ended_at']) : '' ?></span><?php endif; ?>
                 </td>
@@ -1044,6 +1046,7 @@ function access_row_html($key, $label, $indent = false) {
                                 <option value="nazer_kol">👁️ <?= t('ناظر کل (مشاهده تمام بخش‌ها و کارگاه‌ها)') ?></option>
                                 <option value="karfarma">🏢 <?= t('کارفرما (فرم‌ها و گزارش روزانه و HSE)') ?></option>
                                 <option value="nazer">🔍 <?= t('ناظر کارگاه') ?></option>
+                                <option value="finance">🧮 <?= t('مسئول مالی (دسترسی کامل به CRM — خواندن و ویرایش همهٔ مشتریان/معاملات)') ?></option>
                             </select>
                         </div>
                         <?php endif; ?>
@@ -1245,6 +1248,7 @@ function access_row_html($key, $label, $indent = false) {
                                 <option value="nazer_kol">👁️ <?= t('ناظر کل (مشاهده تمام بخش‌ها و کارگاه‌ها)') ?></option>
                                 <option value="karfarma">🏢 <?= t('کارفرما (فرم‌ها و گزارش روزانه و HSE)') ?></option>
                                 <option value="nazer">🔍 <?= t('ناظر کارگاه') ?></option>
+                                <option value="finance">🧮 <?= t('مسئول مالی (دسترسی کامل به CRM — خواندن و ویرایش همهٔ مشتریان/معاملات)') ?></option>
                             </select>
                         </div>
                         <?php endif; ?>
@@ -1365,6 +1369,7 @@ function access_row_html($key, $label, $indent = false) {
                         <option value="nazer_kol">👁️ <?= t('ناظر کل (دسترسی مشاهده به تمام بخش‌ها و کارگاه‌ها)') ?></option>
                         <option value="karfarma">🏢 <?= t('کارفرما (فقط فرم‌ها، گزارش روزانه و HSE)') ?></option>
                         <option value="nazer">🔍 <?= t('ناظر کارگاه (فقط مشاهده کارگاه جاری)') ?></option>
+                        <option value="finance">🧮 <?= t('مسئول مالی (دسترسی کامل به CRM — خواندن و ویرایش همهٔ داده‌ها)') ?></option>
                     </select>
                 </div>
                 <?php endif; ?>

@@ -3,11 +3,11 @@
  * §11.3: فرم موجودی انبار / انبارگردانی — موجودی سیستم + ستون شمارش واقعی و اختلاف — A4
  * ?blank=1 → چاپ فرم خالی (بدون موجودی سیستم)
  */
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// display_errors عمداً روشن نیست — خطاها نباید روی اسناد چاپی دیده شوند
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/salary_calc.php';
+require_once __DIR__ . '/../includes/letterhead.php';
 require_login();
 
 $ws_id = $_SESSION['workshop_id'] ?? 0;
@@ -48,8 +48,6 @@ foreach ($items as $i) {
     ];
 }
 
-$logo_path = $_SESSION['workshop_logo'] ?? '';
-if (!$logo_path || !file_exists(__DIR__ . '/../' . $logo_path)) $logo_path = 'uploads/logos/logo.png';
 ?>
 <!DOCTYPE html>
 <html lang="<?= htmlspecialchars($lang, ENT_QUOTES, 'UTF-8') ?>" dir="<?= htmlspecialchars($lang_dir, ENT_QUOTES, 'UTF-8') ?>">
@@ -116,17 +114,9 @@ if (!$logo_path || !file_exists(__DIR__ . '/../' . $logo_path)) $logo_path = 'up
             <button type="submit" class="btn btn-print" style="padding:6px 14px"><?= t('اعمال') ?></button>
         </form>
 
-        <div class="print-header">
-            <div class="print-meta">
-                <div style="font-size:14px;font-weight:700"><?= $sel_date ?></div>
-                <div style="font-size:11px;margin-top:4px"><?= date('H:i') ?></div>
-                <div style="font-size:12px;margin-top:4px"><?= $sel_cat !== '' ? (t('دسته:') . ' ' . htmlspecialchars($sel_cat)) : t('همه دسته‌ها') ?></div>
-            </div>
-            <div class="print-title"><?= t('فرم') ?> <?= t('inv_stock') ?> <?= t('nav_inventory') ?> / <?= t('انبارگردانی') ?><?= $blank ? ' (فرم خالی)' : '' ?></div>
-            <div>
-                <?php if (file_exists(__DIR__ . '/../' . $logo_path)): ?><img src="<?= $logo_path ?>" alt="logo"><?php endif; ?>
-            </div>
-        </div>
+        <!-- Header (سربرگ شرکت) -->
+
+        <?php letterhead_header(t('فرم') . ' ' . t('inv_stock') . ' ' . t('nav_inventory') . ' / ' . t('انبارگردانی') . ($blank ? ' (فرم خالی)' : ''), '<div style="font-size:14px;font-weight:700">' . $sel_date . '</div><div style="font-size:11px;margin-top:4px">' . date('H:i') . '</div><div style="font-size:12px;margin-top:4px">' . ($sel_cat !== '' ? (t('دسته:') . ' ' . htmlspecialchars($sel_cat)) : t('همه دسته‌ها')) . '</div>') ?>
 
         <?php if (empty($rows)): ?>
         <p style="text-align:center;color:#999;padding:30px"><?= t('کالایی') ?> <?= t('یافت نشد') ?></p>
@@ -164,6 +154,7 @@ if (!$logo_path || !file_exists(__DIR__ . '/../' . $logo_path)) $logo_path = 'up
         <p style="font-size:11px;color:#64748b;margin-top:10px"><?= t('مأمور') ?> <?= t('انبارگردانی') ?>: .............................. <?= t('امضا') ?>: .............................. <?= t('anbar_keeper') ?>: .............................. <?= t('امضا') ?>: ..............................</p>
         <?php endif; ?>
 
+        <?php letterhead_footer() ?>
         <div class="action-bar" style="margin-top:16px;display:flex;gap:8px;justify-content:center">
             <button onclick="window.print()" class="btn btn-print">🖨 <?= t('btn_print') ?> A4</button>
         </div>
