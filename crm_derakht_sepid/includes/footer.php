@@ -1,7 +1,6 @@
         </section>
         <script src="assets/js/app.js"></script>
         <script src="assets/js/xlsx_export.js?v=13"></script>
-        <script src="assets/js/arash_coin.js"></script>
         <script src="assets/js/work_orders_ui.js"></script>
         <script src="assets/js/jalali_datepicker.js"></script>
         <script src="assets/js/time24_picker.js"></script>

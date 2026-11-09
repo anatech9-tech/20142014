@@ -59,6 +59,12 @@ function operations_backup_retention(string $dir, string $type, int $keep): void
 }
 
 /** بکاپ request-driven: نخستین بازدید هر روز، هفته یا ماه آن را ایجاد می‌کند. */
+/** خواندن مستقیم یک تنظیم از جدول settings (جایگزین خواندن کوین‌شدهٔ تنظیمات بکاپ). */
+function operations_setting(PDO $pdo, string $key, $default) {
+    try { $st = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key=?"); $st->execute([$key]); $v = $st->fetchColumn(); return $v === false ? $default : $v; }
+    catch (Throwable $e) { return $default; }
+}
+
 function operations_auto_backups(PDO $pdo): array {
     $dir = BACKUP_DIR;
     if (!is_dir($dir)) @mkdir($dir,0755,true);
@@ -82,9 +88,9 @@ function operations_auto_backups(PDO $pdo): array {
             $month=$dir.'auto_monthly_'.$j[0].'_'.str_pad((string)$j[1],2,'0',STR_PAD_LEFT).'.sql';
             if(!file_exists($month)){@copy($daily,$month);$made[]='monthly';}
         }
-        operations_backup_retention($dir,'daily',max(1,(int)arash_coin_setting($pdo,'backup_daily_retention',7)));
-        operations_backup_retention($dir,'weekly',max(1,(int)arash_coin_setting($pdo,'backup_weekly_retention',4)));
-        operations_backup_retention($dir,'monthly',max(1,(int)arash_coin_setting($pdo,'backup_monthly_retention',12)));
+        operations_backup_retention($dir,'daily',max(1,(int)operations_setting($pdo,'backup_daily_retention',7)));
+        operations_backup_retention($dir,'weekly',max(1,(int)operations_setting($pdo,'backup_weekly_retention',4)));
+        operations_backup_retention($dir,'monthly',max(1,(int)operations_setting($pdo,'backup_monthly_retention',12)));
         return ['ok'=>true,'made'=>$made,'latest'=>file_exists($daily)?$daily:null];
     } catch(Throwable $e) { return ['ok'=>false,'reason'=>$e->getMessage()]; }
 }
@@ -97,31 +103,9 @@ function operations_backup_health(): array {
     return ['latest'=>$latest,'age_seconds'=>$age,'healthy'=>$age!==null&&$age<=86400*1.5];
 }
 
-function operations_wallet_is_locked(PDO $pdo,int $user_id,int $workshop_id): bool {
-    if (!function_exists('db_has_column') || !db_has_column($pdo,'arash_coin_wallet_controls','is_locked')) return false;
-    try {$st=$pdo->prepare("SELECT is_locked FROM arash_coin_wallet_controls WHERE user_id=? AND workshop_id=?");$st->execute([$user_id,$workshop_id]);return (bool)$st->fetchColumn();}catch(Throwable $e){return false;}
-}
-
-function operations_scan_coin_anomalies(PDO $pdo,int $workshop_id,?string $date=null): int {
-    if (!function_exists('arash_coin_tx_date_expression') || !function_exists('db_has_column') || !db_has_column($pdo,'arash_coin_flags','id')) return 0;
-    $date=$date?:date('Y-m-d');$threshold=max(1,(int)arash_coin_setting($pdo,'coin_anomaly_threshold',40));$count=0;
-    try {
-        $types=arash_coin_capped_types();$holders=implode(',',array_fill(0,count($types),'?'));
-        $expr=arash_coin_tx_date_expression($pdo,'t');
-        $sql="SELECT t.user_id,COALESCE(SUM(t.amount),0) total FROM arash_coin_transactions t WHERE t.workshop_id=? AND t.amount>0 AND t.transaction_type IN ($holders) AND $expr=? GROUP BY t.user_id HAVING total>=?";
-        $st=$pdo->prepare($sql);$st->execute(array_merge([$workshop_id],$types,[$date,$threshold]));
-        foreach($st->fetchAll(PDO::FETCH_ASSOC) as $row){
-            $reason=strtr(t('دریافت غیرعادی کوین در یک روز: {count} کوین'), ['{count}' => (int)$row['total']]);
-            $ins=$pdo->prepare("INSERT IGNORE INTO arash_coin_flags (user_id,workshop_id,flag_date,severity,reason) VALUES (?,?,?,'warning',?)");
-            $ins->execute([(int)$row['user_id'],$workshop_id,$date,$reason]);$count+=$ins->rowCount();
-        }
-    }catch(Throwable $e){}
-    return $count;
-}
-
 /** پیام رسمی در چت عمومی کارگاه؛ در صورت نبود ستون‌های جدید، بی‌صدا نادیده گرفته می‌شود. */
 /**
- * §fix: پیام‌های خودکار (گزارش کار، WTTP COIN، اضافه‌کاری، چالش و فصل) دیگر در چت‌روم ارسال نمی‌شوند.
+ * §fix: پیام‌های خودکار (گزارش کار، اضافه‌کاری) دیگر در چت‌روم ارسال نمی‌شوند.
  * فقط اگر $force=true باشد ثبت می‌شود (فعلاً فقط اعلان‌های «درخواست خرید» با این حالت صدا زده می‌شوند).
  */
 function operations_system_chat_message(PDO $pdo,int $workshop_id,int $actor_id,string $message,?int $channel_id=null,bool $force=false): void {

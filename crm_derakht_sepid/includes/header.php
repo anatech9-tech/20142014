@@ -40,7 +40,6 @@ if (!access_is_special_account()) {
     <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
     <link rel="stylesheet" href="assets/css/style.css?v=20260905">
     <link rel="stylesheet" href="assets/css/glass.css">
-    <link rel="stylesheet" href="assets/css/arash_coin.css">
     <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
 <script>
 /* بارگذار راهنمای صفحه (تور) — خودش فایل guide_tour.js را می‌آورد */
@@ -115,15 +114,12 @@ if (!access_is_special_account()) {
                 'personnel'      => ['personnel', 'users', t('nav_personnel'), $is_nazer || access_mode('personnel') !== null || has_permission('manage_personnel') || has_permission('office_manager')],
                 'rest_track'     => ['rest_track', 'coffee', 'استراحت', true],
                 'salary'         => ['salary', 'wallet', t('nav_salary'), true],
-                'arash_coins'    => ['arash_coins', 'circle-dollar-sign', t('nav_arash_coins'), true],
                 'advances'       => ['advances', 'banknote', t('nav_advances'), true],
                 'leaves'         => ['leaves', 'calendar-off', t('nav_leaves'), true],
                 'work_orders'    => ['work_orders', 'clipboard-list', t('nav_work_orders'), true],
                 'reports'        => ['reports', 'bar-chart-3', t('nav_reports'), $is_nazer || access_group_mode('reports') !== null || has_permission('view_reports') || has_permission('office_manager')],
                 'workshops'      => ['workshops', 'building-2', t('nav_workshops'), ($is_nazer || access_mode('workshops') !== null || has_permission('manage_workshops')) && !is_workshop_manager()],
-                'subcontractors' => ['subcontractors', 'briefcase', t('nav_subcontractors'), $is_nazer || access_mode('subcontractors') !== null || has_permission('manage_subcontractors') || has_permission('office_manager')],
                 'petty_cash'     => ['petty_cash', 'coins', t('nav_petty_cash'), true],
-                'bonus_penalty'  => ['bonus_penalty', 'award', t('nav_bonus_penalty'), $is_nazer || access_mode('bonus_penalty') !== null || has_permission('manage_bonus_penalty') || has_permission('office_manager')],
                 'contracts'      => ['contracts', 'file-text', t('nav_contracts'), $is_nazer || access_mode('contracts') !== null || has_permission('manage_contracts')],
                 'audit'          => ['audit', 'history', t('nav_audit'), $is_nazer || access_mode('audit') !== null || has_permission('audit_log')],
                 'settings'       => ['settings', 'settings', t('nav_settings'), $is_nazer || access_mode('settings') !== null || $is_admin],
@@ -200,15 +196,6 @@ if (!access_is_special_account()) {
             </div>
             <div class="topbar-right">
                 <?php
-                // WTTP COIN جای آیکون چت در بالای سایت: موجودی همیشه از دفترکل خوانده می‌شود.
-                $header_coin_balance = arash_coin_balance($pdo, (int)($_SESSION['user_id'] ?? 0));
-                ?>
-                <a href="index.php?page=arash_coins" class="arash-coin-balance-link" title="<?= htmlspecialchars(t('مشاهده کیف پول و فروشگاه WTTP COIN'), ENT_QUOTES, 'UTF-8') ?>">
-                    <img src="assets/icons/wttp-coin-small.png" class="arash-coin-inline" alt="WTTP COIN">
-                    <span data-arash-coin-balance><?= number_format($header_coin_balance) ?></span>
-                    <span style="font-size:10px">AC</span>
-                </a>
-                <?php
                 // ساعت سرور، نه ساعت دستگاه. اختلاف سه دقیقه‌ای یا بیشتر با ساعت دستگاه هشدار می‌دهد.
                 $__fa_days = localized_weekday_names();
                 $__j_now = gregorian_to_jalali((int)date('Y'), (int)date('m'), (int)date('d'));
@@ -234,14 +221,13 @@ if (!access_is_special_account()) {
                 <style>
                 .topbar-right{position:relative;gap:8px;align-items:center;flex-wrap:nowrap}
                 .topbar-right>.icon-btn,.topbar-right>.topbar-control{width:38px;height:38px;min-width:38px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:10px;box-sizing:border-box;transition:transform .2s ease,box-shadow .2s ease,background .2s ease}
-                .topbar-right>.icon-btn:hover,.topbar-right>.topbar-control:hover,.topbar-right>.arash-coin-balance-link:hover,.topbar-right>.ws-switcher-btn:hover,#srvClock:hover{transform:translateY(-1px) scale(1.04);box-shadow:0 6px 18px rgba(30,58,95,.35)}
+                .topbar-right>.icon-btn:hover,.topbar-right>.topbar-control:hover,.topbar-right>.ws-switcher-btn:hover,#srvClock:hover{transform:translateY(-1px) scale(1.04);box-shadow:0 6px 18px rgba(30,58,95,.35)}
                 .topbar-right>div:not(#srvCalendar){height:38px;display:inline-flex;align-items:center}
                 .topbar-right>div:not(#srvCalendar)>#langBtn{border:1px solid var(--border);border-radius:10px;box-sizing:border-box;transition:transform .2s ease,box-shadow .2s ease,background .2s ease}
                 .topbar-right>div:not(#srvCalendar)>#langBtn:hover{transform:translateY(-1px) scale(1.04);box-shadow:0 6px 18px rgba(30,58,95,.35)}
                 .lang-flag-svg{display:inline-flex;width:22px;height:15px;line-height:0;flex:0 0 auto}.lang-flag-svg svg{display:block;width:100%;height:100%;border-radius:2px;box-shadow:0 0 0 1px rgba(15,23,42,.18)}
                 #langDropdown .lang-flag-svg{width:24px;height:16px}
                 .topbar-right>.tour-header-btn{width:38px!important;height:38px!important;min-width:38px!important;border-radius:10px!important}
-                .topbar-right>.arash-coin-balance-link{height:38px;min-height:38px;box-sizing:border-box;padding:0 10px;border:1px solid var(--border);border-radius:10px;white-space:nowrap;transition:transform .2s ease,box-shadow .2s ease}
                 .topbar-right>.ws-switcher-btn{height:38px;min-height:38px;display:inline-flex;align-items:center;white-space:nowrap;border:1px solid var(--border);border-radius:10px;transition:transform .2s ease,box-shadow .2s ease}
                 #srvClock{height:38px;min-width:112px;box-sizing:border-box}
                 #srvCalendar{position:absolute;top:calc(100% + 8px);inset-inline-end:0;width:310px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);z-index:500;cursor:default}
@@ -255,7 +241,7 @@ if (!access_is_special_account()) {
                 .srv-cal-day:hover,.srv-cal-day.is-selected{background:rgba(99,102,241,.12);border-color:var(--primary)}
                 .srv-cal-day.is-holiday{color:#dc2626;font-weight:700;background:rgba(239,68,68,.08)}
                 .srv-cal-detail{min-height:30px;margin-top:9px;padding:7px 9px;border-radius:8px;background:rgba(239,68,68,.08);color:#b91c1c;font-size:11px;line-height:1.6}
-                @media(max-width:640px){#srvClock{min-width:auto;width:38px;padding:2px 4px}#srvClockDate{display:none}.topbar-right{gap:4px}.topbar-right>.icon-btn,.topbar-right>.topbar-control,.topbar-right>.tour-header-btn,.topbar-right>div:not(#srvCalendar)>#langBtn{width:34px!important;height:34px!important;min-width:34px!important}.topbar-right>.arash-coin-balance-link{height:34px;min-height:34px;padding:0 6px}.topbar-right>.ws-switcher-btn{height:34px;min-height:34px;padding:4px 7px;font-size:10px}#srvCalendar{position:fixed;top:58px;inset-inline:10px;width:auto}}
+                @media(max-width:640px){#srvClock{min-width:auto;width:38px;padding:2px 4px}#srvClockDate{display:none}.topbar-right{gap:4px}.topbar-right>.icon-btn,.topbar-right>.topbar-control,.topbar-right>.tour-header-btn,.topbar-right>div:not(#srvCalendar)>#langBtn{width:34px!important;height:34px!important;min-width:34px!important}.topbar-right>.ws-switcher-btn{height:34px;min-height:34px;padding:4px 7px;font-size:10px}#srvCalendar{position:fixed;top:58px;inset-inline:10px;width:auto}}
                 </style>
                 <script>
                 (function(){

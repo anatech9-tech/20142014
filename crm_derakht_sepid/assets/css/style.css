@@ -751,21 +751,6 @@ tr:hover td { background: rgba(30,58,95,.07); }
     box-shadow: 0 0 12px rgba(90,120,165,.65);
 }
 
-/* ─── WTTP COIN در حالت شب ─── */
-.dark .arash-wallet-hero {
-    background: linear-gradient(135deg, rgba(245,158,11,.13), rgba(30,58,95,.10));
-    border: 1px solid rgba(245,158,11,.32);
-    box-shadow: 0 0 34px rgba(245,158,11,.14);
-}
-.dark .arash-reward-card {
-    background: linear-gradient(145deg, #1b2340, #252f55);
-    border-color: rgba(245,158,11,.30);
-    box-shadow: 0 0 22px rgba(245,158,11,.10);
-}
-.dark .arash-reward-card h4, .dark .arash-reward-card p { color: var(--text); }
-.dark .arash-rule-badge { background: rgba(245,158,11,.16); color: #fcd34d; }
-.dark .arash-wallet-count { text-shadow: 0 0 24px rgba(245,158,11,.5); }
-
 /* ─── چت ─── */
 .dark #chatSidebar { border-color: var(--neon-border); }
 .dark #chatMessages .msg-sent, .dark .chat-bubble-sent {

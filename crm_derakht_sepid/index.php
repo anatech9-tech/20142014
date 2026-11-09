@@ -58,10 +58,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page !== 'login' && !verify_csrf($
 }
 
 // صفحات مجاز برای yaser و کارفرما
-$karfarma_pages = ['login', 'logout', 'dashboard', 'forms', 'report_print', 'hse_report', 'profile'];
+$karfarma_pages = ['login', 'logout', 'dashboard', 'forms', 'profile'];
 
 // صفحات مجاز برای javidhse (اسناد §11 — فقط فرم HSE + پروفایل)
-$javidhse_pages = ['login', 'logout', 'forms', 'hse_report', 'profile'];
+$javidhse_pages = ['login', 'logout', 'forms', 'profile'];
 
 // بررسی yaser و کارفرما
 if (is_logged_in() && is_karfarma() && !in_array($page, $karfarma_pages)) {
@@ -136,14 +136,6 @@ switch ($page) {
         require_login();
         include 'pages/salary.php';
         break;
-    case 'arash_coins':
-        require_login();
-        include 'pages/arash_coins.php';
-        break;
-    case 'bonus_penalty':
-        require_login();
-        include 'pages/bonus_penalty.php';
-        break;
     case 'advances':
         require_login();
         include 'pages/advances.php';
@@ -155,10 +147,6 @@ switch ($page) {
     case 'work_orders':
         require_login();
         include 'pages/work_orders.php';
-        break;
-    case 'subcontractors':
-        require_login();
-        include 'pages/subcontractors.php';
         break;
     case 'petty_cash':
         require_login();
@@ -248,14 +236,6 @@ switch ($page) {
         require_login();
         include 'pages/forms.php';
         break;
-    case 'report_print':
-        require_login();
-        include 'pages/report_print.php';
-        break;
-    case 'hse_report':
-        require_login();
-        include 'pages/hse_report.php';
-        break;
     case 'anbar_report':
         require_login();
         include 'pages/anbar_report.php';
@@ -263,14 +243,6 @@ switch ($page) {
     case 'employee_payment_print':
         require_login();
         include 'pages/employee_payment_print.php';
-        break;
-    case 'worker_payment_print':
-        require_login();
-        include 'pages/worker_payment_print.php';
-        break;
-    case 'subcontractor_payment_print':
-        require_login();
-        include 'pages/subcontractor_payment_print.php';
         break;
     case 'petty_cash_print':
         require_login();

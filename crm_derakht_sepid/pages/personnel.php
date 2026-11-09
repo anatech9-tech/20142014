@@ -1385,7 +1385,6 @@ function access_row_html($key, $label, $indent = false) {
                         <button type="button" class="btn btn-ghost btn-sm" style="border:1px solid var(--border)" onclick="accPreset('supervisor')">👷 <?= t('anbar_sign_supervisor') ?></button>
                         <button type="button" class="btn btn-ghost btn-sm" style="border:1px solid var(--border)" onclick="accPreset('warehouse')">📦 <?= t('anbar_keeper') ?></button>
                         <button type="button" class="btn btn-ghost btn-sm" style="border:1px solid var(--border)" onclick="accPreset('accountant')">💰 <?= t('حسابدار') ?></button>
-                        <button type="button" class="btn btn-ghost btn-sm" style="border:1px solid var(--border)" onclick="accPreset('hse')">🦺 HSE</button>
                         <button type="button" class="btn btn-ghost btn-sm" style="border:1px solid var(--border);color:var(--danger)" onclick="accPreset('clear')">🧹 <?= t('پاک‌سازی تیک‌ها') ?></button>
                     </div>
                 </div>
@@ -1615,11 +1614,10 @@ function accPreset(name) {
     var repKeys = [];
     document.querySelectorAll('#permForm .acc-chk').forEach(function (cb) { if (cb.value.indexOf('rep_') === 0) repKeys.push(cb.value); });
     var P = {
-        office: { personnel:'e', work_hours:'e', salary:'e', advances:'e', leaves:'e', daily_reports:'e', work_orders:'e', bonus_penalty:'e', petty_cash:'e', subcontractors:'e', contracts:'e', archive:'v', audit:'v', form_emp_pay:'e', form_worker_pay:'e', __reps:'v' },
-        supervisor: { work_hours:'e', daily_reports:'e', work_orders:'e', leaves:'v', salary:'v', rep_work_hours:'v', rep_bonuses:'v' },
+        office: { personnel:'e', work_hours:'e', salary:'e', advances:'e', leaves:'e', daily_reports:'e', work_orders:'e', petty_cash:'e', contracts:'e', archive:'v', audit:'v', form_emp_pay:'e', __reps:'v' },
+        supervisor: { work_hours:'e', daily_reports:'e', work_orders:'e', leaves:'v', salary:'v', rep_work_hours:'v' },
         warehouse: { inventory:'e', form_anbar:'e', rep_monthly:'v' },
-        accountant: { salary:'e', advances:'e', bonus_penalty:'e', petty_cash:'e', subcontractors:'e', contracts:'e', archive:'v', audit:'v', form_emp_pay:'e', form_worker_pay:'e', __reps:'v' },
-        hse: { form_hse:'e', daily_reports:'v', work_hours:'v' }
+        accountant: { salary:'e', advances:'e', petty_cash:'e', contracts:'e', archive:'v', audit:'v', form_emp_pay:'e', __reps:'v' }
     };
     var p = P[name] || {};
     if (name === 'clear') return;
@@ -1881,7 +1879,7 @@ function groupPreviewUpdate() {
         <form method="POST"><?= get_csrf_field() ?>
             <input type="hidden" name="action" value="purge_personnel"><input type="hidden" name="user_id" id="purge_user_id">
             <div class="modal-body">
-                <p style="line-height:1.9"><?= t('تمام') ?> <?= t('info') ?> <strong id="purge_name"></strong> <?= t('شامل') ?> <?= t('حضور') ?>، <?= t('گزارش') ?>‌<?= t('ها') ?>، <?= t('nav_leaves') ?>، <?= t('sal_advance') ?>، <?= t('sal_bonus') ?>/<?= t('sal_penalty') ?>، <?= t('nav_arash_coins') ?>، <?= t('چت') ?> <?= t('و') ?> <?= t('اتصال') ?> <?= t('پیمانکار') ?> <?= t('btn_delete') ?> <?= t('می‌شود') ?>. <?= t('این') ?> <?= t('عمل') ?> <?= t('قابل') ?> <?= t('btn_back') ?> <?= t('نیست') ?>.</p>
+                <p style="line-height:1.9"><?= t('تمام') ?> <?= t('info') ?> <strong id="purge_name"></strong> <?= t('شامل') ?> <?= t('حضور') ?>، <?= t('گزارش') ?>‌<?= t('ها') ?>، <?= t('nav_leaves') ?>، <?= t('sal_advance') ?>، <?= t('sal_bonus') ?>/<?= t('sal_penalty') ?>، <?= t('چت') ?> <?= t('و') ?> <?= t('اتصال') ?> <?= t('پیمانکار') ?> <?= t('btn_delete') ?> <?= t('می‌شود') ?>. <?= t('این') ?> <?= t('عمل') ?> <?= t('قابل') ?> <?= t('btn_back') ?> <?= t('نیست') ?>.</p>
                 <div class="form-group"><label class="form-label"><?= t('برای') ?> <?= t('تأیید') ?>، <?= t('per_full_name') ?> <?= t('نیرو') ?> <?= t('را') ?> <?= t('دقیقاً') ?> <?= t('وارد کنید') ?>:</label><input type="text" id="purge_confirm_text" class="form-control" oninput="verifyPurgeName()" autocomplete="off"></div>
             </div>
             <div class="modal-footer"><button type="button" onclick="closeModal('purgePersonnelModal')" class="btn btn-ghost"><?= t('btn_cancel') ?></button><button type="submit" id="purge_submit" class="btn btn-danger" disabled><?= t('btn_delete') ?> <?= t('کامل') ?></button></div>

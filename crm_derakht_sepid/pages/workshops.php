@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $new_id = $pdo->lastInsertId();
         
         // Give all permissions
-        $perms = ['view_dashboard','manage_workshops','manage_personnel','manage_work_hours','manage_salary','manage_bonus_penalty','manage_advances','manage_notifications','manage_subcontractors','manage_purchases','manage_petty_cash','manage_arash_coins','manage_leaves','manage_settings','view_reports','export_data','audit_log','manage_contracts','transfer_personnel'];
+        $perms = ['view_dashboard','manage_workshops','manage_personnel','manage_work_hours','manage_salary','manage_advances','manage_notifications','manage_purchases','manage_petty_cash','manage_leaves','manage_settings','view_reports','export_data','audit_log','manage_contracts','transfer_personnel'];
         $stmt = $pdo->prepare("INSERT IGNORE INTO user_permissions (user_id, workshop_id, permission) VALUES (?, ?, ?)");
         foreach ($perms as $p) {
             $stmt->execute([$_SESSION['user_id'], $new_id, $p]);

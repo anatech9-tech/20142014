@@ -3,11 +3,7 @@ const SW_VERSION = 'derakhtsepid-v1';
 const STATIC_CACHE = SW_VERSION + '-static';
 const PRECACHE = [
   'assets/css/style.css',
-  'assets/css/arash_coin.css',
   'assets/js/jalali_datepicker.js',
-  'assets/js/arash_coin.js',
-  'assets/icons/wttp-coin.png',
-  'assets/icons/wttp-coin-small.png',
   'assets/icons/icon-192.png',
   'assets/icons/icon-512.png',
   'assets/images/logo-96.png',

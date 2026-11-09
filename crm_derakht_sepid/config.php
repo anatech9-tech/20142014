@@ -81,7 +81,7 @@ require_once __DIR__ . '/includes/lang.php';
 
 // Salary calculation functions
 require_once __DIR__ . '/includes/salary_calc.php';
-// WTTP COIN ledger helpers (safe no-op until migrate.php has been run)
+// WTTP COIN حذف شد — این فایل فقط stub بی‌اثر است تا فراخوانی‌های قدیمی نشکنند
 require_once __DIR__ . '/includes/arash_coin.php';
 // Operational helpers: backups, anti-cheat, system messages and audit utilities
 require_once __DIR__ . '/includes/operations_hub.php';
@@ -354,12 +354,9 @@ function has_permission($perm) {
         'manage_advances'      => 'advances',
         'manage_leaves'        => 'leaves',
         'manage_work_hours'    => 'work_hours',
-        'manage_bonus_penalty' => 'bonus_penalty',
-        'manage_subcontractors'=> 'subcontractors',
         'manage_contracts'     => 'contracts',
         'manage_inventory'     => 'inventory',
         'manage_purchases'     => 'inventory',
-        'manage_arash_coins'   => 'arash_coin_admin',
         'manage_workshops'     => 'workshops',
         'office_manager'       => 'personnel',
         'audit_log'            => 'audit',
@@ -395,7 +392,6 @@ function page_access_registry() {
                 'leaves'        => '📅 ' . t('مرخصی'),
                 'daily_reports' => '📝 ' . t('گزارش کار روزانه'),
                 'work_orders'   => '📋 ' . t('دستور کار'),
-                'arash_coins'   => arash_coin_icon_markup('arash-coin-nav-icon') . t('کیف WTTP COIN'),
             ],
         ],
         'manage' => [
@@ -403,15 +399,12 @@ function page_access_registry() {
             'items' => [
                 'personnel'      => '👥 ' . t('پرسنل'),
                 'petty_cash'     => t('تنخواه') . ' (' . t('واریز') . '/' . t('تأیید') . ')',
-                'bonus_penalty'  => '⭐ ' . t('پاداش و جریمه'),
-                'subcontractors' => '🏗️ ' . t('پیمانکاران'),
                 'contracts'      => '📄 ' . t('قراردادها'),
                 'inventory'      => '📦 ' . t('انبار'),
                 'workshops'      => '🏭 ' . t('کارگاه‌ها'),
                 'archive'        => '🗃️ ' . t('بایگانی'),
                 'audit'          => '📜 ' . t('لاگ تغییرات'),
                 'settings'       => '⚙️ ' . t('تنظیمات'),
-                'arash_coin_admin'=> arash_coin_icon_markup('arash-coin-nav-icon') . t('مدیریت WTTP COIN'),
                 'reports'        => '📊 ' . t('گزارش‌ها'),
                 'forms'          => '🧾 ' . t('فرم‌ها'),
             ],
@@ -420,18 +413,12 @@ function page_access_registry() {
             'reports' => [
                 'rep_salary'         => t('گزارش حقوق و دستمزد'),
                 'rep_work_hours'     => t('گزارش کارکرد (ساعت کاری)'),
-                'rep_bonuses'        => t('گزارش پاداش و جریمه'),
-                'rep_subcontractors' => t('گزارش پیمانکاران'),
                 'rep_monthly'        => t('بیلان ماهانه'),
                 'rep_yearly'         => t('بیلان سالانه'),
             ],
             'forms' => [
-                'form_ejra'       => t('فرم گزارش روزانه اجرا'),
-                'form_hse'        => t('فرم گزارش روزانه واحد HSE'),
                 'form_anbar'      => t('فرم گزارش کار انباردار'),
                 'form_emp_pay'    => t('لیست واریزی کارمندان'),
-                'form_worker_pay' => t('لیست واریزی کارگران'),
-                'form_sub_pay'    => t('فرم واریزی پیمانکاران'),
                 'form_petty_month'=> t('فرم تنخواه ماهانه'),
                 'form_inv_count'  => t('فرم موجودی انبار / انبارگردانی'),
             ],
@@ -512,7 +499,7 @@ function access_mode($page_key) {
     if (is_strict_admin() || is_project_manager()) return 'editor'; // مدیر سایت و مدیر پروژه: دسترسی کامل
     if (is_nazer_kol()) return 'viewer';                             // ناظر کل: فقط مشاهده
     if (is_karfarma()) {                                             // کارفرما: فقط فرم‌ها و گزارش‌های روزانه/HSE
-        if (in_array($page_key, ['forms', 'form_ejra', 'form_hse', 'report_print', 'hse_report'], true)) return 'viewer';
+        if ($page_key === 'forms') return 'viewer';
         $personal = in_array($page_key, access_personal_keys(), true);
         return $personal ? 'personal' : null;
     }
@@ -552,8 +539,6 @@ function access_gate_page_map() {
     return [
         'personnel'      => 'personnel',
         'workshops'      => 'workshops',
-        'subcontractors' => 'subcontractors',
-        'bonus_penalty'  => 'bonus_penalty',
         'contracts'      => 'contracts',
         'inventory'      => 'inventory',
         // مسیرهای قدیمی برای دسترسی و لینک‌های ذخیره‌شده، به بخش‌های داخلی انبار هدایت می‌شوند.
@@ -563,16 +548,11 @@ function access_gate_page_map() {
         'purchases'       => 'inventory',
         'attendance_alerts'=> 'work_hours',
         'personnel_profile'=> 'personnel',
-        'arash_coins'    => 'arash_coins',
         'archive'        => 'archive',
         'audit'          => 'audit',
         'settings'       => 'settings',
-        'report_print'          => 'form_ejra',
-        'hse_report'            => 'form_hse',
         'anbar_report'          => 'form_anbar',
         'employee_payment_print'=> 'form_emp_pay',
-        'worker_payment_print'  => 'form_worker_pay',
-        'subcontractor_payment_print' => 'form_sub_pay',
         'petty_cash_print'      => 'form_petty_month',
         'inventory_count_print' => 'form_inv_count',
     ];
@@ -583,8 +563,6 @@ function access_report_type_keys() {
     return [
         'salary'         => 'rep_salary',
         'work_hours'     => 'rep_work_hours',
-        'bonuses'        => 'rep_bonuses',
-        'subcontractors' => 'rep_subcontractors',
         'monthly_full'   => 'rep_monthly',
         'yearly_full'    => 'rep_yearly',
     ];
@@ -831,14 +809,11 @@ function nav_menu_labels() {
         'work_orders'    => t('nav_work_orders'),
         'reports'        => t('nav_reports'),
         'workshops'      => t('nav_workshops'),
-        'subcontractors' => t('nav_subcontractors'),
         'petty_cash'     => t('nav_petty_cash'),
-        'bonus_penalty'  => t('nav_bonus_penalty'),
         'contracts'      => t('nav_contracts'),
         'audit'          => t('nav_audit'),
         'settings'       => t('nav_settings'),
         'inventory'      => t('nav_inventory'),
-        'arash_coins'    => t('nav_arash_coins'),
         'profile'        => t('nav_profile'),
         'chat'           => t('nav_chat'),
         'daily_reports'  => t('nav_daily_reports'),

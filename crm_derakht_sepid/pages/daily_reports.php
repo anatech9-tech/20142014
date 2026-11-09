@@ -66,9 +66,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt = $pdo->prepare("INSERT INTO daily_reports (user_id, workshop_id, report_date, report_text, wo_description, wo_progress, wo_next_day, category) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
                 $stmt->execute([$current_user_id, $ws_id, $report_date, $display_text, $wo_desc, $wo_prog, $wo_next, $rep_cat]);
             }
-            // §fix: گزارش نیاز به تأیید مدیر ندارد؛ بلافاصله نهایی و WTTP COIN پرداخت می‌شود
+            // §fix: گزارش نیاز به تأیید مدیر ندارد؛ بلافاصله نهایی می‌شود
             $__auto = daily_report_auto_approve($pdo, (int)$pdo->lastInsertId(), (int)$current_user_id);
-            showToast(t('گزارش ثبت شد') . (!empty($__auto['coin']['amount']) ? strtr(t(' + {amount} WTTP COIN'), ['{amount}' => $__auto['coin']['amount']]) : ''));
+            showToast(t('گزارش ثبت شد'));
         } elseif (!empty($report_text)) {
             if ($dr_has_shift) {
                 $stmt = $pdo->prepare("INSERT INTO daily_reports (user_id, workshop_id, report_date, report_text, category, shift) VALUES (?, ?, ?, ?, ?, ?)");
@@ -78,12 +78,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$current_user_id, $ws_id, $report_date, $report_text, $rep_cat]);
             }
             $__auto = daily_report_auto_approve($pdo, (int)$pdo->lastInsertId(), (int)$current_user_id);
-            showToast(t('گزارش ثبت شد') . (!empty($__auto['coin']['amount']) ? strtr(t(' + {amount} WTTP COIN'), ['{amount}' => $__auto['coin']['amount']]) : ''));
+            showToast(t('گزارش ثبت شد'));
         }
         redirect("index.php?page=daily_reports");
     }
 
-    // حذف گزارش: مالکِ گزارش یا مدیر/ناظر. WTTP COINِ گزارش (و آیتم دستور کارِ متصل) هم برگردانده می‌شود.
+    // حذف گزارش: مالکِ گزارش یا مدیر/ناظر.
     if ($action === 'delete_report') {
         $rid = (int)($_POST['report_id'] ?? 0);
         if ($rid) {
@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 daily_report_reverse_coins($pdo, $rid, (int)$current_user_id, 'حذف گزارش');
                 $stmt = $pdo->prepare("DELETE FROM daily_reports WHERE id = ? AND workshop_id = ?");
                 $stmt->execute([$rid, $ws_id]);
-                showToast(t('گزارش حذف شد') . ' — ' . t('WTTP COIN این گزارش هم کسر شد'));
+                showToast(t('گزارش حذف شد'));
             } else {
                 showToast(t('دسترسی غیرمجاز'), 'error');
             }
@@ -101,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect(dr_back_url());
     }
 
-    // تأیید / رد گزارش: فقط گزارش تأییدشده در فرم رسمی می‌آید و پاداش WTTP COIN می‌گیرد.
+    // تأیید / رد گزارش: فقط گزارش تأییدشده در فرم رسمی می‌آید.
     if ($action === 'set_report_status' && $can_manage) {
         $rid = (int)($_POST['report_id'] ?? 0);
         $stt = $_POST['status'] ?? '';
@@ -117,18 +117,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     } else {
                         $pdo->prepare("UPDATE daily_reports SET status = 'approved' WHERE id = ? AND workshop_id = ?")->execute([$rid, $ws_id]);
                     }
-                    $coin = arash_coin_award_daily_report($pdo, $rid, $current_user_id);
-                    $task_coin = null;
-                    if (!empty($report_row['source_item_id'])) $task_coin = arash_coin_award_work_order_item($pdo, (int)$report_row['source_item_id'], $current_user_id);
-                    $coin_msg = ($coin ? strtr(t(' + {amount} WTTP COIN برای گزارش'), ['{amount}' => $coin['amount']]) : '') . ($task_coin ? strtr(t(' + {amount} WTTP COIN برای دستور کار'), ['{amount}' => $task_coin['amount']]) : '');
-                    operations_system_chat_message($pdo, $ws_id, $current_user_id, strtr(t('✅ گزارش کار «{name}» تأیید شد'), ['{name}' => $report_row['full_name'] ?? t('نیرو')]) . $coin_msg);
-                    showToast(t('گزارش تأیید شد و در فرم رسمی نمایش داده می‌شود') . $coin_msg);
+                    operations_system_chat_message($pdo, $ws_id, $current_user_id, strtr(t('✅ گزارش کار «{name}» تأیید شد'), ['{name}' => $report_row['full_name'] ?? t('نیرو')]));
+                    showToast(t('گزارش تأیید شد و در فرم رسمی نمایش داده می‌شود'));
                 } elseif ($stt === 'rejected') {
                     $pdo->prepare("UPDATE daily_reports SET status = 'rejected' WHERE id = ? AND workshop_id = ?")->execute([$rid, $ws_id]);
-                    if ($old_status === 'approved') {
-                        arash_coin_reverse_daily_report($pdo, $rid, $current_user_id, 'رد گزارش تأییدشده');
-                        if (!empty($report_row['source_item_id'])) arash_coin_reverse_work_order_item($pdo, (int)$report_row['source_item_id'], $current_user_id, 'رد گزارشِ دستور کار');
-                    }
                     showToast(t('گزارش رد شد و از فرم رسمی حذف شد.'));
                 } else {
                     $pdo->prepare("UPDATE daily_reports SET status = 'pending' WHERE id = ? AND workshop_id = ?")->execute([$rid, $ws_id]);
@@ -352,7 +344,6 @@ foreach ($grouped as $date_label => $day_reports):
             </div>
             <div class="d-flex align-center gap-2" style="flex-wrap:wrap">
                 <span class="text-muted" style="font-size:11px"><?= substr($r['created_at'], 11, 5) ?></span>
-                <a href="index.php?page=report_print&id=<?= $r['id'] ?>&date=<?= $r['report_date'] ?>&cat=<?= $active_cat ?>&shift=<?= $r_shift ?>" target="_blank" class="btn btn-ghost btn-sm" style="font-size:11px;padding:2px 8px;color:#667eea"><?= t('پرینت') ?></a>
                 <?php if ($can_manage || $r['user_id'] == $current_user_id): ?>
                 <button type="button" class="btn btn-ghost btn-sm" style="font-size:11px;padding:2px 8px;color:#0ea5e9"
                     onclick='openReportEdit(<?= $r['id'] ?>, <?= js_arg($r['report_text'] ?? '') ?>, <?= js_arg($r['wo_description'] ?? '') ?>, <?= js_arg($r['wo_progress'] ?? '') ?>, <?= js_arg($r['wo_next_day'] ?? '') ?>)'>✏️ <?= t('btn_edit') ?></button>
@@ -371,7 +362,7 @@ foreach ($grouped as $date_label => $day_reports):
                         <input type="hidden" name="action" value="set_report_status">
                         <input type="hidden" name="report_id" value="<?= $r['id'] ?>">
                         <input type="hidden" name="status" value="approved">
-                        <button type="submit" class="btn btn-success btn-sm" style="font-size:11px;padding:2px 7px" title="<?= t('تأیید') ?> <?= t('گزارش') ?> <?= t('و') ?> <?= t('پرداخت') ?> <?= t('nav_arash_coins') ?>">✓ <?= t('تأیید') ?></button>
+                        <button type="submit" class="btn btn-success btn-sm" style="font-size:11px;padding:2px 7px" title="<?= t('تأیید') ?> <?= t('گزارش') ?>">✓ <?= t('تأیید') ?></button>
                     </form>
                     <?php endif; ?>
                     <form method="POST" style="display:inline" onsubmit="return confirm('<?= t('این') ?> <?= t('آیتم') ?> <?= t('btn_reject') ?> <?= t('شود') ?> <?= t('و') ?> <?= t('lea_from') ?> <?= t('گزارش') ?> <?= t('رسمی') ?> <?= t('btn_delete') ?> <?= t('گردد') ?>؟')"><?= get_csrf_field() ?>

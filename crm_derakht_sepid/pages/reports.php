@@ -18,7 +18,6 @@ if (!in_array($type, $__rep_allowed, true)) {
 }
 
 require_once __DIR__ . '/../includes/salary_calc.php';
-require_once __DIR__ . '/../includes/subcontractor_link.php';
 
 $settings = get_workshop_settings($pdo, $ws_id);
 
@@ -132,8 +131,6 @@ include 'includes/header.php';
 <div class="tabs mb-4 animate-in">
     <?php if (in_array('salary', $__rep_allowed, true)): ?><a href="index.php?page=reports&type=salary&jalali_year=<?= $jy_current ?>&jalali_month=<?= str_pad($jm_current, 2, '0', STR_PAD_LEFT) ?>" class="tab <?= $type == 'salary' ? 'active' : '' ?>"><?= t('rep_salary') ?></a><?php endif; ?>
     <?php if (in_array('work_hours', $__rep_allowed, true)): ?><a href="index.php?page=reports&type=work_hours&jalali_year=<?= $jy_current ?>&jalali_month=<?= str_pad($jm_current, 2, '0', STR_PAD_LEFT) ?>" class="tab <?= $type == 'work_hours' ? 'active' : '' ?>"><?= t('rep_work_hours') ?></a><?php endif; ?>
-    <?php if (in_array('bonuses', $__rep_allowed, true)): ?><a href="index.php?page=reports&type=bonuses&jalali_year=<?= $jy_current ?>&jalali_month=<?= str_pad($jm_current, 2, '0', STR_PAD_LEFT) ?>" class="tab <?= $type == 'bonuses' ? 'active' : '' ?>"><?= t('rep_bonuses') ?></a><?php endif; ?>
-    <?php if (in_array('subcontractors', $__rep_allowed, true)): ?><a href="index.php?page=reports&type=subcontractors&jalali_year=<?= $jy_current ?>&jalali_month=<?= str_pad($jm_current, 2, '0', STR_PAD_LEFT) ?>" class="tab <?= $type == 'subcontractors' ? 'active' : '' ?>"><?= t('rep_subcontractors') ?></a><?php endif; ?>
     <?php if (in_array('monthly_full', $__rep_allowed, true)): ?><a href="index.php?page=reports&type=monthly_full&jalali_year=<?= $jy_current ?>&jalali_month=<?= str_pad($jm_current, 2, '0', STR_PAD_LEFT) ?>" class="tab <?= $type == 'monthly_full' ? 'active' : '' ?>"><?= t('rep_monthly_bilan') ?></a><?php endif; ?>
     <?php if (in_array('yearly_full', $__rep_allowed, true)): ?><a href="index.php?page=reports&type=yearly_full&year=<?= $year_j ?>" class="tab <?= $type == 'yearly_full' ? 'active' : '' ?>"><?= t('rep_yearly_bilan') ?></a><?php endif; ?>
 </div>
@@ -278,24 +275,6 @@ $hours_data = $stmt->fetchAll();
                 <td><?= number_format($h['total_hours'], 1) ?>h</td>
                 <td><?= $h['days'] > 0 ? number_format($h['total_hours']/$h['days'], 1) : 0 ?>h</td>
             </tr>
-            <?php endforeach; ?>
-        </tbody>
-    </table></div>
-</div>
-
-<?php elseif ($type == 'bonuses'): ?>
-<?php
-$stmt = $pdo->prepare("SELECT u.full_name, bp.type, SUM(bp.amount) as total, SUM(bp.hours) as total_hours FROM bonuses_penalties bp JOIN users u ON bp.user_id = u.id WHERE bp.workshop_id = ? AND bp.date BETWEEN ? AND ? GROUP BY bp.user_id, bp.type ORDER BY u.full_name");
-$stmt->execute([$ws_id, $rg_start, $rg_end]);
-$bp_data = $stmt->fetchAll();
-?>
-<div class="card mt-4 animate-in">
-    <div class="card-header"><h3 class="card-title"><?= t('rep_bonuses') ?> - <?= $month_jalali_label ?></h3></div>
-    <div class="table-container" id="reportTable"><table>
-        <thead><tr><th><?= t('wh_name') ?></th><th><?= t('sal_type') ?></th><th><?= t('wh_hours') ?></th><th><?= t('مبلغ') ?></th></tr></thead>
-        <tbody>
-            <?php foreach ($bp_data as $b): ?>
-            <tr><td><?= $b['full_name'] ?></td><td><span class="tag <?= $b['type'] == 'bonus' ? 'tag-active' : 'tag-rejected' ?>"><?= $b['type'] == 'bonus' ? t('sal_bonus') : t('sal_penalty') ?></span></td><td><?= fmt_hm((float)($b['total_hours'] ?? 0)) ?></td><td><?= number_format($b['total']) ?> <?= t('ت') ?></td></tr>
             <?php endforeach; ?>
         </tbody>
     </table></div>
@@ -454,32 +433,6 @@ $grand_total = array_sum($month_totals);
     </div>
 </div>
 
-<?php elseif ($type == 'subcontractors'): ?>
-<?php
-// مانده پیمانکار = خدمات + کارکرد ساعتیِ پرسنل متصل + حساب قبلی − پرداخت‌ها.
-$stmt = $pdo->prepare("SELECT s.*, u.full_name AS linked_person_name FROM subcontractors s LEFT JOIN users u ON u.id=s.linked_user_id WHERE s.workshop_id = ? AND s.status = 'active'");
-$stmt->execute([$ws_id]);
-$sub_data = $stmt->fetchAll();
-?>
-<div class="card mt-4 animate-in">
-    <div class="card-header"><h3 class="card-title"><?= t('nav_subcontractors') ?></h3></div>
-    <div class="table-container" id="reportTable"><table>
-        <thead><tr><th><?= t('wh_name') ?></th><th><?= t('قرارداد') ?></th><th><?= t('خدمات') ?></th><th><?= t('کارکرد ساعتی') ?></th><th><?= t('حساب') ?> <?= t('قبلی') ?></th><th><?= t('پرداختی') ?></th><th><?= t('pet_balance') ?></th></tr></thead>
-        <tbody>
-            <?php foreach ($sub_data as $s): $__sub_sum = sub_balance_upto($pdo, (int)$s['id'], null); $__bal = (float)$__sub_sum['balance']; ?>
-            <tr>
-                <td><?= htmlspecialchars($s['name']) ?><?= !empty($s['linked_person_name']) ? '<div class="text-muted" style="font-size:10px">🔗 ' . htmlspecialchars($s['linked_person_name']) . '</div>' : '' ?></td>
-                <td><?= number_format($s['total_contract']) ?></td>
-                <td><?= number_format((float)$__sub_sum['face'] + (float)$__sub_sum['daily']) ?></td>
-                <td style="color:#6d28d9"><?= number_format((float)$__sub_sum['personnel_claim']) ?></td>
-                <td><?= $__sub_sum['opening'] != 0 ? number_format($__sub_sum['opening']) : '—' ?></td>
-                <td><?= number_format($__sub_sum['paid']) ?></td>
-                <td class="<?= $__bal >= 0 ? 'text-danger' : 'text-success' ?>"><strong><?= number_format($__bal) ?></strong></td>
-            </tr>
-            <?php endforeach; ?>
-        </tbody>
-    </table></div>
-</div>
 <?php endif; ?>
 
 <script>

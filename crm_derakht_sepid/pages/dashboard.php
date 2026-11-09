@@ -6,7 +6,6 @@ $today = date('Y-m-d');
 // نخستین بازدید روز، بکاپ زمان‌بندی‌شده و اسکن ضدتقلب را اجرا می‌کند (بدون نیاز به کرون جداگانه).
 $auto_backup = operations_auto_backups($pdo);
 $backup_health = operations_backup_health();
-operations_scan_coin_anomalies($pdo, (int)($_SESSION['workshop_id'] ?? 0), $today);
 $is_yaser = (($_SESSION['username'] ?? '') === 'yaser');
 
 // آمار اصلی
@@ -32,10 +31,6 @@ $stmt = $pdo->prepare("SELECT COUNT(*) FROM notification_recipients WHERE user_i
 $stmt->execute([$user_id]); $unread_notifs = (int)$stmt->fetchColumn();
 $stmt = $pdo->prepare("SELECT COUNT(*) FROM work_hours WHERE workshop_id=? AND protest_status='pending'");
 $stmt->execute([$ws_id]); $pending_protests = (int)$stmt->fetchColumn();
-// در اولین بازدید ماه جدید، پاداش مرخصیِ استفاده‌نشدهٔ ماه قبل به‌صورت idempotent ثبت می‌شود.
-arash_coin_run_monthly_leave_rewards($pdo, $ws_id, $today);
-$current_coin_balance = arash_coin_balance($pdo, $user_id);
-$coin_multiplier_notices = arash_coin_active_multiplier_notices($pdo, $ws_id, $today);
 
 // اطلاعات پنل‌های بازشوندهٔ داشبورد
 $present_people = $pending_advance_rows = $pending_leave_rows = $unread_rows = $recent_chat = $dashboard_channels = [];
@@ -84,7 +79,7 @@ if ($is_yaser) {
 
 // مرکز هشدارهای هوشمند داشبورد
 $smart_alerts = [];
-$attendance_trend = []; $coin_trend = [];
+$attendance_trend = [];
 try {
     $activeStmt=$pdo->prepare("SELECT u.id,u.full_name FROM users u JOIN workshop_personnel wp ON wp.user_id=u.id WHERE wp.workshop_id=? AND wp.status='active' AND u.username!='yaser'");
     $activeStmt->execute([$ws_id]);$activePeople=$activeStmt->fetchAll();
@@ -101,8 +96,6 @@ try {
     foreach($over->fetchAll() as $row)$smart_alerts[]=['type'=>'warning','icon'=>'wrench','title'=>t('ابزار برگشت‌نخورده'),'text'=>strtr(t('{name} نزد {person} از {date}'), ['{name}' => $row['name'], '{person}' => $row['person_name'], '{date}' => to_jalali($row['checkout_date'])]),'link'=>'index.php?page=inventory&tab=active&highlight_tx='.(int)$row['id'].'#tx-'.(int)$row['id']];
     $rep=$pdo->prepare("SELECT COUNT(*) FROM daily_reports WHERE workshop_id=? AND status='pending'");$rep->execute([$ws_id]);$pendingReports=(int)$rep->fetchColumn();
     if($pendingReports)$smart_alerts[]=['type'=>'info','icon'=>'clipboard-check','title'=>t('گزارش در انتظار تأیید'),'text'=>strtr(t('{count} گزارش کار هنوز تأیید نشده است.'), ['{count}' => $pendingReports]),'link'=>'index.php?page=daily_reports'];
-    $contractors=$pdo->prepare("SELECT s.name,s.total_contract,COALESCE((SELECT SUM(f.amount) FROM subcontractor_face_items f WHERE f.subcontractor_id=s.id),0)+COALESCE((SELECT SUM(di.total_price) FROM subcontractor_daily_entry_items di JOIN subcontractor_daily_entries de ON di.entry_id=de.id WHERE de.subcontractor_id=s.id),0) AS claims FROM subcontractors s WHERE s.workshop_id=? AND s.status='active' AND s.total_contract>0");$contractors->execute([$ws_id]);
-    foreach($contractors->fetchAll() as $c){$pct=((float)$c['claims']/(float)$c['total_contract'])*100;if($pct>=80)$smart_alerts[]=['type'=>$pct>=100?'danger':'warning','icon'=>'briefcase-business','title'=>t('سقف قرارداد پیمانکار'),'text'=>strtr(t('{name} به {pct}٪ سقف قرارداد رسیده است.'), ['{name}' => $c['name'], '{pct}' => number_format($pct,1)]),'link'=>'index.php?page=subcontractors'];}
     if(function_exists('db_has_column')&&db_has_column($pdo,'purchase_requests','id')){
         $p=$pdo->prepare("SELECT COUNT(*) FROM purchase_requests WHERE workshop_id=? AND status='pending'");$p->execute([$ws_id]);$n=(int)$p->fetchColumn();if($n)$smart_alerts[]=['type'=>'info','icon'=>'shopping-cart','title'=>t('page_purchases'),'text'=>strtr(t('{count} درخواست خرید در انتظار تأیید است.'), ['{count}' => $n]),'link'=>'index.php?page=inventory&tab=purchases'];
     }
@@ -111,9 +104,6 @@ try {
         foreach($d->fetchAll() as $row)$smart_alerts[]=['type'=>'danger','icon'=>'file-warning','title'=>t('مدرک نزدیک انقضا'),'text'=>strtr(t('{title} برای {name} تا {date}'), ['{title}' => $row['title'], '{name}' => $row['full_name'], '{date}' => to_jalali($row['expiry_date'])]),'link'=>'index.php?page=personnel'];
     }
     if(!$backup_health['healthy'])$smart_alerts[]=['type'=>'danger','icon'=>'database-zap','title'=>t('بکاپ قدیمی یا ناموجود'),'text'=>t('بکاپ خودکار ۲۴ ساعت اخیر پیدا نشد؛ دسترسی پوشه backups را بررسی کنید.'),'link'=>'index.php?page=settings'];
-    if(function_exists('db_has_column')&&db_has_column($pdo,'arash_coin_flags','id')){
-        $f=$pdo->prepare("SELECT COUNT(*) FROM arash_coin_flags WHERE workshop_id=? AND status='open'");$f->execute([$ws_id]);$n=(int)$f->fetchColumn();if($n)$smart_alerts[]=['type'=>'warning','icon'=>'shield-alert','title'=>t('هشدار ضدتقلب کوین'),'text'=>strtr(t('{count} هشدار دریافت غیرعادی کوین نیاز به بررسی دارد.'), ['{count}' => $n]),'link'=>'index.php?page=arash_coins#coin-admin'];
-    }
 }catch(Throwable $e){}
 try {
     // روند حضور هم یک‌جا خوانده می‌شود؛ هر روز query جداگانه به‌خصوص روی سابقهٔ بزرگ کند است.
@@ -123,23 +113,6 @@ try {
     $q->execute([$ws_id,$trend_start,$today]);
     foreach($q->fetchAll(PDO::FETCH_ASSOC) as $attendance_row)$attendance_by_date[(string)$attendance_row['work_date']]=(int)$attendance_row['total'];
     for($i=6;$i>=0;$i--){$d=date('Y-m-d',strtotime($today." -{$i} day"));$attendance_trend[]=['date'=>$d,'count'=>$attendance_by_date[$d]??0];}
-    if(function_exists('arash_coin_tx_date_expression') && function_exists('arash_coin_tables_ready') && arash_coin_tables_ready($pdo)){
-        // همهٔ هفت روز در یک query خوانده می‌شوند تا با بزرگ‌شدن دفترکل، داشبورد معطل چند اسکن کامل نشود.
-        $coin_start=date('Y-m-d',strtotime($today.' -6 day'));
-        $coin_end_exclusive=date('Y-m-d',strtotime($today.' +1 day'));
-        $coin_by_date=[];
-        if(arash_coin_has_event_date($pdo)){
-            // شرط تاریخ روی خود ستون‌هاست تا ایندکس workshop/event_date قابل استفاده بماند.
-            $coin_date_expr="COALESCE(t.event_date, DATE(t.created_at))";
-            $q=$pdo->prepare("SELECT $coin_date_expr AS coin_date, COALESCE(SUM(t.amount),0) AS total FROM arash_coin_transactions t WHERE t.workshop_id=? AND t.amount>0 AND ((t.event_date BETWEEN ? AND ?) OR (t.event_date IS NULL AND t.created_at>=? AND t.created_at<?)) GROUP BY $coin_date_expr");
-            $q->execute([$ws_id,$coin_start,$today,$coin_start.' 00:00:00',$coin_end_exclusive.' 00:00:00']);
-        }else{
-            $q=$pdo->prepare("SELECT DATE(t.created_at) AS coin_date, COALESCE(SUM(t.amount),0) AS total FROM arash_coin_transactions t WHERE t.workshop_id=? AND t.amount>0 AND t.created_at>=? AND t.created_at<? GROUP BY DATE(t.created_at)");
-            $q->execute([$ws_id,$coin_start.' 00:00:00',$coin_end_exclusive.' 00:00:00']);
-        }
-        foreach($q->fetchAll(PDO::FETCH_ASSOC) as $coin_row)$coin_by_date[(string)$coin_row['coin_date']]=(int)$coin_row['total'];
-        for($i=6;$i>=0;$i--){$d=date('Y-m-d',strtotime($today." -{$i} day"));$coin_trend[]=['label'=>to_jalali($d),'count'=>$coin_by_date[$d]??0];}
-    }
 }catch(Throwable $e){}
 
 // ═══ §phase2: خلاصهٔ CRM (در صورت هر خطا، کارت با صفر نمایش می‌یابد) ═══
@@ -188,18 +161,7 @@ include 'includes/header.php';
 .dashboard-channel-members { display:block; margin-top:3px; font-size:10px; line-height:1.8; color:var(--text-secondary); }
 .dashboard-coin-stat-img { width:28px; height:28px; object-fit:contain; display:block; }
 @media (max-width:850px) { .dashboard-chat-grid { grid-template-columns:1fr; } }
-.dashboard-coin-notice-icon { display:inline-flex; align-items:center; gap:3px; line-height:1; }
-.dashboard-coin-trend-icon { width:17px; height:17px; display:inline-block; vertical-align:-3px; margin-left:4px; }
 </style>
-
-<?php if (!empty($coin_multiplier_notices)): ?>
-<div class="alert alert-warning animate-in" style="margin-bottom:16px;background:linear-gradient(135deg,#fff7d6,#fde68a);border-color:#f59e0b;color:#78350f">
-    <span class="dashboard-coin-notice-icon"><?= arash_coin_icon_markup('arash-coin-tiny') ?>✨</span>
-    <span><b><?= t('sal_bonus') ?> <?= t('ویژهٔ') ?> <?= t('nav_arash_coins') ?> <?= t('wh_today') ?> <?= t('فعال است') ?>:</b>
-    <?php foreach ($coin_multiplier_notices as $i => $notice): ?><?= $i ? ' · ' : '' ?><strong><?= htmlspecialchars($notice['title']) ?></strong> — <?= t('ضریب') ?> <?= rtrim(rtrim(number_format((float)$notice['multiplier'],2), '0'), '.') ?><?= !empty($notice['event_type']) ? ' برای ' . htmlspecialchars(arash_coin_event_type_label($notice['event_type'])) : '' ?><?php endforeach; ?>
-    </span>
-</div>
-<?php endif; ?>
 
 <div class="stats-grid animate-in">
     <?php if ($is_yaser): ?>
@@ -208,8 +170,6 @@ include 'includes/header.php';
         <div class="stat-card" style="background:linear-gradient(135deg,#1e293b,#334155)"><div class="stat-icon" style="background:#e2e8f0;color:#1e293b"><i data-lucide="moon"></i></div><div class="stat-info"><h3 style="color:#e2e8f0"><?= $today_night_shift ?></h3><p style="color:#94a3b8"><?= t('wh_shift') ?> <?= t('wh_night') ?></p></div></div>
         <?php if ($pending_reports > 0): ?><a href="index.php?page=forms" class="stat-card" style="background:linear-gradient(135deg,#fef3c7,#fde68a);text-decoration:none;color:#92400e"><div class="stat-icon" style="background:#fbbf24"><i data-lucide="clipboard-list"></i></div><div class="stat-info"><h3><?= $pending_reports ?></h3><p><?= t('گزارش') ?> <?= t('در انتظار') ?> <?= t('تأیید') ?></p></div></a><?php endif; ?>
     <?php else: ?>
-        <!-- کارت «پرسنل فعال» حذف شد و موجودی WTTP COIN جای آن را گرفت. -->
-        <a href="index.php?page=arash_coins" class="stat-card glass-gradient-1" style="text-decoration:none;color:inherit"><div class="stat-icon primary" style="overflow:hidden"><img src="assets/icons/wttp-coin-small.png" class="dashboard-coin-stat-img" alt="WTTP COIN"></div><div class="stat-info"><h3 data-arash-coin-balance><?= number_format($current_coin_balance) ?></h3><p><?= t('inv_stock') ?> <?= t('nav_arash_coins') ?> <?= t('من') ?></p></div></a>
         <button type="button" class="stat-card glass-gradient-2 dashboard-stat-button" onclick="toggleDashboardPanel('presentPanel')"><div class="stat-icon success"><i data-lucide="user-check"></i></div><div class="stat-info"><h3><?= $today_present ?></h3><p><?= t('dash_today_present') ?> <?= t('· برای مشاهده کلیک کنید') ?></p></div></button>
         <button type="button" class="stat-card glass-gradient-3 dashboard-stat-button" onclick="toggleDashboardPanel('advancePanel')"><div class="stat-icon warning"><i data-lucide="banknote"></i></div><div class="stat-info"><h3><?= $pending_advances ?></h3><p><?= t('dash_pending_advances') ?> <?= t('· برای مشاهده کلیک کنید') ?></p></div></button>
         <button type="button" class="stat-card glass-gradient-4 dashboard-stat-button" onclick="toggleDashboardPanel('leavePanel')"><div class="stat-icon danger"><i data-lucide="calendar-off"></i></div><div class="stat-info"><h3><?= $pending_leaves ?></h3><p><?= t('dash_pending_leaves') ?> <?= t('· برای مشاهده کلیک کنید') ?></p></div></button>
@@ -266,9 +226,8 @@ include 'includes/header.php';
     <?php if(empty($unread_rows)): ?><p class="text-center text-muted" style="padding:24px"><?= t('پیام خوانده‌نشده‌ای ندارید.') ?></p><?php endif; ?>
 </div>
 
-<div class="grid-2 mt-4 animate-in">
+<div class="mt-4 animate-in">
     <div class="card"><div class="card-header"><h3 class="card-title">📈 <?= t('روند') ?> <?= t('حضور') ?> <?= t('۷') ?> <?= t('wh_day') ?> <?= t('اخیر') ?></h3></div><div style="height:180px;display:flex;align-items:flex-end;gap:8px;padding:8px 0"><?php $maxAttend=max(1,...array_column($attendance_trend,'count')); foreach($attendance_trend as $d): ?><div style="flex:1;text-align:center"><div title="<?=to_jalali($d['date'])?>: <?=$d['count']?> <?= t('نفر') ?>" style="height:<?=max(4,round(($d['count']/$maxAttend)*135))?>px;background:linear-gradient(180deg,#6366f1,#a5b4fc);border-radius:7px 7px 2px 2px"></div><small style="font-size:9px"><?=substr(to_jalali($d['date']),-2)?></small><div style="font-size:10px;font-weight:700"><?=$d['count']?></div></div><?php endforeach;?></div></div>
-    <div class="card"><div class="card-header"><h3 class="card-title"><i data-lucide="circle-dollar-sign" class="dashboard-coin-trend-icon"></i><?= t('روند') ?> <?= t('کوین') ?> <?= t('pet_income') ?> <?= t('۷') ?> <?= t('wh_day') ?> <?= t('اخیر') ?></h3></div><?php if($coin_trend): ?><div style="height:180px;display:flex;align-items:flex-end;gap:8px;padding:8px 0"><?php $maxCoin=max(1,...array_column($coin_trend,'count')); foreach($coin_trend as $d): ?><div style="flex:1;text-align:center"><div title="<?=$d['label']?>: <?=$d['count']?> <?= t('کوین') ?>" style="height:<?=max(4,round(($d['count']/$maxCoin)*135))?>px;background:linear-gradient(180deg,#f59e0b,#fde68a);border-radius:7px 7px 2px 2px"></div><small style="font-size:9px"><?=htmlspecialchars(mb_substr($d['label'],-2))?></small><div style="font-size:10px;font-weight:700"><?=$d['count']?></div></div><?php endforeach;?></div><?php else:?><p class="text-muted text-center" style="padding:45px"><?= t('دادهٔ') ?> <?= t('کوین') ?> <?= t('کافی') ?> <?= t('نیست') ?>.</p><?php endif;?></div>
 </div>
 
 <div id="smartAlertPanel" class="dash-expand-panel card mb-4 animate-in" style="border-right-color:#f59e0b">

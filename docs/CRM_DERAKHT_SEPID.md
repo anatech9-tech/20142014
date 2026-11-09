@@ -48,13 +48,14 @@
               └─ push/*.php    (Cron ارسال Web Push)
                      │
 config.php ──────────┤  session + CSRF + Jalali + helpers + PDO
-includes/ ───────────┘  lang.php/legacy_i18n* (fa/ar/en) • salary_calc.php • arash_coin.php •
+includes/ ───────────┘  lang.php/legacy_i18n* (fa/ar/en) • salary_calc.php • arash_coin.php (stub بی‌اثر — ماژول WTTP COIN حذف شد) •
                         operations_hub.php (بکاپ DB خودکار، audit) • excel_*.php
 ```
 
 **مدل دسترسی فعلی (RBAC+):** `admin` (مدیر کل) ▸ `project_manager` (پروژه‌ای) ▸ `workshop_manager`/`manager` (مدیر واحد) ▸ کاربر عادی + پرمیشن‌های ریز از جدول `user_permissions` + گیت صفحه‌ای `user_page_access` (full/viewer با انقضا) + نقش‌های مخصوص خواندنی: `nazer_kol`/`nazer` (ناظر کل — همه‌چیز read-only) و `karfarma` (کارفرما — فقط فرم‌ها/پرینت) + حساب‌های خاص `yaser`, `javidhse`.
 
-**جدول‌های دیتابیس (۶۰+ جدول)** — مکان‌ها: users, user_permissions, user_page_access, workshops, workshop_personnel, workshop_settings, work_hours, missions, employee_breaks, temp_entry_grants, leave_requests, holidays, salary_history, salary_calculations, advances, advance_expenses, bonuses_penalties, petty_cash, daily_reports, work_orders, work_order_items, hse_reports, anbar_reports, inventory_items, inventory_transactions, inventory_serials, purchase_requests, pending_transfers, subcontractors(+services, face_items, daily_entries, entry_items, payments), archive_folders/files, personnel_documents, notifications, notification_recipients, push_subscriptions, chat_channels, chat_channel_members, chat_messages, audit_log, settings, settings_requests, arash_coin_* (8 جدول).
+**جدول‌های دیتابیس (۶۰+ جدول)** — مکان‌ها: users, user_permissions, user_page_access, workshops, workshop_personnel, workshop_settings, work_hours, missions, employee_breaks, temp_entry_grants, leave_requests, holidays, salary_history, salary_calculations, advances, advance_expenses, bonuses_penalties, petty_cash, daily_reports, work_orders, work_order_items, anbar_reports, inventory_items, inventory_transactions, inventory_serials, purchase_requests, pending_transfers, subcontractors(+services, face_items, daily_entries, entry_items, payments — فقط برای «ارسال برای تعمیر» انبار نگه داشته شد)، archive_folders/files, personnel_documents, notifications, notification_recipients, push_subscriptions, chat_channels, chat_channel_members, chat_messages, audit_log, settings, settings_requests.
+> `hse_reports` و `arash_coin_*` دیگر در نصب تازه ساخته نمی‌شوند (روی هاست‌های قدیمی دست‌نخورده باقی‌اند — keep_db). `bonuses_penalties` عمداً نگه داشته شد چون محاسبهٔ حقوق (`salary_calc.php`) مستقیماً از آن می‌خواند.
 > ستون‌ها از تمام `INSERT`/`UPDATE`/`SELECT` کد استخراج و در `install_db.php` بازسازی شد. فایل `migrate.php` اصلی **در فایل ارسالی وجود نداشت**؛ به همین دلیل schema نصب‌کننده بازنویسی شد.
 
 ---
@@ -77,7 +78,7 @@ includes/ ───────────┘  lang.php/legacy_i18n* (fa/ar/en)
 | داشبورد/گزارش‌ها/پرینت | نگه‌دار — ویجت‌های جدید بازرگانی جایگزین ویجت‌های کارگاهی |
 | آرشیو اسناد | نگه‌دار — عالی برای بارنامه/ترخیص‌نامه/فاکتورها |
 | `inventory_*` | نگه‌دار — بازتعریف: «انبار کالاهای فروش/وارداتی» (نه ابزار کارگاه) |
-| **Arash Coin** (گیمیفیکیشن: سکه، قوانین، چالش، فصل، پاداش، کیف پول) | نگه‌دار و ری‌برند به **«سپیـدکوین»** — ایده‌آل برای انگیزش تیم‌های فروش (تماس موفق، پیگیری به‌موقع، نرخ تبدیل) |
+| **Arash Coin** (گیمیفیکیشن: سکه، قوانین، چالش، فصل، پاداش، کیف پول) | ❌ **حذف کامل شد (۲۰۲۶-۱۱-۰۸)** — کد، دارایی‌ها، منو، گیت دسترسی و پیام‌های مرتبط؛ `includes/arash_coin.php` به stub بی‌اثر تبدیل شد تا فراخوانی‌های باقی‌مانده نشکنند؛ جدول‌های `arash_coin_*` روی هاست دست‌نخورده باقی‌اند |
 
 ### 🟡 نگه‌دار موقت با معنای جدید (بازتعریف، نه حذف)
 | ماژول | تبدیل به |
@@ -85,14 +86,14 @@ includes/ ───────────┘  lang.php/legacy_i18n* (fa/ar/en)
 | `workshops` (کارگاه‌ها) | «دفتر/واحد/تیم» موقتاً — در فاز ۱ به `teams` مهاجرت می‌کند (تلفنی/دیجیتال/حضوری + مالی + مدیریت) |
 | `missions` | «مأموریت حضوری کارشناس فروش» |
 | `work_orders` + آیتم‌ها | «وظایف/تسک فروش» (یا جایگزینی با ماژول تسک جدید) — تصمیم با شما |
-| `subcontractors` | «طرف حساب: تأمین‌کننده خارجی / شرکت حمل / ترخیص‌کار / بازرس کیفیت» |
+| `subcontractors` | پنل مدیریت حذف شد (۲۰۲۶-۱۱-۰۸)؛ «ارسال برای تعمیر» انبار (dropdown تعمیرکار + هزینه روی حساب پیمانکار) نگه داشته شد — keep_repair |
 | `depreciation` (استهلاک) | نگه‌دار اختیاری — دارایی‌های ثابت شرکت |
 | `daily_reports` | «گزارش کار روزانه کارشناس» (تماس‌ها/پیگیری‌ها/نتایج) |
 
 ### ❌ حذف/بایگانی (مخصوص کارگاه ساختمانی — به کار بازرگانی نمی‌آید)
 | ماژول | دلیل |
 |---|---|
-| HSE + `hse_report` (ایمنی کارگاه) | بی‌ربط — حذف از منو (کد در بایگانی می‌ماند) |
+| HSE + `hse_report` (ایمنی کارگاه) | ❌ **حذف کامل شد (۲۰۲۶-۱۱-۰۸)** — `hse_report.php` + جدول `hse_reports` از نصب حذف شد |
 | `rest_track` قواعد ۶۰ دقیقه‌ای کارگاهی | ساده‌سازی در قالب حضور و غیاب جدید |
 | `temp_entry_grants` (ثبت ساعت کارگاهی موقت) | حذف یا بازنویسی به مجوز «دورکاری» |
 | `attendance_alerts` با منطق کارگاه | ادغام در گزارش حضور تیم |
@@ -222,7 +223,7 @@ includes/ ───────────┘  lang.php/legacy_i18n* (fa/ar/en)
 4. مایگریشن دادهٔ فعلی: دیتابیس قدیم (کارگاهی) را به دیتابیس جدید منتقل کنیم یا نصب کاملاً تمیز؟
 5. توکن تلفنچی + فهرست داخلی‌های کارشناسان و اینکه هر داخلی مال کدام کارشناس است
 6. سرویس AI موردنظر و کلید API
-7. آیا «سپیداسکوین» (گیمیفیکیشن) را برای تیم‌های فروش نگه می‌دارید یا حذف؟
+7. آیا «سپیداسکوین» (گیمیفیکیشن) را برای تیم‌های فروش نگه می‌دارید یا حذف؟ — **پاسخ (۲۰۲۶-۱۱-۰۸): حذف کامل شد**
 8. آیا ماژول «فروش مستقیم/فروشگاه» در فاز ۲ می‌آید یا با CRM اصلی یکی شود؟ اولویت فاز ۱ و ۲ را تأیید کنید
 9. آیا سیستم باید دقیقاً مثل قبل fa/ar/en باشد؟ (فارسی فقط کافی است؟)
 10. فاکتورها: چاپ روی «سربرگ چاپی شرکت» یا PDF با مهر دیجیتال؟
@@ -233,6 +234,7 @@ includes/ ───────────┘  lang.php/legacy_i18n* (fa/ar/en)
 
 | تاریخ | فاز | کار انجام‌شده |
 |---|---|---|
+| ۲۰۲۶-۱۱-۰۸ | حذف ماژول | پاک‌سازی ماژول‌های خارج از حوزهٔ بازرگانی (تصمیم کارفرما): **HSE** (`hse_report.php` + `hse_reports` از نصب) • **فرم‌های رسمی کارگاهی** (`report_print`، `worker_payment_print`، `subcontractor_payment_print`) • **پاداش ساختمانی** (`bonus_penalty.php` + تب/گزارش `rep_bonuses`) • **WTTP COIN** (صفحه، دارایی‌ها، منو، تلهٔ ضدتقلب داشبورد، پیام‌های حقوق؛ `arash_coin.php` → stub بی‌اثر؛ purge پرسنل به‌دلیل وابستگی حقوق حفظ شد) • **پنل مدیریت پیمانکاران** (`subcontractors.php`، `subcontractor_link.php`، تب گزارش، هشدار سقف قرارداد داشبورد؛ «ارسال برای تعمیر» انبار و جدول‌های `subcontractor_*` به درخواست کارفرما **نگه داشته شد**) • گیت دسترسی/منو/رجیستری صفحات/تور راهنما/`sw.js` پاک‌سازی شد • **روی دیتابیس هاست هیچ تغییری انجام نشد**؛ نصب تازه جدول‌های حذف‌شده را نمی‌سازد (`bonuses_penalties` نگه داشته شد) |
 | ۲۰۲۶-۱۱-۰۶ | ۰ | پوشهٔ `crm_derakht_sepid/` ساخته شد؛ فایل ارسالی (`htdocs.txt`=ZIP) استخراج و مستقیماً زیر آن ریخته شد؛ `htdocs/` و پوشهٔ آپلود حذف شدند؛ تحلیل کامل اتصالات کد (۷۴ فایل PHP)؛ `install_db.php` (۶۰+ جدول + seed: admin تصادفی + ستاد مرکزی + تنظیمات)؛ sanitization امنیتی: creds دیتابیس از `config.php` حذف، `vapid.json` واقعی حذف و نمونه ساخته شد، `config.local.php` (gitignored) با اطلاعات دیتابیس جدید، `.gitignore` تکمیل شد؛ این سند نوشته شد |
 | ۲۰۲۶-۱۱-۰۸ | فاز ۲ | صفحهٔ `crm_teams` (مدیریت تیم‌ها/تخصیص اعضا از UI) • کارت‌های خلاصهٔ CRM در داشبورد (پایپ‌لاین/وظایف معوق/سرنخ‌های هفته) • لینک‌های دانلود خام فایل‌ها برای جایگزینی روی هاست |
 | ۲۰۲۶-۱۱-۰۸ | رفع اشکال | تطبیق اسکیمای نصب با کدی که حتماً به ستون‌های users.status / work_hours.protest_* / missions.end_* / chat_channels.status / notifications.target_user_id / inventory_transactions.(delivered_by,return_time,approved_by,return_condition) / inventory_items.status / purchase_requests.(approved_by,approved_at,rejection_reason) / arash_coin_flags.status / subcontractors.(iban,opening_balance) متکی است • CREATEها تکمیل و ارتقای idempotent یکپارچه در install_db.php افزوده شد • ۷۷/۷۷ PHP سالم |

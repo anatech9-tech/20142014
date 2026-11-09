@@ -72,7 +72,6 @@
         common: [
             { sel: '.sidebar', title: { fa: 'منوی کناری', ar: 'القائمة الجانبية', en: 'Sidebar menu' }, text: { fa: 'از اینجا به همه بخش‌های سیستم دسترسی داری. روی موبایل با دکمه ☰ باز می‌شود و با ضربه بیرون از منو بسته می‌شود.', ar: 'من هنا تصل إلى جميع أقسام النظام. على الجوال يُفتح بزر ☰ ويُغلق بالنقر خارجه.', en: 'Access all sections from here. On mobile it opens with the ☰ button and closes by tapping outside.' } },
             { sel: '.page-title', title: { fa: 'عنوان صفحه', ar: 'عنوان الصفحة', en: 'Page title' }, text: { fa: 'نام صفحه فعلی و مسیر کاری‌ات را نشان می‌دهد.', ar: 'يعرض اسم الصفحة الحالية.', en: 'Shows the current page name.' } },
-            { sel: '.arash-coin-balance-link', title: { fa: 'کیف پول WTTP COIN', ar: 'محفظة عملة WTTP', en: 'WTTP COIN wallet' }, text: { fa: 'موجودی WTTP COIN‌ات همین‌جاست؛ با کلیک روی آن به فروشگاه و گردش کیف پول می‌روی.', ar: 'رصيد عملة WTTP هنا؛ اضغط للانتقال إلى المتجر وسجل المحفظة.', en: 'Your WTTP COIN balance; click to open the store and wallet history.' } },
             { sel: '#srvClock', title: { fa: 'ساعت سرور', ar: 'ساعة الخادم', en: 'Server clock' }, text: { fa: 'ساعت و تاریخ سرور (تهران) است نه ساعت گوشی؛ برای ثبت گزارش و ساعت کاری به آن دقت کن.', ar: 'ساعة الخادم (طهران) وليست ساعة الجهاز؛ انتبه لها عند تسجيل التقارير.', en: 'Server time (Tehran), not your device clock — rely on it when logging reports.' } },
             { sel: '#langBtn', title: { fa: 'انتخاب زبان', ar: 'اختيار اللغة', en: 'Language switcher' }, text: { fa: 'زبان رابط کاربری را بین فارسی، عربی و انگلیسی تغییر بده.', ar: 'غيّر لغة الواجهة بين الفارسية والعربية والإنجليزية.', en: 'Switch the UI language between Farsi, Arabic and English.' } },
             { sel: '#tourStartBtn', title: { fa: 'راهنمای صفحه (؟)', ar: 'دليل الصفحة (؟)', en: 'Page guide (?)' }, text: { fa: 'با زدن همین دکمه، تور راهنما شروع می‌شود و بخش‌های مختلف صفحه را یکی‌یکی با مربع نشانت می‌دهد.', ar: 'اضغط هذا الزر لبدء جولة الشرح لهذه الصفحة.', en: 'Click this button to start the guide tour for this page.' } },
@@ -115,12 +114,6 @@
             { sel: 'input[name="type"]', title: { fa: 'نوع گزارش', ar: 'نوع التقرير', en: 'Report type' }, text: { fa: 'نوع گزارش را عوض کن: حقوق، ساعت کاری، پیمانکاران و...', ar: 'غيّر نوع التقرير.', en: 'Switch between salary, work hours, contractors…' } },
             { sel: '#reportTable', title: { fa: 'جدول گزارش', ar: 'جدول التقرير', en: 'Report table' }, text: { fa: 'نتایج گزارش همین‌جا نمایش داده می‌شود و می‌توانی خروجی Excel/چاپ بگیری.', ar: 'نتائج التقرير هنا مع إمكانية التصدير.', en: 'Results are shown here with Excel/print export.' } },
             { sel: '#salaryChart', title: { fa: 'نمودار', ar: 'الرسم البياني', en: 'Chart' }, text: { fa: 'نمای گرافیکی حقوق و دستمزد برای مقایسه سریع.', ar: 'عرض بياني للرواتب.', en: 'Visual salary overview for quick comparison.' } }
-        ],
-
-        arash_coins: [
-            { sel: '.arash-wallet-hero', title: { fa: 'کیف پول WTTP COIN', ar: 'محفظة عملة WTTP', en: 'WTTP COIN wallet' }, text: { fa: 'موجودی کل و سقف روزانه کیف پولت همین‌جاست.', ar: 'رصيد المحفظة والسقف اليومي هنا.', en: 'Your total balance and daily cap are shown here.' } },
-            { sel: '.arash-reward-card', title: { fa: 'جایزه‌ها', ar: 'الجوائز', en: 'Rewards' }, text: { fa: 'با WTTP COIN‌هایت می‌توانی از این فروشگاه جایزه بگیری.', ar: 'استبدل عملاتك بجوائز من هذا المتجر.', en: 'Spend your coins on rewards from this shop.' } },
-            { sel: '.coin-form-card', title: { fa: 'ثبت تراکنش', ar: 'تسجيل معاملة', en: 'New transaction' }, text: { fa: 'مدیران می‌توانند تراکنش (پاداش/اصلاح) ثبت کنند.', ar: 'يمكن للمدراء تسجيل معاملة.', en: 'Admins can record coin transactions here.' } }
         ],
 
         chat: [
@@ -176,16 +169,11 @@
         work_orders: [
             { sel: '.card', title: { fa: 'دستور کارها', ar: 'أوامر العمل', en: 'Work orders' }, text: { fa: 'لیست دستور کارها و وضعیت هر کدام (جدید/در حال انجام/پایان‌یافته) همین‌جاست.', ar: 'قائمة أوامر العمل.', en: 'Work orders and their status.' } },
             { sel: '[onclick*="taskSendModal"]', title: { fa: 'ارسال دستور کار', ar: 'إرسال أمر عمل', en: 'Send work order' }, text: { fa: 'دستور کار جدید برای یک نفر یا گروه ارسال می‌شود.', ar: 'أرسل أمر عمل لشخص أو مجموعة.', en: 'Send a new work order to a person or team.' }, waitFor: '#taskSendModal' }
-        ],
-
-        subcontractors: [
-            { sel: '.table-container', title: { fa: 'پیمانکاران', ar: 'المقاولون', en: 'Subcontractors' }, text: { fa: 'لیست پیمانکاران، قراردادها و مانده حساب هر کدام.', ar: 'قائمة المقاولين.', en: 'Subcontractors and their balances.' } },
-            { sel: '[onclick*="subSettleModal"]', title: { fa: 'تسویه پیمانکار', ar: 'تسوية مقاول', en: 'Settle contractor' }, text: { fa: 'پرداخت و تسویه حساب پیمانکار از اینجا ثبت می‌شود.', ar: 'سجّل دفع للمقاول.', en: 'Record contractor payments.' }, waitFor: '#subSettleModal' }
         ]
     };
 
     /* صفحات مستقل/چاپی که header.php ندارند — تور با دکمه شناور روی آن‌ها کار می‌کند */
-    var DOC_PAGES = ['hse_report', 'report_print', 'employee_payment_print', 'worker_payment_print', 'subcontractor_payment_print', 'anbar_report', 'petty_cash_print', 'inventory_count_print', 'inventory_label_print', 'work_report', 'salary_detail'];
+    var DOC_PAGES = ['employee_payment_print', 'anbar_report', 'petty_cash_print', 'inventory_count_print', 'inventory_label_print', 'work_report', 'salary_detail'];
 
     /* ─── وضعیت تور ─── */
     var state = { active: false, steps: [], idx: 0, lastEl: null };

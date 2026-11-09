@@ -381,20 +381,6 @@ function schema_statements(): array {
         KEY `idx_dr_ws_status` (`workshop_id`, `status`)
     ) $T";
 
-    $S['hse_reports'] = "CREATE TABLE IF NOT EXISTS `hse_reports` (
-        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        `workshop_id` INT(11) NULL,
-        `workshop_name` VARCHAR(150) NULL,
-        `created_by` INT(11) NULL,
-        `report_date` DATE NULL,
-        `report_number` VARCHAR(50) NULL,
-        `shift` VARCHAR(10) NULL,
-        `weather` VARCHAR(100) NULL,
-        `work_fronts` TEXT NULL,
-        `unsafe_items` TEXT NULL,
-        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-    ) $T";
-
     $S['anbar_reports'] = "CREATE TABLE IF NOT EXISTS `anbar_reports` (
         `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
         `workshop_id` INT(11) NULL,
@@ -583,112 +569,6 @@ function schema_statements(): array {
         `created_by` INT(11) NULL,
         `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         KEY `idx_sp_sub` (`subcontractor_id`, `payment_date`)
-    ) $T";
-
-    // ── سیستم سکه/گیمیفیکیشن (WTTP COIN) ────────────────────
-    $S['arash_coin_transactions'] = "CREATE TABLE IF NOT EXISTS `arash_coin_transactions` (
-        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        `user_id` INT(11) NOT NULL,
-        `workshop_id` INT(11) NULL,
-        `amount` INT(11) NOT NULL DEFAULT 0,
-        `transaction_type` VARCHAR(50) NOT NULL,
-        `description` VARCHAR(500) NULL,
-        `source_key` VARCHAR(120) NULL,
-        `rule_id` INT(11) NULL,
-        `event_date` DATE NULL,
-        `created_by` INT(11) NULL,
-        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        KEY `idx_act_user` (`user_id`, `transaction_type`),
-        UNIQUE KEY `uq_source_key` (`source_key`)
-    ) $T";
-
-    $S['arash_coin_rewards'] = "CREATE TABLE IF NOT EXISTS `arash_coin_rewards` (
-        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        `workshop_id` INT(11) NULL,
-        `title` VARCHAR(200) NOT NULL,
-        `description` VARCHAR(500) NULL,
-        `icon` VARCHAR(50) NULL,
-        `reward_type` VARCHAR(30) NULL,
-        `cost` INT(11) NOT NULL DEFAULT 0,
-        `stock` INT(11) NULL,
-        `leave_days` DECIMAL(4,1) NULL,
-        `created_by` INT(11) NULL,
-        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-    ) $T";
-
-    $S['arash_coin_redemptions'] = "CREATE TABLE IF NOT EXISTS `arash_coin_redemptions` (
-        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        `user_id` INT(11) NOT NULL,
-        `workshop_id` INT(11) NULL,
-        `reward_id` INT(11) NULL,
-        `cost` INT(11) NOT NULL DEFAULT 0,
-        `leave_date` DATE NULL,
-        `status` VARCHAR(20) NOT NULL DEFAULT 'pending',
-        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-    ) $T";
-
-    $S['arash_coin_rules'] = "CREATE TABLE IF NOT EXISTS `arash_coin_rules` (
-        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        `workshop_id` INT(11) NULL,
-        `title` VARCHAR(200) NOT NULL,
-        `event_type` VARCHAR(50) NULL,
-        `task_keyword` VARCHAR(200) NULL,
-        `target_team` VARCHAR(50) NOT NULL DEFAULT 'all',
-        `multiplier` DECIMAL(6,2) NOT NULL DEFAULT 1,
-        `base_coins` INT(11) NOT NULL DEFAULT 0,
-        `priority` INT(11) NOT NULL DEFAULT 0,
-        `start_date` DATE NULL,
-        `end_date` DATE NULL,
-        `created_by` INT(11) NULL,
-        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-    ) $T";
-
-    $S['arash_coin_challenges'] = "CREATE TABLE IF NOT EXISTS `arash_coin_challenges` (
-        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        `workshop_id` INT(11) NULL,
-        `title` VARCHAR(200) NOT NULL,
-        `description` VARCHAR(500) NULL,
-        `event_type` VARCHAR(50) NULL,
-        `task_keyword` VARCHAR(200) NULL,
-        `target_team` VARCHAR(50) NOT NULL DEFAULT 'all',
-        `multiplier` DECIMAL(6,2) NOT NULL DEFAULT 1,
-        `start_date` DATE NULL,
-        `end_date` DATE NULL,
-        `created_by` INT(11) NULL,
-        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-    ) $T";
-
-    $S['arash_coin_seasons'] = "CREATE TABLE IF NOT EXISTS `arash_coin_seasons` (
-        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        `workshop_id` INT(11) NULL,
-        `title` VARCHAR(200) NOT NULL,
-        `description` VARCHAR(500) NULL,
-        `start_date` DATE NULL,
-        `end_date` DATE NULL,
-        `created_by` INT(11) NULL,
-        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-    ) $T";
-
-    $S['arash_coin_flags'] = "CREATE TABLE IF NOT EXISTS `arash_coin_flags` (
-        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        `user_id` INT(11) NOT NULL,
-        `workshop_id` INT(11) NULL,
-        `flag_date` DATE NULL,
-        `status` VARCHAR(20) NOT NULL DEFAULT 'open',
-        `severity` VARCHAR(20) NULL,
-        `reason` VARCHAR(500) NULL,
-        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-    ) $T";
-
-    $S['arash_coin_wallet_controls'] = "CREATE TABLE IF NOT EXISTS `arash_coin_wallet_controls` (
-        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        `user_id` INT(11) NOT NULL,
-        `workshop_id` INT(11) NULL,
-        `is_locked` TINYINT(1) NOT NULL DEFAULT 0,
-        `locked_by` INT(11) NULL,
-        `reason` VARCHAR(500) NULL,
-        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY `uq_wallet` (`user_id`, `workshop_id`)
     ) $T";
 
     // ── ارتباطات، اعلان، چت ──────────────────────────────────
@@ -997,7 +877,6 @@ function run_install(PDO $pdo): array {
         ['purchase_requests', 'approved_by', "ALTER TABLE purchase_requests ADD COLUMN approved_by INT(11) NULL"],
         ['purchase_requests', 'approved_at', "ALTER TABLE purchase_requests ADD COLUMN approved_at DATETIME NULL"],
         ['purchase_requests', 'rejection_reason', "ALTER TABLE purchase_requests ADD COLUMN rejection_reason VARCHAR(255) NULL"],
-        ['arash_coin_flags', 'status', "ALTER TABLE arash_coin_flags ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'open'"],
         ['subcontractors', 'iban', "ALTER TABLE subcontractors ADD COLUMN iban VARCHAR(34) NULL"],
         ['subcontractors', 'opening_balance', "ALTER TABLE subcontractors ADD COLUMN opening_balance DECIMAL(15,2) NOT NULL DEFAULT 0"],
     ];
