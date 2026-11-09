@@ -88,7 +88,18 @@ require_once __DIR__ . '/includes/operations_hub.php';
 
 // Helper Functions
 function is_logged_in() {
-    return isset($_SESSION['user_id']);
+    if (!isset($_SESSION['user_id'])) return false;
+    // اگر حساب در دیتابیس حذف شده باشد، نشستِ باز هم دیگر معتبر نیست (یک query ارزان در هر درخواست).
+    static $exists = null;
+    if ($exists === null) {
+        try {
+            global $pdo;
+            $st = $pdo->prepare("SELECT 1 FROM users WHERE id = ? LIMIT 1");
+            $st->execute([(int)$_SESSION['user_id']]);
+            $exists = (bool)$st->fetchColumn();
+        } catch (Throwable $e) { $exists = true; /* DB در دسترس نیست: رفتار قبلی را حفظ کن */ }
+    }
+    return $exists;
 }
 
 function require_login() {
