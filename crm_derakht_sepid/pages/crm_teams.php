@@ -14,10 +14,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name    = trim((string)($_POST['name'] ?? ''));
         $mgr     = (int)($_POST['manager_user_id'] ?? 0) ?: null;
         $status  = ($_POST['status'] ?? 'active') === 'active' ? 'active' : 'inactive';
+        $code    = trim((string)($_POST['code'] ?? ''));
         if ($id > 0 && $name !== '') {
             $pdo->prepare("UPDATE teams SET name = ?, manager_user_id = ?, status = ? WHERE id = ?")->execute([$name, $mgr, $status, $id]);
             operations_audit($pdo, $me, 'crm_team_update', 'team', $id, $name);
             showToast('تیم به‌روزرسانی شد.');
+        } elseif ($id === 0 && $name !== '') {
+            // افزودن تیم جدید (مثلاً برای اجرای بذر سند نهایی روی دیتابیس‌های قدیمی)
+            if ($code === '' || !preg_match('/^[a-z0-9_\-]+$/i', $code)) { $code = 'team_' . time(); }
+            $dup = $pdo->prepare("SELECT id FROM teams WHERE code = ?");
+            $dup->execute([$code]);
+            if ($dup->fetch()) { $code = 'team_' . time(); }
+            $pdo->prepare("INSERT INTO teams (code, name, manager_user_id, status) VALUES (?,?,?,'active')")->execute([$code, $name, $mgr]);
+            $newId = (int)$pdo->lastInsertId();
+            operations_audit($pdo, $me, 'crm_team_create', 'team', $newId, $name);
+            showToast('تیم ساخته شد: ' . $name);
         }
         redirect('index.php?page=crm_teams');
     }
@@ -60,6 +71,19 @@ include 'includes/header.php';
     <a href="index.php?page=crm_customers" class="btn btn-ghost"><i data-lucide="arrow-right"></i> CRM</a>
 </div>
 
+<div class="card animate-in">
+    <div class="card-header"><h3 class="card-title">➕ افزودن تیم</h3></div>
+    <form method="post" class="d-flex gap-2 align-center" style="padding:10px 12px;flex-wrap:wrap">
+        <?= get_csrf_field() ?><input type="hidden" name="action" value="save_team"><input type="hidden" name="id" value="0">
+        <input name="name" class="form-control" style="max-width:260px" placeholder="نام تیم (مثلاً تیم توسعه بازار)" required>
+        <input name="code" class="form-control" style="max-width:180px" placeholder="کد لاتین (اختیاری)" pattern="[A-Za-z0-9_\-]+" dir="ltr">
+        <select name="manager_user_id" class="form-control" style="max-width:220px"><option value="0">— بدون مدیر —</option>
+            <?php foreach ($managerOptions as $u): ?><option value="<?= (int)$u['id'] ?>"><?= htmlspecialchars($u['full_name']) ?></option><?php endforeach; ?>
+        </select>
+        <button type="submit" class="btn btn-primary"><i data-lucide="plus"></i> ساخت تیم</button>
+    </form>
+    <p class="text-muted" style="padding:0 12px 10px;font-size:11px">بذر سند نهایی برای نصب تازه شامل «تیم فروش تلفنی / آنلاین / سازمانی» و «تیم توسعه بازار» است؛ روی دیتابیس‌های قدیمی همین‌جا تیم‌های معادل را بسازید و با فرم ویرایش، نام تیم‌های «دیجیتال/حضوری» قدیمی را تطبیق دهید.</p>
+</div>
 <div class="card animate-in">
     <div class="card-header"><h3 class="card-title">👥 تیم‌ها <span class="text-muted" style="font-size:11px;font-weight:400">(مدیر تیم = دیدن همهٔ مشتریان/سرنخ‌ها/معاملات تیم)</span></h3></div>
     <div style="display:flex;flex-direction:column">
