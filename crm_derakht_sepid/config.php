@@ -675,10 +675,61 @@ function crm_scope_where(PDO $pdo, string $alias = 'c'): array {
     return ["$a.owner_user_id = ?", [$uid]];
 }
 
-/** لیست تیم‌ها (برای فرم‌ها) */
+/** لیست تیم‌ها (برای فرم‌ها) — کدهای سند نهایی ساختار سازمانی + کدهای قدیمیِ نصب‌های قبلی */
 function all_teams(PDO $pdo): array {
     try {
-        return $pdo->query("SELECT id, code, name, manager_user_id FROM teams WHERE status = 'active' ORDER BY FIELD(code,'phone','digital','field'), id")->fetchAll();
+        return $pdo->query("SELECT id, code, name, manager_user_id FROM teams WHERE status = 'active' ORDER BY FIELD(code,'sales_phone','sales_online','sales_b2b','bd','phone','digital','field'), id")->fetchAll();
+    } catch (Throwable $e) { return []; }
+}
+
+/**
+ * ══ §org: سمت‌های سازمانی (سند نهایی ساختار سازمانی و نظام کمیسیون — ۲۰۲۶-۱۱) ══
+ * لایهٔ «جایگاه سازمانی» مستقل از «نقش دسترسی سیستم» (role) است:
+ *   role = سطح دسترسی (admin/nazer/…)  |  org_role_id = سمت در سند سازمانی نهایی
+ * این تابع همان‌جا که لازم است، شمای مربوطه را self-heal می‌کند (idempotent).
+ */
+function ensure_org_roles_schema(PDO $pdo): bool {
+    static $done = null;
+    if ($done !== null) return $done;
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS `org_roles` (
+            `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            `code` VARCHAR(40) NOT NULL,
+            `name` VARCHAR(150) NOT NULL,
+            `stage` VARCHAR(20) NOT NULL DEFAULT 'stage1',
+            `description` VARCHAR(255) NULL,
+            `sort_order` INT(11) NOT NULL DEFAULT 0,
+            `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+            UNIQUE KEY `uq_org_roles_code` (`code`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        // دیتای مرجع سمت‌ها — دقیقاً منطبق با سند نهایی (متن اسلایدها در docs/COMPANY_ORG_POLICY.md)
+        $seed = [
+            ['ceo',                   'مدیرعامل / مدیر بازرگانی',                 'stage1', 'مالک شرکت؛ روابط خارجی، سورسینگ و خرید چین، قیمت‌گذاری نهایی', 10],
+            ['sales_manager',         'مدیر فروش',                                'stage1', 'هدف‌گذاری، هدایت تیم و کنترل قیف فروش (نه صرفاً ناظر)', 20],
+            ['sales_expert',          'کارشناس فروش (تلفنی/آنلاین/سازمانی)',      'stage1', 'تبدیل سرنخ به فروش؛ کانال از روی تیم مشخص می‌شود', 30],
+            ['order_coordinator',     'هماهنگ‌کنندهٔ سفارشات',                    'stage1', 'پروندهٔ یکتا، پیگیری، ارائهٔ به‌روزرسانی مشتری و بستن پرونده', 40],
+            ['business_development',  'توسعه بازار',                              'stage1', 'جذب مشتری جدید قابل اثبات؛ جدا از تیم فروش', 50],
+            ['accountant_outsourced', 'حسابدار (برون‌سپاری)',                     'stage1', 'اسناد، وصول و گزارش؛ کنترل هزینه/کیفیت داخل شرکت می‌ماند', 60],
+            ['ops_manager',           'مدیر عملیات',                              'growth', 'چارت توسعه‌یافته: سورسینگ/خرید/لجستیک/ترخیص/انبار', 70],
+            ['finance_manager',       'مدیر مالی',                                'growth', 'چارت توسعه‌یافته: حسابداری، خزانه، بودجه و گزارش مالی', 80],
+        ];
+        $st = $pdo->prepare("INSERT IGNORE INTO org_roles (code, name, stage, description, sort_order) VALUES (?,?,?,?,?)");
+        foreach ($seed as $r) { $st->execute($r); }
+        if (!db_has_column($pdo, 'users', 'org_role_id')) {
+            try { $pdo->exec("ALTER TABLE users ADD COLUMN org_role_id INT(11) NULL DEFAULT NULL"); } catch (Throwable $e) { /* احتمالاً هم‌زمان اضافه شده */ }
+        }
+        $done = true;
+    } catch (Throwable $e) {
+        $done = false;
+    }
+    return $done;
+}
+
+/** لیست سمت‌های سازمانی فعال (برای فرم‌ها) — self-heal در اولین فراخوانی */
+function all_org_roles(PDO $pdo): array {
+    if (!ensure_org_roles_schema($pdo)) return [];
+    try {
+        return $pdo->query("SELECT id, code, name, stage, description, sort_order FROM org_roles WHERE is_active = 1 ORDER BY sort_order, id")->fetchAll();
     } catch (Throwable $e) { return []; }
 }
 

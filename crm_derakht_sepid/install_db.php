@@ -77,9 +77,11 @@ function schema_statements(): array {
         `is_karigar` TINYINT(2) NOT NULL DEFAULT 0,
         `status` VARCHAR(20) NOT NULL DEFAULT 'active',
         `team_id` INT(11) NULL,
+        `org_role_id` INT(11) NULL,
         `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY `uq_users_username` (`username`),
-        KEY `idx_users_team` (`team_id`)
+        KEY `idx_users_team` (`team_id`),
+        KEY `idx_users_org_role` (`org_role_id`)
     ) $T";
 
     $S['user_permissions'] = "CREATE TABLE IF NOT EXISTS `user_permissions` (
@@ -707,6 +709,18 @@ function schema_statements(): array {
         UNIQUE KEY `uq_teams_code` (`code`)
     ) $T";
 
+    // ══ §org: سمت‌های سازمانی (سند نهایی ساختار سازمانی — docs/COMPANY_ORG_POLICY.md) ══
+    $S['org_roles'] = "CREATE TABLE IF NOT EXISTS `org_roles` (
+        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        `code` VARCHAR(40) NOT NULL,
+        `name` VARCHAR(150) NOT NULL,
+        `stage` VARCHAR(20) NOT NULL DEFAULT 'stage1',
+        `description` VARCHAR(255) NULL,
+        `sort_order` INT(11) NOT NULL DEFAULT 0,
+        `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+        UNIQUE KEY `uq_org_roles_code` (`code`)
+    ) $T";
+
     $S['crm_customers'] = "CREATE TABLE IF NOT EXISTS `crm_customers` (
         `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
         `type` ENUM('company','person') NOT NULL DEFAULT 'company',
@@ -879,6 +893,7 @@ function run_install(PDO $pdo): array {
         ['purchase_requests', 'rejection_reason', "ALTER TABLE purchase_requests ADD COLUMN rejection_reason VARCHAR(255) NULL"],
         ['subcontractors', 'iban', "ALTER TABLE subcontractors ADD COLUMN iban VARCHAR(34) NULL"],
         ['subcontractors', 'opening_balance', "ALTER TABLE subcontractors ADD COLUMN opening_balance DECIMAL(15,2) NOT NULL DEFAULT 0"],
+        ['users', 'org_role_id', "ALTER TABLE users ADD COLUMN org_role_id INT(11) NULL DEFAULT NULL"],
     ];
     foreach ($crmUpgrades as $crmUp) {
         [$__tbl, $__col, $__sql] = $crmUp;
@@ -935,14 +950,30 @@ function run_install(PDO $pdo): array {
         $log[] = '✓ کاربر «admin» (مدیر کل) ساخته شد.';
     }
 
-    // ── تیم‌های فروش (قابل تغییر در تنظیمات بعداً)
+    // ── تیم‌های فروش مطابق سند نهایی ساختار سازمانی (فقط نصب‌های تازه)
     $teamCount = (int)$pdo->query("SELECT COUNT(*) FROM teams")->fetchColumn();
     if ($teamCount === 0) {
-        $pdo->prepare("INSERT INTO teams (code, name) VALUES (?,?)")->execute(['phone', 'تیم فروش تلفنی']);
-        $pdo->prepare("INSERT INTO teams (code, name) VALUES (?,?)")->execute(['digital', 'تیم فروش دیجیتال']);
-        $pdo->prepare("INSERT INTO teams (code, name) VALUES (?,?)")->execute(['field', 'تیم فروش حضوری']);
-        $log[] = '✓ تیم‌های فروش تلفنی/دیجیتال/حضوری ساخته شدند.';
+        $pdo->prepare("INSERT INTO teams (code, name) VALUES (?,?)")->execute(['sales_phone', 'تیم فروش تلفنی']);
+        $pdo->prepare("INSERT INTO teams (code, name) VALUES (?,?)")->execute(['sales_online', 'تیم فروش آنلاین']);
+        $pdo->prepare("INSERT INTO teams (code, name) VALUES (?,?)")->execute(['sales_b2b', 'تیم فروش سازمانی']);
+        $pdo->prepare("INSERT INTO teams (code, name) VALUES (?,?)")->execute(['bd', 'تیم توسعه بازار']);
+        $log[] = '✓ تیم‌های سند نهایی (فروش تلفنی/آنلاین/سازمانی + توسعه بازار) ساخته شدند.';
     }
+
+    // ── سمت‌های سازمانی (دیتای مرجع؛ فقط کدهای ناموجود درج می‌شوند)
+    $orgSeed = [
+        ['ceo', 'مدیرعامل / مدیر بازرگانی', 'stage1', 'مالک شرکت؛ روابط خارجی، سورسینگ و خرید چین، قیمت‌گذاری نهایی', 10],
+        ['sales_manager', 'مدیر فروش', 'stage1', 'هدف‌گذاری، هدایت تیم و کنترل قیف فروش (نه صرفاً ناظر)', 20],
+        ['sales_expert', 'کارشناس فروش (تلفنی/آنلاین/سازمانی)', 'stage1', 'تبدیل سرنخ به فروش؛ کانال از روی تیم مشخص می‌شود', 30],
+        ['order_coordinator', 'هماهنگ‌کنندهٔ سفارشات', 'stage1', 'پروندهٔ یکتا، پیگیری، ارائهٔ به‌روزرسانی مشتری و بستن پرونده', 40],
+        ['business_development', 'توسعه بازار', 'stage1', 'جذب مشتری جدید قابل اثبات؛ جدا از تیم فروش', 50],
+        ['accountant_outsourced', 'حسابدار (برون‌سپاری)', 'stage1', 'اسناد، وصول و گزارش؛ کنترل هزینه/کیفیت داخل شرکت می‌ماند', 60],
+        ['ops_manager', 'مدیر عملیات', 'growth', 'چارت توسعه‌یافته: سورسینگ/خرید/لجستیک/ترخیص/انبار', 70],
+        ['finance_manager', 'مدیر مالی', 'growth', 'چارت توسعه‌یافته: حسابداری، خزانه، بودجه و گزارش مالی', 80],
+    ];
+    $stOrg = $pdo->prepare("INSERT IGNORE INTO org_roles (code, name, stage, description, sort_order) VALUES (?,?,?,?,?)");
+    foreach ($orgSeed as $r) { $stOrg->execute($r); }
+    $log[] = '✓ سمت‌های سازمانی سند نهایی ثبت/تأیید شدند.';
 
     // ── مراحل پایپ‌لاین واردات (پیش‌فاکتور تا تحویل)
     $stageCount = (int)$pdo->query("SELECT COUNT(*) FROM crm_deal_stages")->fetchColumn();

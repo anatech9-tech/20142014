@@ -23,18 +23,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'assign_user') {
-        $userId = (int)($_POST['user_id'] ?? 0);
-        $teamId = (int)($_POST['team_id'] ?? 0) ?: null;
+        // اطمینان از وجود شمای §org پیش از به‌روزرسانی (self-heal؛ بدون حذف)
+        ensure_org_roles_schema($pdo);
+        $userId    = (int)($_POST['user_id'] ?? 0);
+        $teamId    = (int)($_POST['team_id'] ?? 0) ?: null;
+        $orgRoleId = (int)($_POST['org_role_id'] ?? 0) ?: null;
         if ($userId > 0) {
-            $pdo->prepare("UPDATE users SET team_id = ? WHERE id = ?")->execute([$teamId, $userId]);
-            showToast('تخصیص تیم ذخیره شد.');
+            if (db_has_column($pdo, 'users', 'org_role_id')) {
+                $pdo->prepare("UPDATE users SET team_id = ?, org_role_id = ? WHERE id = ?")->execute([$teamId, $orgRoleId, $userId]);
+            } else {
+                $pdo->prepare("UPDATE users SET team_id = ? WHERE id = ?")->execute([$teamId, $userId]);
+            }
+            $nmSt = $pdo->prepare("SELECT full_name FROM users WHERE id = ?");
+            $nmSt->execute([$userId]);
+            $nmVal = (string)($nmSt->fetchColumn() ?: '');
+            operations_audit($pdo, $me, 'crm_org_assign', 'user', $userId, trim($nmVal . ' | سمت سازمانی: ' . ($orgRoleId ?? '∅') . ' | تیم: ' . ($teamId ?? '∅')));
+            showToast('تخصیص تیم و سمت سازمانی ذخیره شد.');
         }
         redirect('index.php?page=crm_teams');
     }
 }
 
 $teams         = all_teams($pdo);
-$users         = $pdo->query("SELECT id, full_name, role, team_id FROM users ORDER BY (role='admin'), full_name")->fetchAll();
+$orgRoles      = all_org_roles($pdo); // §org — self-heal شمای سمت‌های سازمانی
+$hasOrgCol     = db_has_column($pdo, 'users', 'org_role_id');
+$userCols      = $hasOrgCol ? 'id, full_name, role, team_id, org_role_id' : 'id, full_name, role, team_id';
+$users         = $pdo->query("SELECT $userCols FROM users ORDER BY (role='admin'), full_name")->fetchAll();
 $managerOptions = $users;
 
 $rowStyle = 'display:grid;grid-template-columns:70px 1.1fr 1fr 110px 44px;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border)';
@@ -68,9 +82,9 @@ include 'includes/header.php';
 <div class="card animate-in">
     <div class="card-header"><h3 class="card-title">🧑‍💼 تخصیص اعضا به تیم</h3></div>
     <div style="display:flex;flex-direction:column">
-        <div style="<?= $rowStyle ?>;grid-template-columns:50px 1fr 110px 1fr 44px;background:var(--bg);font-size:11px;color:var(--text-secondary);border-bottom:2px solid var(--border)"><div>#</div><div>نام</div><div>نقش</div><div>تیم</div><div></div></div>
+        <div style="<?= $rowStyle ?>;grid-template-columns:44px 1fr 96px 1fr 1fr 44px;background:var(--bg);font-size:11px;color:var(--text-secondary);border-bottom:2px solid var(--border)"><div>#</div><div>نام</div><div>نقش سیستم</div><div>تیم</div><div>سمت سازمانی</div><div></div></div>
         <?php foreach ($users as $u): ?>
-        <form method="post" style="<?= $rowStyle ?>;grid-template-columns:50px 1fr 110px 1fr 44px;margin:0">
+        <form method="post" style="<?= $rowStyle ?>;grid-template-columns:44px 1fr 96px 1fr 1fr 44px;margin:0">
             <?= get_csrf_field() ?><input type="hidden" name="action" value="assign_user"><input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
             <div><?= (int)$u['id'] ?></div>
             <div><?= htmlspecialchars($u['full_name']) ?></div>
@@ -78,10 +92,37 @@ include 'includes/header.php';
             <div><select name="team_id" class="form-control"><option value="0">— بدون تیم —</option>
                 <?php foreach ($teams as $t): ?><option value="<?= (int)$t['id'] ?>" <?= (int)($u['team_id'] ?? 0) === (int)$t['id'] ? 'selected' : '' ?>><?= htmlspecialchars($t['name']) ?></option><?php endforeach; ?>
             </select></div>
+            <div><select name="org_role_id" class="form-control" <?= $hasOrgCol ? '' : 'disabled' ?>><option value="0">— بدون سمت —</option>
+                <optgroup label="مرحلهٔ استقرار (سند نهایی)">
+                    <?php foreach ($orgRoles as $or): if ($or['stage'] !== 'stage1') continue; ?><option value="<?= (int)$or['id'] ?>" <?= (int)($u['org_role_id'] ?? 0) === (int)$or['id'] ? 'selected' : '' ?>><?= htmlspecialchars($or['name']) ?></option><?php endforeach; ?>
+                </optgroup>
+                <optgroup label="چارت توسعه‌یافته (پس از رشد)">
+                    <?php foreach ($orgRoles as $or): if ($or['stage'] !== 'growth') continue; ?><option value="<?= (int)$or['id'] ?>" <?= (int)($u['org_role_id'] ?? 0) === (int)$or['id'] ? 'selected' : '' ?>><?= htmlspecialchars($or['name']) ?></option><?php endforeach; ?>
+                </optgroup>
+            </select></div>
             <div><button type="submit" class="btn btn-ghost btn-sm"><i data-lucide="check"></i></button></div>
         </form>
         <?php endforeach; ?>
         <?php if (!$users): ?><div class="text-muted text-center" style="padding:20px">هنوز کاربری وجود ندارد.</div><?php endif; ?>
     </div>
+</div>
+<div class="card animate-in">
+    <div class="card-header"><h3 class="card-title">🏛️ سمت‌های سازمانی — سند نهایی ساختار سازمانی و کمیسیون</h3></div>
+    <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="color:var(--text-secondary);text-align:right"><th style="padding:6px 10px">سمت</th><th style="padding:6px 10px">مرحله</th><th style="padding:6px 10px">شرح (از سند)</th></tr></thead>
+            <tbody>
+            <?php foreach ($orgRoles as $or): ?>
+                <tr style="border-top:1px solid var(--border)">
+                    <td style="padding:8px 10px;font-weight:600"><?= htmlspecialchars($or['name']) ?></td>
+                    <td style="padding:8px 10px;white-space:nowrap"><span class="badge" style="background:var(--bg)"><?= $or['stage'] === 'growth' ? 'توسعهٔ مرحله‌ای' : 'استقرار (۶ ماههٔ اول)' ?></span></td>
+                    <td style="padding:8px 10px;color:var(--text-secondary)"><?= htmlspecialchars((string)($or['description'] ?? '')) ?></td>
+                </tr>
+            <?php endforeach; ?>
+            <?php if (!$orgRoles): ?><tr><td colspan="3" class="text-muted text-center" style="padding:18px">شمای سمت‌های سازمانی هنوز در این دیتابیس ساخته نشده (صفحه به‌صورت خودکار می‌سازد؛ اگر نمایش داده نشد با مدیر سیستم تماس بگیرید).</td></tr><?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <p class="text-muted" style="padding:8px 12px;font-size:11px">«نقش سیستم» = سطح دسترسی نرم‌افزار (admin/…) و با این سمت یکی نیست. تیم فروش و تیم توسعه بازار عمداً جدا هستند تا انتساب لید و کمیسیون دوباره‌شماری نشود. اعداد تارگت/کمیسیون از سند می‌آیند و عمداً در برنامه هاردکد نشده‌اند (فاز ۴: موتور کمیسیون پیکربندی‌پذیر).</p>
 </div>
 <?php include 'includes/footer.php'; ?>
