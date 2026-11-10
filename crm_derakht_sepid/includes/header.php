@@ -135,6 +135,7 @@ if (!access_is_special_account()) {
                 'crm_deals'      => ['crm_deals', 'trending-up', t('nav_crm_deals'), true],
                 'crm_tasks'      => ['crm_tasks', 'list-todo', t('nav_crm_tasks'), true],
                 'crm_teams'      => ['crm_teams', 'users-round', t('nav_crm_teams'), $is_admin],
+                'telefonchy_events' => ['telefonchy_events', 'phone-call', t('nav_telefonchy_events'), $is_admin],
             ];
 
             // ترتیب دلخواه از تنظیمات (menu_order) + آیتم‌های جدید ته لیست

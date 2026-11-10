@@ -272,6 +272,10 @@ switch ($page) {
         require_login();
         include 'pages/crm_teams.php';
         break;
+    case 'telefonchy_events':
+        require_login();
+        include 'pages/telefonchy_events.php';
+        break;
     default:
         if (is_logged_in()) {
             redirect('index.php?page=dashboard');
