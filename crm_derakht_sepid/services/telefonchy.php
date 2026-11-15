@@ -299,13 +299,19 @@ function tel_fetch_calls_page(PDO $pdo, int $page, ?string $dateFromJalali = nul
     $calls = [];
     $totalPages = 1;
     if (is_array($r['json'])) {
-        $data = $r['json']['data'] ?? $r['json'];
-        if (isset($data['calls']) && is_array($data['calls'])) {
-            $calls = $data['calls'];
-        } elseif (isset($r['json']['calls']) && is_array($r['json']['calls'])) {
-            $calls = $r['json']['calls'];
+        $d = $r['json'];
+        $envelope = is_array($d['data'] ?? null) ? $d['data'] : [];
+        // فرمت واقعی تأییدشده از پاسخ زندهٔ API: data.data = آرایهٔ تماس‌ها، data.pagination = صفحه‌بندی
+        if (isset($envelope['data']) && is_array($envelope['data'])) {
+            $calls = $envelope['data'];
+        } elseif (isset($envelope['calls']) && is_array($envelope['calls'])) {
+            $calls = $envelope['calls'];
+        } elseif (isset($d['calls']) && is_array($d['calls'])) {
+            $calls = $d['calls'];
+        } elseif (is_array($envelope) && array_keys($envelope) === range(0, count($envelope) - 1)) {
+            $calls = $envelope; // data خودش آرایهٔ عددی باشد
         }
-        $pg = $r['json']['paginator'] ?? ($data['paginator'] ?? null);
+        $pg = $envelope['pagination'] ?? $d['paginator'] ?? ($envelope['paginator'] ?? null);
         if (is_array($pg) && isset($pg['total_pages'])) $totalPages = max(1, (int)$pg['total_pages']);
     }
     return ['ok' => $r['ok'], 'http' => $r['http'], 'error' => $r['error'] ?? '', 'calls' => $calls, 'total_pages' => $totalPages, 'body' => $r['body'] ?? ''];
