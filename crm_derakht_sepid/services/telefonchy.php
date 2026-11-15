@@ -12,7 +12,7 @@
  * TELEFONCHY_WEBSERVICE_TOKEN تعریف می‌شود؛ هرگز در گیت یا چت.
  *
  * اندپوینت‌ها (مستندات رسمی telefonchy.com/help، بازیابی‌شده در ۲۰۲۶-۱۱-۱۱):
- *   لیست تماس‌ها:  GET  https://panel.telefonchy.com/webservice/v1/calls?service_id=SID&page=N&sort=DESC&date_from=<شمسی Y/m/d H:i>&date_to=…
+ *   لیست تماس‌ها:  GET  https://panel.telefonchy.com/webservice/v1/calls?service_id=SID&page=N&sort=created_at DESC&date_from=<شمسی Y/m/d H:i>&date_to=…
  *   صوت:          GET  https://panel.telefonchy.com/webservice/v1/calls/record?file_id=FID&cuid=CUID
  *   درخواست تحلیل: POST https://panel.telefonchy.com/webservice/v1/calls/analysis/request   {"service_id":SID,"cuid":CUID} → 200 کامل‌شده | 202 در صف
  *   نتیجهٔ تحلیل:  GET  https://panel.telefonchy.com/webservice/v1/calls/analysis/show?service_id=SID&cuid=CUID → analysis_status∈{requesting,queued,transcribing,analyzing,reconciling,completed,failed}؛ GET سهمیه نمی‌سوزاند
@@ -292,7 +292,7 @@ function tel_match_customer(PDO $pdo, ?string $number): array {
 // ══ لیست تماس‌ها (یک صفحه؛ جدولی DESC) ════════════════════════════════════
 function tel_fetch_calls_page(PDO $pdo, int $page, ?string $dateFromJalali = null, ?string $dateToJalali = null): array {
     $sid = tel_service_id($pdo);
-    $url = 'https://panel.telefonchy.com/webservice/v1/calls?service_id=' . rawurlencode($sid) . '&page=' . max(1, $page) . '&sort=DESC';
+    $url = 'https://panel.telefonchy.com/webservice/v1/calls?service_id=' . rawurlencode($sid) . '&page=' . max(1, $page) . '&sort=' . rawurlencode('created_at DESC');
     if ($dateFromJalali) $url .= '&date_from=' . rawurlencode($dateFromJalali);
     if ($dateToJalali)   $url .= '&date_to='   . rawurlencode($dateToJalali);
     $r = tel_http('GET', $url, null, 30);
