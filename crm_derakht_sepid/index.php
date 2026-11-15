@@ -276,6 +276,14 @@ switch ($page) {
         require_login();
         include 'pages/telefonchy_events.php';
         break;
+    case 'calls':
+        require_login();
+        include 'pages/calls.php';
+        break;
+    case 'call_detail':
+        require_login();
+        include 'pages/call_detail.php';
+        break;
     default:
         if (is_logged_in()) {
             redirect('index.php?page=dashboard');
