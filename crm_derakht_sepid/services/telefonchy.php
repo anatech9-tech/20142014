@@ -29,7 +29,7 @@
 function tel_service_id(PDO $pdo): string {
     static $sid = null;
     if ($sid !== null) return $sid;
-    $sid = '02191098069';
+    $sid = '3Ev15-572cdd47-6f8b-4c08-bd50-2d354f266db4';
     try {
         $st = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'telefonchy_service_id' LIMIT 1");
         $st->execute();
@@ -170,7 +170,7 @@ function ensure_telefonchy_schema(PDO $pdo): bool {
         $ins = $pdo->prepare("INSERT IGNORE INTO settings (setting_key, setting_value) VALUES (?, ?)");
         $ins->execute(['ai_analysis_auto', '1']);
         $ins->execute(['ai_analysis_daily_cap', '30']);
-        $ins->execute(['telefonchy_service_id', '02191098069']);
+        $ins->execute(['telefonchy_service_id', '3Ev15-572cdd47-6f8b-4c08-bd50-2d354f266db4']);
 
         $done = true;
     } catch (Throwable $e) {
@@ -330,11 +330,13 @@ function tel_upsert_call(PDO $pdo, array $call): bool {
 
     $cs = is_array($call['call_source'] ?? null) ? $call['call_source'] : [];
     $cd = is_array($call['call_dest'] ?? null) ? $call['call_dest'] : [];
-    $csContact = is_array($cs['contact'] ?? null) ? $cs['contact'] : [];
-    $cdContact = is_array($cd['contact'] ?? null) ? $cd['contact'] : [];
+    $cnew = is_array($call['contact'] ?? null) ? $call['contact'] : [];
+    $csContact = is_array($cnew['call_source'] ?? null) ? $cnew['call_source'] : (is_array($cs['contact'] ?? null) ? $cs['contact'] : []);
+    $cdContact = is_array($cnew['call_dest'] ?? null) ? $cnew['call_dest'] : (is_array($cd['contact'] ?? null) ? $cd['contact'] : []);
 
-    $created = tel_jalali_to_mysql($call['created_at'] ?? null);
-    $ended   = tel_jalali_to_mysql($call['ended_at'] ?? null);
+    // فرمت واقعی API جدید: جلالی داخل jalali_started_at / jalali_ended_at (خطی شمسی) — میلادی ISO در created_at نادیده گرفته می‌شود
+    $created = tel_jalali_to_mysql($call['jalali_started_at'] ?? (is_string($call['created_at'] ?? null) && strpos($call['created_at'], 'T') === false ? $call['created_at'] : null));
+    $ended   = tel_jalali_to_mysql($call['jalali_ended_at'] ?? $call['ended_at'] ?? null);
 
     $fileId = (isset($call['file_id']) && $call['file_id'] !== false && $call['file_id'] !== null && (string)$call['file_id'] !== '')
         ? substr((string)$call['file_id'], 0, 128) : null;
@@ -343,7 +345,7 @@ function tel_upsert_call(PDO $pdo, array $call): bool {
 
     $exten = null;
     if (isset($call['exten']) && is_array($call['exten'])) {
-        $exten = (string)($call['exten']['caller_id'] ?? $call['exten']['id'] ?? '');
+        $exten = (string)($call['exten']['number'] ?? $call['exten']['caller_id'] ?? $call['exten']['exten_id'] ?? $call['exten']['id'] ?? '');
     } else {
         $exten = (string)($call['exten'] ?? '');
     }
@@ -366,9 +368,9 @@ function tel_upsert_call(PDO $pdo, array $call): bool {
         isset($call['trunk']) ? substr((string)$call['trunk'], 0, 62) : null,
         isset($call['status']) ? substr(strtoupper((string)$call['status']), 0, 22) : null,
         $srcNum !== '' ? substr($srcNum, 0, 46) : null,
-        !empty($csContact['name']) ? substr((string)$csContact['name'], 0, 250) : null,
+        (is_string($csContact['name'] ?? null) && trim($csContact['name']) !== '') ? substr(trim($csContact['name']), 0, 250) : null,
         $dstNum !== '' ? substr($dstNum, 0, 46) : null,
-        !empty($cdContact['name']) ? substr((string)$cdContact['name'], 0, 250) : null,
+        (is_string($cdContact['name'] ?? null) && trim($cdContact['name']) !== '') ? substr(trim($cdContact['name']), 0, 250) : null,
         tel_to_int($call['time_wait'] ?? null),
         tel_to_int($call['time_talk'] ?? null),
         $fileId ?? $recordId,
@@ -567,7 +569,10 @@ function tel_sync_calls(PDO $pdo, int $maxPages = 3, int $autoMax = 25): array {
                 $freshThisPage++;
                 $status = strtoupper((string)($call['status'] ?? ''));
                 $fid = $call['file_id'] ?? $call['record_id'] ?? null;
-                if ($status === 'ANSWERED' && !empty($fid) && $fid !== false && $cuid !== '') $candidates[] = $cuid;
+                $canAnalyze = array_key_exists('can_analyze', $call)
+                    ? (bool)$call['can_analyze']
+                    : ($status === 'ANSWERED' && !empty($fid) && $fid !== false);
+                if ($canAnalyze && $cuid !== '') $candidates[] = $cuid;
             } else {
                 $report['skipped_existing']++;
             }
