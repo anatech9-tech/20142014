@@ -1,5 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/salary_calc.php';   // jalali_month_key / jalali_month_from_key
+// §۱۲: این صفحه در حالت «تعبیه‌شده» داخل صفحهٔ واحد «دستورکار و گزارش کار» رندر می‌شود
+$__dr_embed = !empty($GLOBALS['___daily_embed']);
 $pageTitle = t('nav_daily_reports');
 $ws_id = $_SESSION['workshop_id'] ?? 0;
 $is_admin = is_strict_admin();
@@ -19,11 +21,13 @@ if (!$can_view_all) $active_cat = $user_team;
 
 // آدرس بازگشت با حفظ فیلترها (cat/user/date_from/date_to)
 function dr_back_url() {
+    global $__dr_embed;
     $qs = [];
     foreach (['cat', 'user', 'date_from', 'date_to', 'm'] as $k) {
         if (!empty($_GET[$k])) $qs[] = $k . '=' . urlencode((string)$_GET[$k]);
     }
-    return 'index.php?page=daily_reports' . ($qs ? '&' . implode('&', $qs) : '');
+    $base = !empty($__dr_embed) ? 'index.php?page=work_orders&view=reports' : 'index.php?page=daily_reports';
+    return $base . ($qs ? '&' . implode('&', $qs) : '');
 }
 
 // Handle form submissions
@@ -80,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $__auto = daily_report_auto_approve($pdo, (int)$pdo->lastInsertId(), (int)$current_user_id);
             showToast(t('گزارش ثبت شد'));
         }
-        redirect("index.php?page=daily_reports");
+        redirect(dr_back_url());
     }
 
     // حذف گزارش: مالکِ گزارش یا مدیر/ناظر.
@@ -210,7 +214,7 @@ $stmt = $pdo->prepare("SELECT dr.*, u.full_name FROM daily_reports dr JOIN users
 $stmt->execute($params);
 $reports = $stmt->fetchAll();
 
-include 'includes/header.php';
+if (!$__dr_embed) include 'includes/header.php';
 ?>
 
 <style>
@@ -481,4 +485,4 @@ function openReportEdit(id, text, desc, prog, next) {
 })();
 </script>
 
-<?php include 'includes/footer.php'; ?>
+<?php if (!$__dr_embed) include 'includes/footer.php'; ?>

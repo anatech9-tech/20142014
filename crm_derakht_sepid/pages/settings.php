@@ -50,6 +50,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    // ─── تارگت و کمیسیون (سند نهایی سازمان — این مقادیر در محاسبهٔ زندهٔ کمیسیون صفحات «حقوق»/«پرسنل» خوانده می‌شوند) ───
+    if ($action === 'save_commission_settings') {
+        if (!is_strict_admin()) {
+            showToast(t('دسترسی ندارید'), 'error');
+            redirect('index.php?page=settings');
+            exit;
+        }
+        require_once __DIR__ . '/../includes/org_commission.php';
+        ensure_org_commission_schema($pdo);
+        $ins = $pdo->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?,?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+        $margin = (float)($_POST['commission_margin_pct'] ?? 25);
+        $ins->execute(['commission_margin_pct', (string)max(0, min(100, $margin))]);
+        foreach (['commission_target_sales_toman', 'commission_target_team_toman', 'commission_target_bd_toman'] as $k) {
+            $v = (float)str_replace(',', '', (string)($_POST[$k] ?? 0));
+            $ins->execute([$k, (string)max(0, $v)]);
+        }
+        // نرخ ارز به تومان (۰ = نامشخص؛ محاسبه با آن ارز صفر می‌شود و هشدار نمایش داده می‌شود)
+        foreach (['USD', 'EUR', 'CNY', 'AED', 'IRR'] as $cur) {
+            $v = (float)str_replace(',', '', (string)($_POST['fx_to_toman_' . $cur] ?? 0));
+            $ins->execute(['fx_to_toman_' . $cur, (string)max(0, $v)]);
+        }
+        $rates = (array)($_POST['tier_rate'] ?? []);
+        $stU = $pdo->prepare("UPDATE commission_tier_rules SET rate_pct = ? WHERE id = ?");
+        foreach ($rates as $tid => $rate) {
+            $r = (float)str_replace(',', '', (string)$rate);
+            $stU->execute([max(0, min(100, $r)), (int)$tid]);
+        }
+        showToast(t('تنظیمات تارگت و کمیسیون ذخیره شد'));
+        redirect('index.php?page=settings');
+        exit;
+    }
+
     // ─── پروفایل شرکت / سربرگ چاپ (لوگو/مهر/امضا + اطلاعات ثبتی) — فراکارگاه‌ها، به همه چاپ‌ها اعمال می‌شود ───
     if ($action === 'save_letterhead') {
         if (!is_strict_admin() && !is_project_manager()) {
@@ -488,6 +520,52 @@ function saveMenuOrder() {
     document.getElementById('menuOrderForm').submit();
 }
 </script>
+<?php endif; ?>
+
+<?php if (is_strict_admin()): ?>
+<!-- کارت تارگت و کمیسیون (سند نهایی سازمان) -->
+<?php
+require_once __DIR__ . '/../includes/org_commission.php';
+ensure_org_commission_schema($pdo);
+$__comm = commission_targets($pdo);
+$__tiers = [];
+try { $__tiers = $pdo->query("SELECT * FROM commission_tier_rules ORDER BY FIELD(role_code,'sales_expert','sales_manager','business_development'), min_pct")->fetchAll(); } catch (Throwable $e) {}
+$__roleNames = ['sales_expert' => 'کارشناس فروش', 'sales_manager' => 'مدیر فروش', 'business_development' => 'توسعه بازار'];
+?>
+<form method="POST" class="card mt-4 animate-in"><?= get_csrf_field() ?>
+    <input type="hidden" name="action" value="save_commission_settings">
+    <div class="card-header"><h3 class="card-title">🎯 تارگت و کمیسیون (طبق سند نهایی سازمان)</h3></div>
+    <p class="text-muted mb-3" style="font-size:12px">این مقادیر از سند «ساختار سازمانی و نظام جبران خدمات» (<code>docs/COMPANY_ORG_POLICY.md</code>) آمده‌اند؛ در «حقوق» و «پرسنل»، کمیسیونِ تارگتی به‌صورت زنده (پله‌ای و نسبت به تحقق ماهانه) با همین جدول محاسبه می‌شود. واحد مبلغ‌ها: تومان.</p>
+    <div class="grid-2">
+        <div class="form-group"><label class="form-label">حاشیهٔ سود ناخالص مفروض (٪)</label><input type="number" step="0.5" min="0" max="100" name="commission_margin_pct" class="form-control" value="<?= (float)$__comm['margin_pct'] ?>"></div>
+        <div class="form-group"><label class="form-label">تارگت کارشناس فروش</label><input type="number" name="commission_target_sales_toman" class="form-control" min="0" step="1000000" value="<?= (int)$__comm['sales_toman'] ?>"></div>
+        <div class="form-group"><label class="form-label">تارگت تیم فروش (مدیر فروش)</label><input type="number" name="commission_target_team_toman" class="form-control" min="0" step="1000000" value="<?= (int)$__comm['team_toman'] ?>"></div>
+        <div class="form-group"><label class="form-label">تارگت توسعه بازار</label><input type="number" name="commission_target_bd_toman" class="form-control" min="0" step="1000000" value="<?= (int)$__comm['bd_toman'] ?>"></div>
+    </div>
+    <p class="text-muted" style="font-size:11.5px;margin:2px 0 8px">💱 نرخ هر ارز به «تومان» (۰ = نامشخص — فروش با آن ارز در محاسبهٔ کمیسیون صفر می‌شود و هشدار می‌گیرید):</p>
+    <div class="grid-2">
+        <?php foreach (['USD' => 'دلار', 'EUR' => 'یورو', 'CNY' => 'یوآن چین', 'AED' => 'درهم', 'IRR' => 'ریال (۱ ریال = ۰٫۱ تومان)'] as $cur => $lbl): ?>
+        <div class="form-group"><label class="form-label"><?= $lbl ?> (<?= $cur ?>)</label><input type="number" name="fx_to_toman_<?= $cur ?>" class="form-control" min="0" step="0.1" value="<?= number_format((float)commission_setting($pdo, 'fx_to_toman_' . $cur, $cur === 'IRR' ? '0.1' : '0'), 1, '.', '') ?>"></div>
+        <?php endforeach; ?>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead><tr><th>نقش</th><th>از (٪ تحقق)</th><th>تا (٪ تحقق)</th><th>کمیسیون (٪)</th><th>توضیح</th></tr></thead>
+            <tbody>
+            <?php foreach ($__tiers as $t): ?>
+                <tr>
+                    <td><?= htmlspecialchars($__roleNames[$t['role_code']] ?? $t['role_code']) ?></td>
+                    <td><?= (int)$t['min_pct'] ?>٪</td>
+                    <td><?= $t['max_pct'] === null ? '∞' : (int)$t['max_pct'] . '٪' ?></td>
+                    <td><input type="number" step="0.5" min="0" max="100" name="tier_rate[<?= (int)$t['id'] ?>]" class="form-control" style="width:90px" value="<?= number_format((float)$t['rate_pct'], 2, '.', '') ?>"></td>
+                    <td class="text-muted" style="font-size:11px"><?= htmlspecialchars($t['note'] ?? '') ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <div class="mt-3"><button type="submit" class="btn btn-primary"><i data-lucide="save"></i> ذخیرهٔ تارگت و پله‌ها</button></div>
+</form>
 <?php endif; ?>
 
 <?php

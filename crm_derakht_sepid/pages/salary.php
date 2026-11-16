@@ -3,6 +3,8 @@ $pageTitle = t('nav_salary');
 $ws_id = $_SESSION['workshop_id'] ?? 0;
 
 require_once __DIR__ . '/../includes/salary_calc.php';
+require_once __DIR__ . '/../includes/org_commission.php';
+ensure_org_commission_schema($pdo);
 
 // §fix: افزایش‌های رسیده را در ستون حقوق فعلی هم اعمال کن
 salary_sync_current($pdo);
@@ -12,8 +14,8 @@ $settings = get_workshop_settings($pdo, $ws_id);
 $is_admin = is_strict_admin();
 $is_nazer = is_nazer();
 $can_manage = $is_admin || $is_nazer || has_permission('manage_salary');
-// §v11: ناظرِ حقوق = دیدن حقوق همه بدون امکان مدیریت
-$can_view_all = $can_manage || in_array(access_mode('salary'), ['viewer', 'editor'], true);
+// بند ۱۰: هرکس فقط حقوق خودش را می‌بیند؛ «دیدن همه» فقط با دسترسی مدیریت حقوق (ادمین/مدیر) — تیک ناظر/ویراستارِ صفحه دیگر کافی نیست.
+$can_view_all = $can_manage;
 
 // بررسی دسترسی: مدیر کارگاه فقط افراد و حقوق‌های کارگاه خودش را می‌بیند
 if (!can_see_all_workshops()) {
@@ -242,6 +244,29 @@ foreach ($personnel_raw as $person_row) {
     $personnel_by_id[(int)$person_row['id']] = $person_row;
 }
 $personnel = array_values($personnel_by_id);
+
+// ── کمیسیون تارگتی این ماه (محاسبهٔ زنده — بند ۱۰) برای کارشناسان فروش و مدیران ──
+// مستقل از «فیلتر صفر حقوق» تا کارشناسِ بدون حقوق ثابت هم کمیسیونش دیده شود؛ دامنه: نمای خودم یا نمای مدیر/ادمین.
+$__comm_month_key = jalali_month_key(date('Y-m-d'));
+$__commission_rows = [];
+try {
+    if ($can_view_all) {
+        if ($s_ws > 0) {
+            $st = $pdo->prepare("SELECT u.id, u.full_name FROM users u WHERE u.staff_category IN ('sales','manager') AND u.status = 'active'
+                AND EXISTS (SELECT 1 FROM workshop_personnel wp WHERE wp.user_id = u.id AND wp.workshop_id = ? AND wp.status = 'active') ORDER BY u.full_name");
+            $st->execute([$s_ws]);
+        } else {
+            $st = $pdo->query("SELECT id, full_name FROM users WHERE staff_category IN ('sales','manager') AND status = 'active' ORDER BY full_name");
+        }
+    } else {
+        $st = $pdo->prepare("SELECT id, full_name FROM users WHERE id = ? AND staff_category IN ('sales','manager') AND status = 'active'");
+        $st->execute([(int)$_SESSION['user_id']]);
+    }
+    foreach ($st->fetchAll() as $__u) {
+        $__snap = commission_snapshot($pdo, (int)$__u['id'], $__comm_month_key);
+        $__commission_rows[] = array_merge(['name' => $__u['full_name'], 'id' => (int)$__u['id']], $__snap);
+    }
+} catch (Throwable $e) { $__commission_rows = []; }
 
 // §v13: ادغام بر اساس نام حذف شد.
 // شناسه‌های تکراری در دیتابیس ادغام شده‌اند (merge_duplicates.php)، و دو نفر
@@ -618,6 +643,43 @@ include 'includes/header.php';
 <p class="text-muted animate-in" style="font-size:11.5px;margin:0 0 10px">🌐 <?= t('nav_salary') ?> <?= t('هر') ?> <?= t('per_count') ?> <?= t('rep_total') ?> <?= t('کارکردش') ?> <?= t('در') ?> <?= t('همه') ?> <?= t('کارگاه') ?>‌<?= t('هاست') ?> <?= t('— در') ?> «<?= t('sal_details') ?>» <?= t('می‌توانید') ?> <?= t('بین') ?> <?= t('نمای') ?> <?= t('تجمیعی') ?> <?= t('و') ?> <?= t('تک') ?>‌<?= t('کارگاه') ?> <?= t('جابه‌جا شوید') ?>. <a href="index.php?page=salary&scope=ws" class="btn btn-ghost btn-sm" style="margin-right:10px">🏢 <?= t('فیلتر فقط این کارگاه') ?></a></p>
 <?php else: ?>
 <p class="text-muted animate-in" style="font-size:11.5px;margin:0 0 10px">🏢 <?= t('فیلتر فعال: فقط این کارگاه') ?>. <a href="index.php?page=salary&scope=all" class="btn btn-ghost btn-sm" style="margin-right:10px">🌐 <?= t('نمایش تجمیعی همه کارگاه‌ها') ?></a></p>
+<?php endif; ?>
+
+<?php if (!empty($__commission_rows)): ?>
+<!-- بند ۱۰: پلهٔ پویا — کمیسیون این ماه بر اساس تحقق تا امروز، خودکار بروز می‌شود -->
+<div class="card animate-in" style="margin-bottom:14px;border-right:4px solid #8b5cf6">
+    <div class="card-header"><h3 class="card-title" style="font-size:15px">🎯 کمیسیون تارگتی — <?= htmlspecialchars(jalali_month_from_key($__comm_month_key)['label']) ?> (محاسبهٔ زنده)</h3></div>
+    <div class="table-container">
+        <table>
+            <thead><tr><th>نام</th><th>سِمت</th><th>فروش این ماه</th><th>تارگت</th><th>تحقق</th><th>پلهٔ فعلی</th><th>کمیسیون تعلق‌گرفته</th><th>شروع حقوق</th></tr></thead>
+            <tbody>
+            <?php foreach ($__commission_rows as $cr): ?>
+                <?php
+                $roleName = ['sales_expert' => 'کارشناس فروش', 'sales_manager' => 'مدیر فروش', 'business_development' => 'مدیر توسعه بازار'][$cr['role']] ?? ($cr['role'] ?: '—');
+                ?>
+                <tr>
+                    <td><strong><?= htmlspecialchars($cr['name']) ?></strong></td>
+                    <td><?= htmlspecialchars($roleName) ?></td>
+                    <td><?= number_format($cr['sales']) ?> <?= t('ت') ?></td>
+                    <td><?= $cr['target'] > 0 ? number_format($cr['target']) . ' <span style="font-size:10px">ت</span>' : '—' ?></td>
+                    <td><strong><?= $cr['target'] > 0 ? number_format($cr['achievement'], 1) . '٪' : '—' ?></strong></td>
+                    <td><?= $cr['rate'] ? '<span class="tag tag-active">' . number_format($cr['rate'], 1) . '٪</span>' : '—' ?></td>
+                    <td><strong style="color:#7c3aed"><?= number_format($cr['commission']) ?> <?= t('ت') ?></strong></td>
+                    <td style="font-size:11px"><?= !empty($cr['start_from']) ? to_jalali($cr['start_from']) : '—' ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+    $__missing = [];
+    foreach ($__commission_rows as $__cr) { foreach (($__cr['missing_fx'] ?? []) as $__c) { $__missing[$__c] = true; } }
+    ?>
+    <?php if ($__missing): ?>
+    <p class="text-muted" style="font-size:10.5px;padding:0 16px 4px;margin:0;color:#b45309">⚠️ نرخ ارز <?= htmlspecialchars(implode('، ', array_keys($__missing))) ?> در تنظیمات وارد نشده — فروش با آن ارز در محاسبه صفر منظور شده است. از «تنظیمات → 🎯 تارگت و کمیسیون» نرخ را وارد کنید.</p>
+    <?php endif; ?>
+    <p class="text-muted" style="font-size:10.5px;padding:0 16px 12px;margin:0;line-height:1.9">مبنا: معاملات «برنده» (won) همین ماه × حاشیهٔ سود ناخالصِ تنظیم‌شده در تنظیمات (پیش‌فرض ۲۵٪ طبق سند). درصدها و تارگت‌ها از تنظیمات → «🎯 تارگت و کمیسیون» خوانده می‌شوند. این مبلغ «محاسبه‌ای» است و سند پرداخت جداگانهٔ تسویه دارد؛ با ثبت وصولِ واقعی در نسخهٔ بعد دقیق می‌شود.</p>
+</div>
 <?php endif; ?>
 
 <div class="card animate-in">

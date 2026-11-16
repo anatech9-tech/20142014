@@ -863,12 +863,11 @@ function nav_menu_labels() {
     return [
         'dashboard'      => t('nav_dashboard'),
         'work_hours'     => t('nav_work_hours'),
-        'rest_track'     => 'استراحت',
         'personnel'      => t('nav_personnel'),
         'salary'         => t('nav_salary'),
         'advances'       => t('nav_advances'),
         'leaves'         => t('nav_leaves'),
-        'work_orders'    => t('nav_work_orders'),
+        'work_orders'    => t('nav_work_log'),
         'reports'        => t('nav_reports'),
         'workshops'      => t('nav_workshops'),
         'petty_cash'     => t('nav_petty_cash'),
@@ -878,7 +877,6 @@ function nav_menu_labels() {
         'inventory'      => t('nav_inventory'),
         'profile'        => t('nav_profile'),
         'chat'           => t('nav_chat'),
-        'daily_reports'  => t('nav_daily_reports'),
         'archive'        => t('nav_archive'),
         'forms'          => t('nav_forms'),
         // §phase2: ماژول CRM فروش

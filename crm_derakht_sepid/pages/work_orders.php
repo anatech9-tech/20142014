@@ -1,6 +1,7 @@
 <?php
-$pageTitle = t('page_work_orders');
+$pageTitle = t('nav_work_log');
 $ws_id = $_SESSION['workshop_id'] ?? 0;
+$view = (($_GET['view'] ?? 'orders') === 'reports') ? 'reports' : 'orders';
 $user_id = $_SESSION['user_id'] ?? 0;
 if (!isset($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = generate_token();
 
@@ -30,6 +31,20 @@ if (!in_array($active_tab, ['ejra', 'hse', 'anbar'])) $active_tab = $can_view_al
 if (!$can_view_all) $active_tab = $user_team;
 
 include 'includes/header.php';
+
+if ($view === 'reports') {
+    // §۱۲ تلفیق: آرشیو «گزارش کار» همان‌جاست — فرم ثبت گزارش بالای صفحهٔ دستورکار است
+    ?>
+    <div class="d-flex justify-between align-center mb-4 animate-in">
+        <h2>📝 <?= t('nav_daily_reports') ?></h2>
+        <a href="index.php?page=work_orders" class="btn btn-ghost">→ <?= t('nav_work_orders') ?></a>
+    </div>
+    <?php
+    $GLOBALS['___daily_embed'] = true;
+    include __DIR__ . '/daily_reports.php';
+    include 'includes/footer.php';
+    exit;
+}
 ?>
 
 <style>
@@ -55,6 +70,7 @@ include 'includes/header.php';
         <?php if ($can_send_wo): ?>
         <button onclick="openModal('createWOModal')" class="btn btn-warning" style="font-size:12px"><i data-lucide="plus"></i> <?= t('btn_submit') ?> <?= t('nav_work_orders') ?></button>
         <?php endif; ?>
+        <a href="index.php?page=work_orders&amp;view=reports" class="btn btn-ghost" style="font-size:12px"><i data-lucide="file-text"></i> <?= t('nav_daily_reports') ?></a>
         <span class="team-badge <?= $user_team ?>"><?= t('واحد') ?> <?= t('شما:') ?> <?= $team_labels[$user_team] ?></span>
     </div>
 </div>

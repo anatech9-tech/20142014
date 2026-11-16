@@ -129,8 +129,9 @@ switch ($page) {
         redirect('index.php?page=work_hours'); // صفحهٔ کیوسک قدیمی حذف شد
         break;
     case 'rest_track':
+        // صفحهٔ استراحت حذف شد (§۹)
         require_login();
-        include 'pages/rest_track.php';
+        redirect('index.php?page=dashboard');
         break;
     case 'salary':
         require_login();
@@ -217,8 +218,9 @@ switch ($page) {
         redirect('index.php?page=chat&view=channels');
         break;
     case 'daily_reports':
+        // §۱۲ تلفیق دستورکار و گزارش کار در یک صفحه
         require_login();
-        include 'pages/daily_reports.php';
+        redirect('index.php?page=work_orders&view=reports');
         break;
     case 'archive':
         require_login();

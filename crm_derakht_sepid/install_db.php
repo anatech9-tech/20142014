@@ -78,6 +78,8 @@ function schema_statements(): array {
         `status` VARCHAR(20) NOT NULL DEFAULT 'active',
         `team_id` INT(11) NULL,
         `org_role_id` INT(11) NULL,
+        `staff_category` VARCHAR(20) NOT NULL DEFAULT '',
+        `salary_effective_from` DATE NULL,
         `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY `uq_users_username` (`username`),
         KEY `idx_users_team` (`team_id`),
@@ -669,6 +671,26 @@ function schema_statements(): array {
         `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) $T";
 
+    // سمت‌های چندگانهٔ سازمانی (یک مدیر می‌تواند هم‌زمان چند سِمت داشته باشد)
+    $S['user_org_roles'] = "CREATE TABLE IF NOT EXISTS `user_org_roles` (
+        `user_id` INT(11) NOT NULL,
+        `org_role_id` INT(11) NOT NULL,
+        PRIMARY KEY (`user_id`, `org_role_id`),
+        KEY `idx_uor_role` (`org_role_id`)
+    ) $T";
+
+    // پله‌های تارگت برای محاسبهٔ کمیسیون (بذر از سند نهایی؛ قابل ویرایش — رکورد خالی = بی‌پله)
+    $S['commission_tier_rules'] = "CREATE TABLE IF NOT EXISTS `commission_tier_rules` (
+        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        `role_code` VARCHAR(40) NOT NULL,
+        `min_pct` INT(11) NOT NULL DEFAULT 0,
+        `max_pct` INT(11) NULL DEFAULT NULL,
+        `rate_pct` DECIMAL(5,2) NOT NULL DEFAULT 0,
+        `note` VARCHAR(150) NULL,
+        UNIQUE KEY `uq_tier` (`role_code`, `min_pct`),
+        KEY `idx_tier_role` (`role_code`)
+    ) $T";
+
     // ── لاگ ───────────────────────────────────────────────────
     $S['audit_log'] = "CREATE TABLE IF NOT EXISTS `audit_log` (
         `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -894,6 +916,8 @@ function run_install(PDO $pdo): array {
         ['subcontractors', 'iban', "ALTER TABLE subcontractors ADD COLUMN iban VARCHAR(34) NULL"],
         ['subcontractors', 'opening_balance', "ALTER TABLE subcontractors ADD COLUMN opening_balance DECIMAL(15,2) NOT NULL DEFAULT 0"],
         ['users', 'org_role_id', "ALTER TABLE users ADD COLUMN org_role_id INT(11) NULL DEFAULT NULL"],
+        ['users', 'staff_category', "ALTER TABLE users ADD COLUMN staff_category VARCHAR(20) NOT NULL DEFAULT ''"],
+        ['users', 'salary_effective_from', "ALTER TABLE users ADD COLUMN salary_effective_from DATE NULL DEFAULT NULL"],
     ];
     foreach ($crmUpgrades as $crmUp) {
         [$__tbl, $__col, $__sql] = $crmUp;
@@ -965,6 +989,7 @@ function run_install(PDO $pdo): array {
         ['ceo', 'مدیرعامل / مدیر بازرگانی', 'stage1', 'مالک شرکت؛ روابط خارجی، سورسینگ و خرید چین، قیمت‌گذاری نهایی', 10],
         ['sales_manager', 'مدیر فروش', 'stage1', 'هدف‌گذاری، هدایت تیم و کنترل قیف فروش (نه صرفاً ناظر)', 20],
         ['sales_expert', 'کارشناس فروش (تلفنی/آنلاین/سازمانی)', 'stage1', 'تبدیل سرنخ به فروش؛ کانال از روی تیم مشخص می‌شود', 30],
+        ['marketing_manager', 'مدیر دیجیتال مارکتینگ', 'stage1', 'مدیریت کانال‌های آنلاین و لیدهای دیجیتال؛ نقش جدا از مدیر فروش', 25],
         ['order_coordinator', 'هماهنگ‌کنندهٔ سفارشات', 'stage1', 'پروندهٔ یکتا، پیگیری، ارائهٔ به‌روزرسانی مشتری و بستن پرونده', 40],
         ['business_development', 'توسعه بازار', 'stage1', 'جذب مشتری جدید قابل اثبات؛ جدا از تیم فروش', 50],
         ['accountant_outsourced', 'حسابدار (برون‌سپاری)', 'stage1', 'اسناد، وصول و گزارش؛ کنترل هزینه/کیفیت داخل شرکت می‌ماند', 60],
@@ -1000,6 +1025,10 @@ function run_install(PDO $pdo): array {
         'app_lang'     => 'fa',
         'crm_default_currency' => 'USD',
         'disabled_pages'     => '',
+        'commission_margin_pct' => '25',
+        'commission_target_sales_toman' => '1250000000',
+        'commission_target_team_toman' => '5000000000',
+        'commission_target_bd_toman' => '500000000',
     ];
     $st = $pdo->prepare("INSERT IGNORE INTO settings (setting_key, setting_value) VALUES (?, ?)");
     foreach ($defaults as $k => $v) { $st->execute([$k, $v]); }

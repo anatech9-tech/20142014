@@ -2,6 +2,54 @@
 $pageTitle = t('nav_personnel');
 $ws_id = $_SESSION['workshop_id'] ?? 0;
 
+require_once __DIR__ . '/../includes/org_commission.php';
+ensure_org_commission_schema($pdo);
+
+// فهرست سِمت‌های سازمانی فعال (چک‌باکس سِمت‌های مدیر)
+$__org_roles = [];
+try {
+    $st = $pdo->query("SELECT id, code, name FROM org_roles WHERE is_active = 1 ORDER BY sort_order, id");
+    $__org_roles = $st->fetchAll();
+} catch (Throwable $e) {}
+
+// ── دانلود مدرک اسکن‌شده (ادمین/مدیر یا خودِ فرد) — قبل از هر خروجی ──
+if (isset($_GET['download_doc'])) {
+    $docId = (int)$_GET['download_doc'];
+    $st = $pdo->prepare("SELECT * FROM personnel_documents WHERE id = ?");
+    $st->execute([$docId]);
+    $doc = $st->fetch();
+    if (!$doc) { http_response_code(404); exit('سند یافت نشد'); }
+    $uid = (int)$doc['user_id'];
+    if (!is_strict_admin() && !has_permission('manage_personnel') && (int)$_SESSION['user_id'] !== $uid) {
+        http_response_code(403); exit('دسترسی ندارید');
+    }
+    $real = realpath(__DIR__ . '/../' . ltrim((string)$doc['file_path'], '/'));
+    $base = realpath(__DIR__ . '/../uploads');
+    if (!$real || !$base || strpos($real, $base) !== 0 || !is_file($real)) { http_response_code(404); exit('فایل روی سرور موجود نیست'); }
+    $ext = strtolower(pathinfo($real, PATHINFO_EXTENSION));
+    $mimes = ['pdf' => 'application/pdf', 'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp'];
+    header('Content-Type: ' . ($mimes[$ext] ?? 'application/octet-stream'));
+    header('Content-Disposition: inline; filename="personnel_doc_' . $docId . '.' . $ext . '"');
+    header('Content-Length: ' . filesize($real));
+    header('X-Content-Type-Options: nosniff');
+    readfile($real);
+    exit;
+}
+
+// ── فهرست مدارک یک نفر (JSON برای مودال مدارک) ──
+if (isset($_GET['docs_list'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $uid = (int)$_GET['docs_list'];
+    if (!is_strict_admin() && !has_permission('manage_personnel') && (int)$_SESSION['user_id'] !== $uid) {
+        echo json_encode(['ok' => false, 'error' => 'دسترسی ندارید'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $st = $pdo->prepare("SELECT id, title, document_type, expiry_date, notes, created_at FROM personnel_documents WHERE user_id = ? ORDER BY id DESC");
+    $st->execute([$uid]);
+    echo json_encode(['ok' => true, 'docs' => $st->fetchAll()], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     
@@ -22,6 +70,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $account_number = sanitize($_POST['account_number'] ?? '');
         $account_name = sanitize($_POST['account_name'] ?? '');
         $work_role = sanitize($_POST['work_role'] ?? '');
+        // ── §بازطراحی نهایی: دستهٔ ساختار جدید (کارشناس فروش / کارمند اداری / مدیر)
+        $staff_category = sanitize($_POST['staff_category'] ?? '');
+        if (!in_array($staff_category, ['sales', 'office', 'manager'], true)) $staff_category = 'office';
+        $sales_track = sanitize($_POST['sales_track'] ?? '');
+        if (!in_array($sales_track, ['کارشناس تلفنی', 'کارشناس دیجیتال مارکتینگ', 'کارشناس حضوری'], true)) $sales_track = '';
+        $office_role = sanitize($_POST['office_role'] ?? '');
+        $salary_effective_from = to_gregorian($_POST['salary_effective_from'] ?? '') ?: null;
+        if ($staff_category !== 'sales') $salary_effective_from = null;
+        $org_role_ids = array_values(array_unique(array_map('intval', (array)($_POST['org_role_ids'] ?? []))));
+        if ($staff_category === 'sales' && $sales_track !== '') $specialty = $sales_track;
 
         $person_type = (int)($_POST['person_type'] ?? $is_karigar);
 
@@ -71,18 +129,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $is_karigar = 0;
         }
         
+        if ($person_type == 0 && $staff_category === 'office' && $office_role !== '') $position = $office_role;
+        // §بند۳: «نقش کاربری سیستمی» حذف شد — role پیش‌فرض 'worker' می‌ماند و دسترسی صفحه‌ای فقط از دکمهٔ 🛡️ مدیریت می‌شود.
         $system_role = 'worker';
-        if ($person_type == 0 && !empty($_POST['system_role'])) {
-            $sr = sanitize($_POST['system_role']);
-            if (in_array($sr, ['worker', 'project_manager', 'nazer_kol', 'karfarma', 'nazer', 'finance'], true)) {
-                $system_role = $sr;
-            }
-        }
 
         try {
-            $stmt = $pdo->prepare("INSERT INTO users (username, password, full_name, national_code, phone, role, is_karigar, position, work_role, description, avatar, address, iban, card_number, account_number, account_name, specialty) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$username, $password, $full_name, $national_code, $phone, $system_role, $is_karigar, $position, $work_role, $description, '', $address, $iban, $card_number, $account_number, $account_name, $specialty]);
+            $staff_cat_val = ($person_type == 0) ? $staff_category : '';
+            $stmt = $pdo->prepare("INSERT INTO users (username, password, full_name, national_code, phone, role, is_karigar, position, work_role, description, avatar, address, iban, card_number, account_number, account_name, specialty, staff_category, salary_effective_from) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$username, $password, $full_name, $national_code, $phone, $system_role, $is_karigar, $position, $work_role, $description, '', $address, $iban, $card_number, $account_number, $account_name, $specialty, $staff_cat_val, $salary_effective_from]);
             $user_id = $pdo->lastInsertId();
+
+            // سِمت‌های سازمانی چندگانه (مدیر می‌تواند چند سِمت داشته باشد — بند ۷)
+            if ($staff_cat_val === 'manager' && $org_role_ids) {
+                $chkR = $pdo->prepare("SELECT id FROM org_roles WHERE id = ?");
+                $insR = $pdo->prepare("INSERT IGNORE INTO user_org_roles (user_id, org_role_id) VALUES (?, ?)");
+                foreach ($org_role_ids as $rid) { $chkR->execute([$rid]); if ($chkR->fetchColumn()) $insR->execute([$user_id, $rid]); }
+                $pdo->prepare("UPDATE users SET org_role_id = ? WHERE id = ?")->execute([$org_role_ids[0], $user_id]);
+            }
             
             $stmt = $pdo->prepare("INSERT INTO workshop_personnel (workshop_id, user_id, daily_salary, monthly_salary, hourly_salary, contract_start, contract_end, contract_type, insurance_number, insurance_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             $stmt->execute([$ws_id, $user_id, $daily_salary, $monthly_salary, $hourly_salary, $contract_start ?: null, $contract_end ?: null, $contract_type, $insurance_number, $insurance_amount]);
@@ -126,6 +189,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $account_number = sanitize($_POST['account_number'] ?? '');
         $account_name = sanitize($_POST['account_name'] ?? '');
         $work_role = sanitize($_POST['work_role'] ?? '');
+        // ── دستهٔ ساختار جدید ('' = نیروی قدیمی؛ بدون دست‌زدن به سِمت‌ها)
+        $staff_category = sanitize($_POST['staff_category'] ?? '');
+        if (!in_array($staff_category, ['sales', 'office', 'manager'], true)) $staff_category = '';
+        $sales_track = sanitize($_POST['sales_track'] ?? '');
+        if (!in_array($sales_track, ['کارشناس تلفنی', 'کارشناس دیجیتال مارکتینگ', 'کارشناس حضوری'], true)) $sales_track = '';
+        $office_role = sanitize($_POST['office_role'] ?? '');
+        $salary_effective_from = to_gregorian($_POST['salary_effective_from'] ?? '') ?: null;
+        if ($staff_category !== 'sales') $salary_effective_from = null;
+        $org_role_ids = array_values(array_unique(array_map('intval', (array)($_POST['org_role_ids'] ?? []))));
+        if ($staff_category === 'sales' && $sales_track !== '') $specialty = $sales_track;
 
         if ($is_karigar == 2) {
             $position = '';
@@ -147,6 +220,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $description = '';
         }
 
+        if ((int)$is_karigar === 0 && $staff_category === 'office' && $office_role !== '') $position = $office_role;
+
+        $existing_stmt = $pdo->prepare("SELECT staff_category, salary_effective_from FROM users WHERE id = ?");
+        $existing_stmt->execute([$user_id]);
+        $existing = $existing_stmt->fetch() ?: ['staff_category' => '', 'salary_effective_from' => null];
+
         // حقوق فعلی قبل از ویرایش — بر اساس «نوع» فعلی (کارمند=ماهانه، کارگر=روزانه، پیمانکار=ساعتی)
         $old_stmt = $pdo->prepare("SELECT daily_salary, monthly_salary, hourly_salary FROM workshop_personnel WHERE user_id = ? AND workshop_id = ?");
         $old_stmt->execute([$user_id, $ws_id]);
@@ -167,13 +246,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        $stmt = $pdo->prepare("UPDATE users SET full_name = ?, national_code = ?, phone = ?, is_karigar = ?, position = ?, work_role = ?, description = ?, address = ?, iban = ?, card_number = ?, account_number = ?, account_name = ?, specialty = ? WHERE id = ?");
-        $stmt->execute([$full_name, $national_code, $phone, $is_karigar, $position, $work_role, $description, $address, $iban, $card_number, $account_number, $account_name, $specialty, $user_id]);
+        // نیروی قدیمی (staff_category خالی از فرم): دستهٔ قبلی و تاریخ شروع حقوق دست‌نخورده می‌ماند
+        $keep_cat = ($staff_category === '') ? (string)($existing['staff_category'] ?? '') : $staff_category;
+        $keep_eff = ($staff_category === '') ? ($existing['salary_effective_from'] ?? null)
+                  : (($staff_category === 'sales') ? $salary_effective_from : null);
 
-        if (isset($_POST['system_role']) && (is_strict_admin() || is_project_manager())) {
-            $sr = sanitize($_POST['system_role']);
-            if (in_array($sr, ['worker', 'project_manager', 'nazer_kol', 'karfarma', 'nazer', 'finance'], true)) {
-                $pdo->prepare("UPDATE users SET role = ? WHERE id = ?")->execute([$sr, $user_id]);
+        $stmt = $pdo->prepare("UPDATE users SET full_name = ?, national_code = ?, phone = ?, is_karigar = ?, position = ?, work_role = ?, description = ?, address = ?, iban = ?, card_number = ?, account_number = ?, account_name = ?, specialty = ?, staff_category = ?, salary_effective_from = ? WHERE id = ?");
+        $stmt->execute([$full_name, $national_code, $phone, $is_karigar, $position, $work_role, $description, $address, $iban, $card_number, $account_number, $account_name, $specialty, $keep_cat, $keep_eff, $user_id]);
+
+        // سِمت‌های سازمانی فقط وقتی فرم ساختار جدید در بازی است جایگزین می‌شوند
+        if ($staff_category !== '') {
+            $pdo->prepare("DELETE FROM user_org_roles WHERE user_id = ?")->execute([$user_id]);
+            if ($staff_category === 'manager' && $org_role_ids) {
+                $chkR = $pdo->prepare("SELECT id FROM org_roles WHERE id = ?");
+                $insR = $pdo->prepare("INSERT IGNORE INTO user_org_roles (user_id, org_role_id) VALUES (?, ?)");
+                foreach ($org_role_ids as $rid) { $chkR->execute([$rid]); if ($chkR->fetchColumn()) $insR->execute([$user_id, $rid]); }
+                $pdo->prepare("UPDATE users SET org_role_id = ? WHERE id = ?")->execute([$org_role_ids[0], $user_id]);
+            } else {
+                $pdo->prepare("UPDATE users SET org_role_id = NULL WHERE id = ?")->execute([$user_id]);
             }
         }
 
@@ -214,6 +304,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect("index.php?page=personnel");
     }
     
+    // ── بارگذاری مدرک اسکن‌شدهٔ پرسنل (بند ۸) ──
+    if ($action === 'upload_document') {
+        if (!is_strict_admin() && !has_permission('manage_personnel')) { showToast(t('دسترسی ندارید'), 'error'); redirect('index.php?page=personnel'); exit; }
+        $uid = (int)($_POST['user_id'] ?? 0);
+        $title = sanitize($_POST['doc_title'] ?? '');
+        $doc_type = sanitize($_POST['doc_type'] ?? '');
+        $notes = sanitize($_POST['doc_notes'] ?? '');
+        $expiry = to_gregorian($_POST['doc_expiry'] ?? '') ?: null;
+        if (!$uid || empty($_FILES['doc_file']) || $_FILES['doc_file']['error'] !== UPLOAD_ERR_OK) {
+            showToast(t('فایل و فرد را کامل انتخاب کنید'), 'error'); redirect('index.php?page=personnel'); exit;
+        }
+        if ($_FILES['doc_file']['size'] > 5 * 1024 * 1024) {
+            showToast(t('حداکثر حجم فایل ۵ مگابایت است'), 'error'); redirect('index.php?page=personnel'); exit;
+        }
+        $ext = strtolower(pathinfo($_FILES['doc_file']['name'], PATHINFO_EXTENSION));
+        $allowed_ext = ['pdf', 'jpg', 'jpeg', 'png', 'webp'];
+        if (!in_array($ext, $allowed_ext, true)) {
+            showToast(t('فقط فایل PDF یا تصویر (JPG/PNG/WebP) مجاز است'), 'error'); redirect('index.php?page=personnel'); exit;
+        }
+        $dir = __DIR__ . '/../uploads/personnel_docs/' . $uid;
+        if (!is_dir($dir)) @mkdir($dir, 0755, true);
+        $fname = 'doc_' . time() . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+        if (!move_uploaded_file($_FILES['doc_file']['tmp_name'], $dir . '/' . $fname)) {
+            showToast(t('خطا در ذخیرهٔ فایل'), 'error'); redirect('index.php?page=personnel'); exit;
+        }
+        $rel = 'uploads/personnel_docs/' . $uid . '/' . $fname;
+        $st = $pdo->prepare("INSERT INTO personnel_documents (user_id, workshop_id, document_type, title, file_path, expiry_date, notes, uploaded_by) VALUES (?,?,?,?,?,?,?,?)");
+        $st->execute([$uid, $ws_id, $doc_type, $title !== '' ? $title : (string)$_FILES['doc_file']['name'], $rel, $expiry, $notes, $_SESSION['user_id']]);
+        showToast(t('مدرک با موفقیت ثبت شد'));
+        redirect('index.php?page=personnel');
+    }
+
+    // ── حذف مدرک اسکن‌شده ──
+    if ($action === 'delete_document') {
+        if (!is_strict_admin() && !has_permission('manage_personnel')) { showToast(t('دسترسی ندارید'), 'error'); redirect('index.php?page=personnel'); exit; }
+        $doc_id = (int)($_POST['doc_id'] ?? 0);
+        $st = $pdo->prepare("SELECT * FROM personnel_documents WHERE id = ?");
+        $st->execute([$doc_id]);
+        $doc = $st->fetch();
+        if ($doc) {
+            $real = realpath(__DIR__ . '/../' . ltrim((string)$doc['file_path'], '/'));
+            $base = realpath(__DIR__ . '/../uploads');
+            if ($real && $base && strpos($real, $base) === 0 && is_file($real)) @unlink($real);
+            $pdo->prepare("DELETE FROM personnel_documents WHERE id = ?")->execute([$doc_id]);
+            showToast(t('مدرک حذف شد'));
+        }
+        redirect('index.php?page=personnel');
+    }
+
+    // ── پورسانت «مشتری شخصیِ» کارمند اداری (بند ۶) ──
+    if ($action === 'personal_commission') {
+        if (!is_strict_admin()) { showToast(t('فقط ادمین می‌تواند ثبت کند'), 'error'); redirect('index.php?page=personnel'); exit; }
+        $uid = (int)($_POST['user_id'] ?? 0);
+        $amount = (float)str_replace(',', '', (string)($_POST['amount'] ?? 0));
+        $customer = sanitize($_POST['customer_name'] ?? '');
+        $date_g = to_gregorian($_POST['comm_date'] ?? '') ?: date('Y-m-d');
+        $note = sanitize($_POST['note'] ?? '');
+        if ($uid > 0 && $amount > 0 && $customer !== '') {
+            $reason = 'پورسانت مشتری شخصی — ' . $customer . ($note !== '' ? ' — ' . $note : '');
+            $st = $pdo->prepare("INSERT INTO bonuses_penalties (user_id, workshop_id, type, amount, date, reason, status, created_by) VALUES (?,?, 'bonus', ?, ?, ?, 'approved', ?)");
+            $st->execute([$uid, $ws_id, $amount, $date_g, $reason, $_SESSION['user_id']]);
+            $st2 = $pdo->prepare("INSERT INTO audit_log (user_id, action, entity_type, entity_id, new_value) VALUES (?, 'create', 'personal_commission', ?, ?)");
+            $st2->execute([$_SESSION['user_id'], $uid, $reason . ' — ' . number_format($amount)]);
+            showToast(t('پورسانت ثبت شد و در حقوق ماه لحاظ می‌شود'));
+        } else {
+            showToast(t('نام مشتری و مبلغ را کامل وارد کنید'), 'error');
+        }
+        redirect('index.php?page=personnel');
+    }
+
     // ═══ افزایش حقوق تکی/گروهی (اسناد §1) — مبلغی یا درصدی، با تاریخ اجرای مشخص ═══
     if ($action === 'salary_raise' && is_strict_admin()) {
         $user_id = (int)($_POST['user_id'] ?? 0);
@@ -436,13 +596,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (in_array($target['username'], access_special_usernames(), true)) {
             showToast(strtr(t('دسترسی حساب «{name}» ویژه است و طبق روال قبلی ثابت می‌ماند'), ['{name}' => $target['full_name']]), 'error');
             redirect("index.php?page=personnel");
-        }
-        if (isset($_POST['system_role']) && (is_strict_admin() || is_project_manager())) {
-            $sr = sanitize($_POST['system_role']);
-            if (in_array($sr, ['worker', 'project_manager', 'nazer_kol', 'karfarma', 'nazer', 'finance'], true)) {
-                $pdo->prepare("UPDATE users SET role = ? WHERE id = ?")->execute([$sr, $user_id]);
-                $target['role'] = $sr;
-            }
         }
         $valid  = access_all_valid_keys();
         $posted = (array)($_POST['access'] ?? []);
@@ -713,15 +866,74 @@ try {
     }
 } catch (Throwable $e) {}
 
+// رندر بلوک‌های «ساختار جدید» (مشترک بین مودال افزودن و ویرایش)
+function render_staff_groups_html(string $prefix, array $orgRoles) {
+    ob_start();
+?>
+    <!-- فروش: تخصص + شروع حقوق -->
+    <div class="form-row" id="<?= $prefix ?>_sales_track_group" style="display:none">
+        <div class="form-group">
+            <label class="form-label">تخصص کارشناس فروش *</label>
+            <select name="sales_track" id="<?= $prefix ?>_sales_track" class="form-control">
+                <option value="">انتخاب کنید</option>
+                <option value="کارشناس تلفنی">کارشناس تلفنی</option>
+                <option value="کارشناس دیجیتال مارکتینگ">کارشناس دیجیتال مارکتینگ</option>
+                <option value="کارشناس حضوری">کارشناس حضوری</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">شروع حقوق (اختیاری)</label>
+            <input type="text" name="salary_effective_from" id="<?= $prefix ?>_salary_effective_from" class="form-control jalali-date" placeholder="پیش‌فرض: تاریخ اولین فروش ثبت‌شده">
+            <div class="text-muted" style="font-size:11px;margin-top:4px">بند ۶: حقوق کارشناس فروش از تاریخِ اولین معامله برندهٔ خودش محاسبه می‌شود؛ این فیلد فقط override دستی است.</div>
+        </div>
+    </div>
+    <!-- اداری: نقش ثابت بدون پورسانت -->
+    <div class="form-row" id="<?= $prefix ?>_office_role_group" style="display:none">
+        <div class="form-group">
+            <label class="form-label">نقش (کارمند اداری) *</label>
+            <select name="office_role" id="<?= $prefix ?>_office_role" class="form-control">
+                <option value="">انتخاب کنید</option>
+                <option value="انباردار">انباردار</option>
+                <option value="آبدارچی">آبدارچی</option>
+                <option value="حسابدار">حسابدار</option>
+                <option value="مسئول سفارشات">مسئول سفارشات</option>
+                <option value="منشی / مدیر دفتر">منشی / مدیر دفتر</option>
+                <option value="نگهبانی و خدمات">نگهبانی و خدمات</option>
+                <option value="سایر">سایر</option>
+            </select>
+            <div class="text-muted" style="font-size:11px;margin-top:4px">کارمندان اداری پورسانت ندارند؛ فقط اگر «مشتری شخصی» بیاورند از دکمهٔ 🤝 پورسانت در لیست ثبت می‌شود (بند ۵ و ۶).</div>
+        </div>
+    </div>
+    <!-- مدیر: سِمت‌های چندگانه -->
+    <div class="form-group" id="<?= $prefix ?>_manager_roles_group" style="display:none">
+        <label class="form-label">سِمت‌های سازمانی (می‌توانید هم‌زمان چند سِمت انتخاب کنید — بند ۷)</label>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px">
+            <?php foreach ($orgRoles as $__r): ?>
+            <label class="form-check" style="border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;display:flex;align-items:center;gap:6px">
+                <input type="checkbox" name="org_role_ids[]" value="<?= (int)$__r['id'] ?>" id="<?= $prefix ?>_role_<?= (int)$__r['id'] ?>" class="js-org-role-<?= $prefix ?>">
+                <span><?= htmlspecialchars($__r['name']) ?></span>
+            </label>
+            <?php endforeach; ?>
+        </div>
+        <div class="text-muted" style="font-size:11px;margin-top:6px">بند ۶: مدیر — حقوق ثابت از روز اول + کمیسیون تارگتی. «مدیر توسعه بازار» (<code>business_development</code>) خارج از تارگت تیم و بر مبنای ۵۰۰ میلیونِ جذب محاسبه می‌شود.</div>
+    </div>
+<?php
+    return ob_get_clean();
+}
+
 include 'includes/header.php';
 
+$__org_map = [];
+try {
+    $stm = $pdo->query("SELECT user_id, org_role_id FROM user_org_roles");
+    foreach ($stm->fetchAll() as $__r) { $__org_map[(int)$__r['user_id']][] = (int)$__r['org_role_id']; }
+} catch (Throwable $e) {}
 echo '<script>var PERSONNEL_DATA = {};';
 foreach ($personnel as $pp) {
+    $pp['org_role_ids'] = $__org_map[(int)$pp['id']] ?? [];
     echo 'PERSONNEL_DATA[' . (int)$pp['id'] . '] = ' . json_encode($pp, JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_TAG | JSON_HEX_AMP) . ';';
 }
 echo '</script>';
-
-
 // رندر یک ردیف دسترسی در مودال (چک‌باکس + رادیوی ویراستار/ناظر + تیک «موقت تا پایان امروز» — §v12)
 function access_row_html($key, $label, $indent = false) {
     $k = htmlspecialchars($key, ENT_QUOTES, 'UTF-8');
@@ -842,10 +1054,12 @@ function access_row_html($key, $label, $indent = false) {
                 </td>
                 <td>
                     <?php
-                    $type_label = t('per_employee_type');
-                    $type_class = 'tag-active';
-                    if ($p['is_karigar'] == 1) { $type_label = t('per_worker_type'); $type_class = 'tag-karigar'; }
-                    elseif ($p['is_karigar'] == 2) { $type_label = t('پیمانکار'); $type_class = ''; }
+                    $sc = $p['staff_category'] ?? '';
+                    $type_label = 'کارمند اداری'; $type_class = 'tag-active';
+                    if ((int)$p['is_karigar'] == 1) { $type_label = 'کارگر (قدیم)'; $type_class = 'tag-karigar'; }
+                    elseif ((int)$p['is_karigar'] == 2) { $type_label = 'پیمانکار (قدیم)'; $type_class = ''; }
+                    elseif ($sc === 'sales') { $type_label = 'کارشناس فروش'; $type_class = 'tag-active'; }
+                    elseif ($sc === 'manager') { $type_label = 'مدیر'; $type_class = 'tag-warning'; }
                     ?>
                     <span class="tag <?= $type_class ?>" <?= $p['is_karigar'] == 2 ? 'style="background:#e0e7ff;color:#3730a3"' : '' ?>><?= $type_label ?></span>
                     <?php if (($p['role'] ?? '') === 'project_manager'): ?>
@@ -877,6 +1091,8 @@ function access_row_html($key, $label, $indent = false) {
                         <?php if ($__ended): ?>
                         <?php if (has_permission('manage_personnel')): ?>
                         <a href="index.php?page=personnel_profile&user_id=<?= (int)$p['id'] ?>" class="btn btn-ghost btn-sm" title="<?= t('پرونده') ?> <?= t('کامل') ?>"><i data-lucide="folder-open"></i></a>
+                        <button type="button" onclick="openDocsModal(<?= (int)$p['id'] ?>)" class="btn btn-ghost btn-sm" title="مدارک اسکن‌شده"><i data-lucide="paperclip"></i></button>
+                        <?php if (is_strict_admin() && (($p['staff_category'] ?? '') === 'office')): ?><button type="button" onclick="openPersonalCommModal(<?= (int)$p['id'] ?>)" class="btn btn-success btn-sm" title="پورسانت مشتری شخصی"><i data-lucide="handshake"></i></button><?php endif; ?>
                         <button type="button"  onclick='openRestartModalById(<?= (int)$p["id"] ?>)' class="btn btn-success btn-sm" title="<?= t('wh_start') ?> <?= t('کار') ?> <?= t('مجدد') ?>"><i data-lucide="user-check"></i> <?= t('wh_start') ?> <?= t('مجدد') ?></button>
                         <?php if (is_strict_admin()): ?><button onclick='openPurgeModalById(<?= (int)$p["id"] ?>)' class="btn btn-danger btn-sm" title="<?= t('btn_delete') ?> <?= t('کامل') ?> <?= t('و') ?> <?= t('غیرقابل') ?> <?= t('btn_back') ?>"><i data-lucide="trash-2"></i> <?= t('btn_delete') ?> <?= t('کامل') ?></button><?php endif; ?>
                         <?php endif; ?>
@@ -897,8 +1113,9 @@ function access_row_html($key, $label, $indent = false) {
                             data-access="<?= js_arg($__uam[$p['id']] ?? []) ?>"><i data-lucide="shield-check"></i></button>
                         <?php endif; ?>
                         <button type="button"  onclick='openEndWorkModalById(<?= (int)$p["id"] ?>)' class="btn btn-danger btn-sm" title="<?= t('wh_end') ?> <?= t('کار') ?> — <?= t('lea_from') ?> <?= t('آن') ?> <?= t('wh_date') ?> <?= t('به') ?> <?= t('بعد') ?> <?= t('در') ?> <?= t('لیست') ?>‌<?= t('های') ?> <?= t('عملیاتی') ?> <?= t('نمی‌آید') ?>"><i data-lucide="user-x"></i> <?= t('wh_end') ?> <?= t('کار') ?></button>
+                        <button type="button" onclick="openDocsModal(<?= (int)$p['id'] ?>)" class="btn btn-ghost btn-sm" title="مدارک اسکن‌شده"><i data-lucide="paperclip"></i></button>
+                        <?php if (is_strict_admin() && (($p['staff_category'] ?? '') === 'office')): ?><button type="button" onclick="openPersonalCommModal(<?= (int)$p['id'] ?>)" class="btn btn-success btn-sm" title="پورسانت مشتری شخصی"><i data-lucide="handshake"></i></button><?php endif; ?>
                         <?php endif; ?>
-                        <a href="index.php?page=salary" class="btn btn-ghost btn-sm" title="<?= t('sal_details') ?> <?= t('nav_salary') ?>"><i data-lucide="wallet"></i></a>
                     </div>
                 </td>
             </tr>
@@ -920,11 +1137,13 @@ function access_row_html($key, $label, $indent = false) {
         <form method="POST" id="addForm" onsubmit="return fixAddWorkRole()"><?= get_csrf_field() ?>
             <input type="hidden" name="action" value="create">
             <div class="modal-body">
-                <!-- Type Selection -->
+                <!-- §بازطراحی: دستهٔ ساختار جدید (بند ۱) -->
+                <input type="hidden" name="is_karigar" value="0">
+                <input type="hidden" name="staff_category" id="add_staff_category_hidden" value="office">
                 <div class="form-row mb-3">
-                    <label class="form-check"><input type="radio" name="person_type" value="0" id="add_type_employee" checked onchange="togglePersonType('add', 0)"><span><strong><?= t('per_employee_type') ?></strong> (<?= t('حقوق') ?> <?= t('ماهانه') ?>، <?= t('btn_checkin') ?> <?= t('به') ?> <?= t('پنل') ?>)</span></label>
-                    <label class="form-check"><input type="radio" name="person_type" value="1" id="add_type_worker" onchange="togglePersonType('add', 1)"><span><strong><?= t('sal_worker') ?></strong> (<?= t('حقوق') ?> <?= t('روزانه') ?>، <?= t('بدون') ?> <?= t('btn_checkin') ?> <?= t('به') ?> <?= t('پنل') ?>)</span></label>
-                    <label class="form-check"><input type="radio" name="person_type" value="2" id="add_type_peymankar" onchange="togglePersonType('add', 2)"><span><strong><?= t('پیمانکار') ?></strong> (<?= t('فقط ثبت حضور') ?>)</span></label>
+                    <label class="form-check"><input type="radio" name="staff_pick" value="sales" id="add_cat_sales" onchange="staffCatChanged('add', 'sales')"><span><strong>کارشناس فروش</strong> (حقوق ثابت + کمیسیون تارگتی، پنل)</span></label>
+                    <label class="form-check"><input type="radio" name="staff_pick" value="office" id="add_cat_office" checked onchange="staffCatChanged('add', 'office')"><span><strong>کارمند اداری</strong> (حقوق ثابت، بدون پورسانت)</span></label>
+                    <label class="form-check"><input type="radio" name="staff_pick" value="manager" id="add_cat_manager" onchange="staffCatChanged('add', 'manager')"><span><strong>مدیر</strong> (حقوق ثابت از روز اول + کمیسیون تارگتی)</span></label>
                 </div>
 
                 <!-- Common Fields -->
@@ -1024,33 +1243,8 @@ function access_row_html($key, $label, $indent = false) {
                             <label class="form-label"><?= t('per_position') ?></label>
                             <input type="text" name="position" class="form-control" placeholder="<?= t('مثلاً') ?>: <?= t('مدیر، سرپرست،') ?> <?= t('حسابدار') ?>...">
                         </div>
-                        <div class="form-group">
-                            <label class="form-label"><?= t('نقش در گزارش') ?></label>
-                            <select name="work_role" id="add_work_role" class="form-control">
-                                <option value=""><?= t('انتخاب کنید') ?></option>
-                                <option value="<?= t('مهندس اجرا') ?>"><?= t('مهندس اجرا') ?></option>
-                                <option value="HSE">HSE</option>
-                                <option value="<?= t('anbar_keeper') ?>"><?= t('anbar_keeper') ?></option>
-                                <option value="<?= t('مدیر پروژه') ?>"><?= t('مدیر پروژه') ?></option>
-                                <option value="<?= t('anbar_sign_supervisor') ?>"><?= t('anbar_sign_supervisor') ?></option>
-                                <option value="<?= t('دفتر فنی') ?>"><?= t('دفتر فنی') ?></option>
-                                <option value="<?= t('سایر') ?>"><?= t('سایر') ?></option>
-                            </select>
-                        </div>
-                        <?php if (is_strict_admin() || is_project_manager()): ?>
-                        <div class="form-group">
-                            <label class="form-label"><?= t('نقش کاربری سیستمی') ?></label>
-                            <select name="system_role" class="form-control">
-                                <option value="worker">👤 <?= t('کارمند / پرسنل عادی') ?></option>
-                                <option value="project_manager">🏗️ <?= t('مدیر پروژه (دسترسی کامل به کل سایت)') ?></option>
-                                <option value="nazer_kol">👁️ <?= t('ناظر کل (مشاهده تمام بخش‌ها و کارگاه‌ها)') ?></option>
-                                <option value="karfarma">🏢 <?= t('کارفرما (فرم‌ها و گزارش روزانه و HSE)') ?></option>
-                                <option value="nazer">🔍 <?= t('ناظر کارگاه') ?></option>
-                                <option value="finance">🧮 <?= t('مسئول مالی (دسترسی کامل به CRM — خواندن و ویرایش همهٔ مشتریان/معاملات)') ?></option>
-                            </select>
-                        </div>
-                        <?php endif; ?>
                     </div>
+                    <?= render_staff_groups_html('add', $__org_roles) ?>
                     <div class="form-row">
                         <div class="form-group">
                             <label class="form-label"><?= t('per_monthly_salary') ?> (<?= t('sal_toman') ?>)</label>
@@ -1064,46 +1258,6 @@ function access_row_html($key, $label, $indent = false) {
                     </div>
                 </div>
 
-                <!-- Worker-Only Fields -->
-                <div id="add_worker_fields" style="display:none;">
-                    <hr style="border-color: var(--border); margin: 16px 0;">
-                    <p style="font-weight:bold; color: var(--primary); margin-bottom:12px;"><?= t('info') ?> <?= t('sal_worker') ?></p>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label"><?= t('sal_type') ?> <?= t('sal_worker') ?></label>
-                            <select name="work_role" id="add_work_role_worker" class="form-control">
-                                <option value="<?= t('sal_worker') ?>"><?= t('sal_worker') ?></option>
-                                <option value="<?= t('سرکارگر') ?>"><?= t('سرکارگر') ?></option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label"><?= t('per_daily_salary') ?> (<?= t('sal_toman') ?>)</label>
-                            <input type="number" name="daily_salary" class="form-control" min="0">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Peymankar-Only Fields -->
-                <div id="add_peymankar_fields" style="display:none;">
-                    <hr style="border-color: var(--border); margin: 16px 0;">
-                    <p style="font-weight:bold; color: var(--primary); margin-bottom:12px;"><?= t('info') ?> <?= t('پیمانکار') ?></p>
-                    <div class="form-row">
-                        <div class="form-group"><label class="form-label"><?= t('nav_salary') ?> <?= t('ساعتی حضور') ?> (<?= t('sal_toman') ?>)</label><input type="number" name="hourly_salary" class="form-control" min="0" step="1000" placeholder="<?= t('مثلاً') ?>: 150000"><div class="text-muted" style="font-size:10px;margin-top:4px"><?= t('پس') ?> <?= t('lea_from') ?> <?= t('اتصال') ?> <?= t('به') ?> <?= t('پیمانکار') ?> <?= t('در') ?> <?= t('صفحه') ?> <?= t('پیمانکاران') ?>، <?= t('این') ?> <?= t('مبلغ') ?> <?= t('با') ?> <?= t('خدمات') ?> <?= t('او') ?> <?= t('تجمیع') ?> <?= t('و') ?> <?= t('در') ?> <?= t('فرم') ?> <?= t('واریزی') ?> <?= t('نشان') ?> <?= t('داده') ?> <?= t('می‌شود') ?>.</div></div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label"><?= t('per_position') ?> / <?= t('شغل') ?></label>
-                            <select name="work_role" id="add_work_role_peymankar" class="form-control">
-                                <option value=""><?= t('انتخاب کنید') ?></option>
-                                <option value="<?= t('راننده بیل') ?>"><?= t('راننده بیل') ?></option>
-                                <option value="<?= t('اسکلت') ?> <?= t('کار') ?>"><?= t('اسکلت') ?> <?= t('کار') ?></option>
-                                <option value="<?= t('راننده بابکت') ?>"><?= t('راننده بابکت') ?></option>
-                                <option value="<?= t('جوشکار') ?>"><?= t('جوشکار') ?></option>
-                                <option value="<?= t('سایر') ?> <?= t('پیمانکار') ?>"><?= t('سایر') ?></option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
             </div>
             <div class="modal-footer">
                 <button type="submit" class="btn btn-primary"><?= t('ایجاد') ?></button>
@@ -1125,11 +1279,13 @@ function access_row_html($key, $label, $indent = false) {
             <input type="hidden" name="user_id" id="edit_user_id">
             <input type="hidden" name="is_karigar" id="edit_is_karigar_hidden">
             <div class="modal-body">
-                <!-- Type Display -->
+                <!-- §بازطراحی: دستهٔ ساختار جدید (بند ۱) -->
+                <input type="hidden" name="staff_category" id="edit_staff_category_hidden" value="">
                 <div class="form-row mb-3">
-                    <label class="form-check"><input type="radio" name="is_karigar" value="0" id="edit_type_employee" onchange="togglePersonType('edit', 0)"><span><strong><?= t('per_employee_type') ?></strong></span></label>
-                    <label class="form-check"><input type="radio" name="is_karigar" value="1" id="edit_type_worker" onchange="togglePersonType('edit', 1)"><span><strong><?= t('sal_worker') ?></strong></span></label>
-                    <label class="form-check"><input type="radio" name="is_karigar" value="2" id="edit_type_peymankar" onchange="togglePersonType('edit', 2)"><span><strong><?= t('پیمانکار') ?></strong></span></label>
+                    <label class="form-check"><input type="radio" name="staff_pick" value="sales" id="edit_cat_sales" onchange="editCategoryChanged('sales')"><span><strong>کارشناس فروش</strong></span></label>
+                    <label class="form-check"><input type="radio" name="staff_pick" value="office" id="edit_cat_office" onchange="editCategoryChanged('office')"><span><strong>کارمند اداری</strong></span></label>
+                    <label class="form-check"><input type="radio" name="staff_pick" value="manager" id="edit_cat_manager" onchange="editCategoryChanged('manager')"><span><strong>مدیر</strong></span></label>
+                    <label class="form-check" id="edit_legacy_radio_wrap" style="display:none"><input type="radio" name="staff_pick" value="legacy" id="edit_cat_legacy" onchange="editCategoryChanged('legacy')"><span><strong>نیروی قدیمی</strong> (کارگر/پیمانکار — حفظ ساختار قبلی)</span></label>
                 </div>
 
                 <!-- Common Fields -->
@@ -1217,6 +1373,12 @@ function access_row_html($key, $label, $indent = false) {
                     </div>
                 </div>
 
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label"><?= t('per_password') ?> <?= t('جدید') ?> (<?= t('خالی') ?> = <?= t('عدم') ?> <?= t('تغییر') ?>)</label>
+                            <input type="password" name="new_password" class="form-control">
+                        </div>
+                    </div>
                 <!-- Employee-Only Fields -->
                 <div id="edit_employee_fields">
                     <hr style="border-color: var(--border); margin: 16px 0;">
@@ -1226,43 +1388,12 @@ function access_row_html($key, $label, $indent = false) {
                             <label class="form-label"><?= t('per_position') ?></label>
                             <input type="text" name="position" id="edit_position" class="form-control" placeholder="<?= t('مثلاً') ?>: <?= t('مدیر، سرپرست،') ?> <?= t('حسابدار') ?>...">
                         </div>
-                        <div class="form-group">
-                            <label class="form-label"><?= t('نقش در گزارش') ?></label>
-                            <select name="work_role" id="edit_work_role" class="form-control">
-                                <option value=""><?= t('انتخاب کنید') ?></option>
-                                <option value="<?= t('مهندس اجرا') ?>"><?= t('مهندس اجرا') ?></option>
-                                <option value="HSE">HSE</option>
-                                <option value="<?= t('anbar_keeper') ?>"><?= t('anbar_keeper') ?></option>
-                                <option value="<?= t('مدیر پروژه') ?>"><?= t('مدیر پروژه') ?></option>
-                                <option value="<?= t('anbar_sign_supervisor') ?>"><?= t('anbar_sign_supervisor') ?></option>
-                                <option value="<?= t('دفتر فنی') ?>"><?= t('دفتر فنی') ?></option>
-                                <option value="<?= t('سایر') ?>"><?= t('سایر') ?></option>
-                            </select>
-                        </div>
-                        <?php if (is_strict_admin() || is_project_manager()): ?>
-                        <div class="form-group">
-                            <label class="form-label"><?= t('نقش کاربری سیستمی') ?></label>
-                            <select name="system_role" id="edit_system_role" class="form-control">
-                                <option value="worker">👤 <?= t('کارمند / پرسنل عادی') ?></option>
-                                <option value="project_manager">🏗️ <?= t('مدیر پروژه (دسترسی کامل به کل سایت)') ?></option>
-                                <option value="nazer_kol">👁️ <?= t('ناظر کل (مشاهده تمام بخش‌ها و کارگاه‌ها)') ?></option>
-                                <option value="karfarma">🏢 <?= t('کارفرما (فرم‌ها و گزارش روزانه و HSE)') ?></option>
-                                <option value="nazer">🔍 <?= t('ناظر کارگاه') ?></option>
-                                <option value="finance">🧮 <?= t('مسئول مالی (دسترسی کامل به CRM — خواندن و ویرایش همهٔ مشتریان/معاملات)') ?></option>
-                            </select>
-                        </div>
-                        <?php endif; ?>
                     </div>
+                    <?= render_staff_groups_html('edit', $__org_roles) ?>
                     <div class="form-row">
                         <div class="form-group">
                             <label class="form-label"><?= t('per_monthly_salary') ?> (<?= t('sal_toman') ?>)</label>
                             <input type="number" name="monthly_salary" id="edit_monthly_salary" class="form-control" min="0">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label"><?= t('per_password') ?> <?= t('جدید') ?> (<?= t('خالی') ?> = <?= t('عدم') ?> <?= t('تغییر') ?>)</label>
-                            <input type="password" name="new_password" class="form-control">
                         </div>
                     </div>
                 </div>
@@ -1360,19 +1491,6 @@ function access_row_html($key, $label, $indent = false) {
                 <div id="permSpecialNotice" style="display:none;background:#fef3c7;border:1px solid #f59e0b;color:#92400e;border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:12px">
                     ⚠️ <?= t('این') ?> <?= t('حساب') ?> <?= t('ویژه') ?> <?= t('است') ?> (<?= t('اکانتهای') ?> yaser / javidhse) — <?= t('btn_permissions') ?> <?= t('آن') ?> <?= t('طبق') ?> <?= t('روال') ?> <?= t('قبلیِ') ?> <?= t('خودش') ?> <?= t('ثابت') ?> <?= t('می‌ماند') ?> <?= t('و') ?> <?= t('این') ?> <?= t('فرم') ?> <?= t('روی') ?> <?= t('آن') ?> <?= t('btn_save') ?> <?= t('نمی‌شود') ?>.
                 </div>
-                <?php if (is_strict_admin() || is_project_manager()): ?>
-                <div class="form-group mb-3" style="background:var(--bg);padding:10px 14px;border-radius:10px;border:1px solid var(--border)">
-                    <label class="form-label font-bold mb-2">🎭 <?= t('نقش اصلی کاربر در سیستم') ?>:</label>
-                    <select name="system_role" id="perm_system_role" class="form-control" style="font-weight:600">
-                        <option value="worker">👤 <?= t('کاربر / پرسنل عادی کارگاه') ?></option>
-                        <option value="project_manager">🏗️ <?= t('مدیر پروژه (دسترسی کامل به کل سایت و همه کارگاه‌ها)') ?></option>
-                        <option value="nazer_kol">👁️ <?= t('ناظر کل (دسترسی مشاهده به تمام بخش‌ها و کارگاه‌ها)') ?></option>
-                        <option value="karfarma">🏢 <?= t('کارفرما (فقط فرم‌ها، گزارش روزانه و HSE)') ?></option>
-                        <option value="nazer">🔍 <?= t('ناظر کارگاه (فقط مشاهده کارگاه جاری)') ?></option>
-                        <option value="finance">🧮 <?= t('مسئول مالی (دسترسی کامل به CRM — خواندن و ویرایش همهٔ داده‌ها)') ?></option>
-                    </select>
-                </div>
-                <?php endif; ?>
                 <label class="form-check" style="display:flex;align-items:center;gap:8px;background:rgba(245,158,11,.08);padding:10px 12px;border-radius:10px;border:1px solid var(--border);margin-bottom:14px;cursor:pointer">
                     <input type="checkbox" name="wm_master" id="perm_wm_master" value="1">
                     <span><b>🏭 <?= t('مدیر کارگاه') ?></b> — <?= t('btn_permissions') ?> <?= t('کامل') ?> <?= t('به') ?> <?= t('همهٔ') ?> <?= t('صفحات') ?> <?= t('این') ?> <?= t('کارگاه') ?> (<?= t('ماند') ?> <?= t('و') ?> <?= t('قدرت') ?> <?= t('قبلی') ?>)</span>
@@ -1421,7 +1539,7 @@ function openAddModal() {
     try {
         var form = document.getElementById('addForm');
         if (form) form.reset();
-        togglePersonType('add', 0);
+        staffCatChanged('add', 'office');
         openModal('addModal');
     } catch(e){ console.error('openAddModal error', e); alert('خطا در باز کردن فرم افزودن: '+e.message); }
 }
@@ -1464,31 +1582,46 @@ function openRaiseModalById(id){
 }
 
 
-function togglePersonType(prefix, isWorker) {
-    var empFields = document.getElementById(prefix + '_employee_fields');
-    var workFields = document.getElementById(prefix + '_worker_fields');
-    var peyFields = document.getElementById(prefix + '_peymankar_fields');
-    if (peyFields) peyFields.style.display = 'none';
-    if (workFields) workFields.style.display = 'none';
-    if (empFields) empFields.style.display = 'none';
-
-    if (isWorker == 2) {
-        if (peyFields) peyFields.style.display = 'block';
-    } else if (isWorker == 1) {
-        if (workFields) workFields.style.display = 'block';
-    } else {
-        if (empFields) empFields.style.display = 'block';
-    }
-    var u = document.getElementById(prefix + '_username');
-    var p = document.getElementById(prefix + '_password');
-    if (isWorker == 0) {
-        if (u) u.setAttribute('required', 'required');
-        if (p) p.setAttribute('required', 'required');
-    } else {
-        if (u) u.removeAttribute('required');
-        if (p) p.removeAttribute('required');
-    }
+function staffCatChanged(prefix, cat) {
+    // نمایش/مخفی کردن گروه‌های شرطی مودال (فروش / اداری / مدیر)
+    var set = function (id, show) { var el = document.getElementById(id); if (el) el.style.display = show ? 'block' : 'none'; };
+    set(prefix + '_sales_track_group', cat === 'sales');
+    set(prefix + '_office_role_group', cat === 'office');
+    set(prefix + '_manager_roles_group', cat === 'manager');
+    var h = document.getElementById(prefix + '_staff_category_hidden');
+    if (h) h.value = cat;
 }
+
+function editCategoryChanged(cat) {
+    var emp = document.getElementById('edit_employee_fields');
+    var wor = document.getElementById('edit_worker_fields');
+    var pey = document.getElementById('edit_peymankar_fields');
+    var kHidden = document.getElementById('edit_is_karigar_hidden');
+    var worSel = document.getElementById('edit_work_role_worker');
+    var peySel = document.getElementById('edit_work_role_peymankar');
+    if (cat === 'legacy') {
+        if (emp) emp.style.display = 'none';
+        staffCatChanged('edit', '');
+        var legacyK = (kHidden && kHidden.dataset.legacy) ? parseInt(kHidden.dataset.legacy) : 1;
+        if (wor) wor.style.display = (legacyK === 1) ? 'block' : 'none';
+        if (pey) pey.style.display = (legacyK === 2) ? 'block' : 'none';
+        if (worSel) worSel.setAttribute('name', legacyK === 1 ? 'work_role' : 'x_work_role');
+        if (peySel) peySel.setAttribute('name', legacyK === 2 ? 'work_role' : 'x_work_role');
+        if (kHidden) kHidden.value = legacyK;
+        var h0 = document.getElementById('edit_staff_category_hidden');
+        if (h0) h0.value = '';
+        return;
+    }
+    if (emp) emp.style.display = 'block';
+    if (wor) wor.style.display = 'none';
+    if (pey) pey.style.display = 'none';
+    if (worSel) worSel.setAttribute('name', 'x_work_role');
+    if (peySel) peySel.setAttribute('name', 'x_work_role');
+    if (kHidden) kHidden.value = 0;
+    staffCatChanged('edit', cat);
+}
+
+// تابع togglePersonType (رادیوهای کارگر/پیمانکارِ قدیم) به همراه فرم قدیمی حذف شد؛ دستهٔ جدید با staffCatChanged مدیریت می‌شود.
 
 function editPerson(p) {
     try {
@@ -1515,25 +1648,28 @@ function editPerson(p) {
         el = document.getElementById('edit_hourly_salary'); if(el) el.value = p.hourly_salary || 0;
         el = document.getElementById('edit_description'); if(el) el.value = p.description || '';
 
-        // <?= t('تنظیم') ?> نقش
+        // نقش گزارش برای نیروی قدیمی (نیروی جدید: فیلد ندارد)
         var wr = p.work_role || '';
-        el = document.getElementById('edit_work_role'); if(el) el.value = wr;
         el = document.getElementById('edit_work_role_worker'); if(el) el.value = wr || '<?= t('کارگر') ?>';
         el = document.getElementById('edit_work_role_peymankar'); if(el) el.value = wr;
-        el = document.getElementById('edit_system_role'); if(el) el.value = p.role || 'worker';
 
-        // Set personnel type.
+        // نوع ساختار جدید (بند ۱ و ۷)
         var k = parseInt(p.is_karigar) || 0;
-        if (k == 2) {
-            el = document.getElementById('edit_type_peymankar'); if(el) el.checked = true;
-            togglePersonType('edit', 2);
-        } else if (k == 1) {
-            el = document.getElementById('edit_type_worker'); if(el) el.checked = true;
-            togglePersonType('edit', 1);
-        } else {
-            el = document.getElementById('edit_type_employee'); if(el) el.checked = true;
-            togglePersonType('edit', 0);
-        }
+        var kHidden = document.getElementById('edit_is_karigar_hidden');
+        if (kHidden) { kHidden.value = k; kHidden.dataset.legacy = k; }
+        var sc = (k !== 0) ? 'legacy' : (p.staff_category || 'office');
+        var legacyWrap = document.getElementById('edit_legacy_radio_wrap');
+        if (legacyWrap) legacyWrap.style.display = (k !== 0) ? '' : 'none';
+        var rc = document.getElementById('edit_cat_' + (sc === 'legacy' ? 'legacy' : sc));
+        if (rc) rc.checked = true;
+        editCategoryChanged(sc);
+
+        // فیلدهای شرطی ساختار جدید
+        el = document.getElementById('edit_sales_track'); if (el) el.value = (sc === 'sales') ? (p.specialty || '') : '';
+        el = document.getElementById('edit_office_role'); if (el) el.value = (sc === 'office') ? (p.position || '') : '';
+        el = document.getElementById('edit_salary_effective_from'); if (el) { try { el.value = p.salary_effective_from ? toJalali(String(p.salary_effective_from).substr(0, 10)) : ''; } catch (ex) { el.value = ''; } }
+        var roleIds = p.org_role_ids || [];
+        document.querySelectorAll('.js-org-role-edit').forEach(function (cb) { cb.checked = roleIds.indexOf(parseInt(cb.value)) !== -1; });
         openModal('editModal');
     } catch(e) {
         console.error('editPerson error:', e);
@@ -1645,12 +1781,6 @@ function openPermissions(userId, btn) {
     document.getElementById('permSaveBtn').disabled = special;
     document.getElementById('permSaveBtn').style.opacity = special ? '.5' : '1';
 
-    var roleSel = document.getElementById('perm_system_role');
-    if (roleSel) {
-        var rVal = (btn && btn.getAttribute('data-role')) ? btn.getAttribute('data-role') : 'worker';
-        roleSel.value = rVal;
-    }
-
     if (btn) {
         var map = {};
         try { map = JSON.parse(btn.getAttribute('data-access') || '{}'); } catch (e) {}
@@ -1672,35 +1802,47 @@ function openPermissions(userId, btn) {
     openModal('permModal');
 }
 
-// حل <?= t('مشکل') ?> work_role - <?= t('حذف') ?> select<?= t('های') ?> <?= t('غیرفعال') ?> <?= t('قبل') ?> <?= t('از') ?> سابمیت
-function fixWorkRoleSelects(formPrefix) {
-    var typeRadios = document.querySelectorAll('#' + formPrefix + 'Modal input[name="' + (formPrefix === 'add' ? 'person_type' : 'is_karigar') + '"]');
-    var val = 0;
-    typeRadios.forEach(function(r) { if (r.checked) val = parseInt(r.value); });
-
-    // <?= t('حذف') ?> <?= t('همه') ?> select<?= t('های') ?> work_role
-    var form = document.getElementById(formPrefix + 'Form') || document.querySelector('#' + formPrefix + 'Modal form');
-    if (!form) return true;
-    form.querySelectorAll('select[name="work_role"]').forEach(function(sel) {
-        sel.removeAttribute('name');
-    });
-
-    // <?= t('فعال') ?> <?= t('کردن') ?> <?= t('فقط') ?> select مرتبط
-    if (val === 1) {
-        var el = document.getElementById(formPrefix + '_work_role_worker');
-        if (el) el.setAttribute('name', 'work_role');
-    } else if (val === 2) {
-        var el = document.getElementById(formPrefix + '_work_role_peymankar');
-        if (el) el.setAttribute('name', 'work_role');
-    } else {
-        var el = document.getElementById(formPrefix + '_work_role');
-        if (el) el.setAttribute('name', 'work_role');
-    }
-    return true;
+function escHtml(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]; });
 }
 
-function fixEditWorkRole() { return fixWorkRoleSelects('edit'); }
-function fixAddWorkRole() { return fixWorkRoleSelects('add'); }
+function openDocsModal(uid) {
+    document.getElementById('docs_user_id').value = uid;
+    var box = document.getElementById('docsList');
+    box.innerHTML = '<div class="text-center" style="padding:14px"><div class="spinner" style="margin:0 auto"></div></div>';
+    openModal('docsModal');
+    fetch('index.php?page=personnel&docs_list=' + uid, { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (!d.ok) { box.innerHTML = '<p class="text-danger" style="padding:12px">' + escHtml(d.error || 'خطا') + '</p>'; return; }
+            if (!d.docs || !d.docs.length) { box.innerHTML = '<p class="text-muted" style="padding:14px;text-align:center">مدرکی ثبت نشده است</p>'; return; }
+            var h = '<div class="table-container"><table><thead><tr><th>مدرک</th><th>نوع</th><th>ثبت</th><th>انقضا</th><th>عملیات</th></tr></thead><tbody>';
+            d.docs.forEach(function (doc) {
+                h += '<tr><td><strong>' + escHtml(doc.title) + '</strong>' + (doc.notes ? '<div class="text-muted" style="font-size:10px">' + escHtml(doc.notes) + '</div>' : '') + '</td>'
+                    + '<td>' + escHtml(doc.document_type || '-') + '</td>'
+                    + '<td style="font-size:11px" dir="ltr">' + escHtml(String(doc.created_at || '').substr(0, 10)) + '</td>'
+                    + '<td>' + escHtml(doc.expiry_date || '-') + '</td>'
+                    + '<td><div class="table-actions">'
+                    + '<a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="index.php?page=personnel&download_doc=' + parseInt(doc.id) + '" title="مشاهده/دانلود">⬇️</a>'
+                    + '<form method="POST" style="display:inline" onsubmit="return confirm(\'مدرک حذف شود؟\')"><?= get_csrf_field() ?><input type="hidden" name="action" value="delete_document"><input type="hidden" name="doc_id" value="' + parseInt(doc.id) + '"><button class="btn btn-danger btn-sm" title="حذف">🗑️</button></form>'
+                    + '</div></td></tr>';
+            });
+            h += '</tbody></table></div>';
+            box.innerHTML = h;
+        })
+        .catch(function () { box.innerHTML = '<p class="text-danger" style="padding:12px">خطا در ارتباط با سرور</p>'; });
+}
+
+function openPersonalCommModal(uid) {
+    document.getElementById('pcomm_user_id').value = uid;
+    openModal('personalCommModal');
+}
+
+// §بازطراحی: «نقش در گزارش» حذف شد؛ work_role فقط برای نیروی قدیمی است و name آن در editCategoryChanged مدیریت می‌شود.
+function fixWorkRoleSelects(formPrefix) { return true; }
+
+function fixEditWorkRole() { return true; }
+function fixAddWorkRole() { return true; }
 </script>
 
 <!-- ═══ مودال افزایش حقوق تکی (§1) ═══ -->
@@ -1925,6 +2067,82 @@ function groupPreviewUpdate() {
                 <p class="text-muted" style="font-size:12px;margin:0"><?= t('lea_from') ?> <?= t('آن') ?> <?= t('wh_date') ?> <?= t('به') ?> <?= t('بعد') ?> <?= t('این') ?> <?= t('per_count') ?> <?= t('دوباره') ?> <?= t('در سایت') ?> <?= t('فعال') ?> <?= t('می‌شود') ?>.</p>
             </div>
             <div class="modal-footer"><button type="submit" class="btn btn-success"><?= t('ثبت') ?> <?= t('wh_start') ?> <?= t('مجدد') ?></button><button type="button" onclick="closeModal('restartWorkModal')" class="btn btn-ghost"><?= t('btn_cancel') ?></button></div>
+        </form>
+    </div>
+</div>
+
+
+<!-- ═══ مودال مدارک اسکن‌شدهٔ پرسنل (بند ۸) ═══ -->
+<div id="docsModal" class="modal-overlay hidden">
+    <div class="modal glass-modal" style="max-width:760px;max-height:90vh;overflow-y:auto">
+        <div class="modal-header"><h3 class="modal-title">📎 مدارک اسکن‌شده</h3><button onclick="closeModal('docsModal')" class="modal-close">✕</button></div>
+        <form method="POST" enctype="multipart/form-data"><?= get_csrf_field() ?>
+            <input type="hidden" name="action" value="upload_document">
+            <input type="hidden" name="user_id" id="docs_user_id">
+            <div class="modal-body">
+                <?php if (is_strict_admin() || has_permission('manage_personnel')): ?>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">عنوان مدرک *</label>
+                        <input type="text" name="doc_title" class="form-control" placeholder="مثلاً: قرارداد کار / کارت ملی / مدرک فنی" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">نوع مدرک</label>
+                        <select name="doc_type" class="form-control">
+                            <option value="قرارداد">قرارداد</option>
+                            <option value="کارت ملی">کارت ملی</option>
+                            <option value="شناسنامه">شناسنامه</option>
+                            <option value="مدرک تحصیلی">مدرک تحصیلی</option>
+                            <option value="گواهی فنی">گواهی فنی</option>
+                            <option value="سایر">سایر</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">تاریخ انقضا (اختیاری)</label>
+                        <input type="text" name="doc_expiry" class="form-control jalali-date" placeholder="1405/12/29">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">توضیح</label>
+                        <input type="text" name="doc_notes" class="form-control" placeholder="اختیاری">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">فایل (PDF یا تصویر — حداکثر ۵ مگابایت) *</label>
+                    <input type="file" name="doc_file" class="form-control" accept=".pdf,application/pdf,image/jpeg,image/png,image/webp" required>
+                </div>
+                <hr style="border-color: var(--border); margin: 12px 0;">
+                <?php else: ?>
+                <p class="text-muted" style="font-size:12px;margin:0 0 10px">بارگذاری فقط برای مدیر/ادمین؛ شما فقط مشاهده می‌کنید.</p>
+                <?php endif; ?>
+                <div id="docsList"><div class="text-center" style="padding:14px"><div class="spinner" style="margin:0 auto"></div></div></div>
+            </div>
+            <div class="modal-footer">
+                <?php if (is_strict_admin() || has_permission('manage_personnel')): ?>
+                <button type="submit" class="btn btn-primary">⬆️ بارگذاری مدرک</button>
+                <?php endif; ?>
+                <button type="button" onclick="closeModal('docsModal')" class="btn btn-ghost">بستن</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ═══ مودال پورسانت مشتری شخصی کارمند اداری (بند ۶) ═══ -->
+<div id="personalCommModal" class="modal-overlay hidden">
+    <div class="modal glass-modal" style="max-width:480px">
+        <div class="modal-header"><h3 class="modal-title">🤝 پورسانت مشتری شخصی</h3><button onclick="closeModal('personalCommModal')" class="modal-close">✕</button></div>
+        <form method="POST"><?= get_csrf_field() ?>
+            <input type="hidden" name="action" value="personal_commission">
+            <input type="hidden" name="user_id" id="pcomm_user_id">
+            <div class="modal-body">
+                <div class="form-group"><label class="form-label">نام مشتری *</label><input type="text" name="customer_name" class="form-control" required placeholder="نام مشتری / فروشگاه"></div>
+                <div class="form-group"><label class="form-label">مبلغ پورسانت (تومان) *</label><input type="number" name="amount" class="form-control" min="1" required placeholder="مثلاً 15000000"></div>
+                <div class="form-group"><label class="form-label">تاریخ</label><input type="text" name="comm_date" class="form-control jalali-date" value="<?= jalali_now() ?>"></div>
+                <div class="form-group"><label class="form-label">یادداشت</label><input type="text" name="note" class="form-control" placeholder="اختیاری"></div>
+                <p class="text-muted" style="font-size:11px;margin:0">این مبلغ فوراً به‌عنوان «پاداش تأییدشده» برای این شخص ثبت می‌شود و در محاسبهٔ حقوق ماه جاری لحاظ خواهد شد.</p>
+            </div>
+            <div class="modal-footer"><button type="submit" class="btn btn-success">ثبت پورسانت</button><button type="button" onclick="closeModal('personalCommModal')" class="btn btn-ghost">انصراف</button></div>
         </form>
     </div>
 </div>

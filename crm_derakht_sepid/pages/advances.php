@@ -95,34 +95,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect("index.php?page=advances");
     }
     
-    // ── ثبت مانده از قبل (طلب یا بدهی نیرو از دوره‌های گذشته) ──
-    // موتور حقوق مبلغ payment_type='debt' را از مبلغ قابل پرداخت کم می‌کند؛
-    // پس «بدهی نیرو» مثبت ذخیره می‌شود و «طلب نیرو» منفی تا به او اضافه شود.
-    if ($action === 'register_debt') {
-        if (!$is_admin) { showToast(t('دسترسی ندارید'), 'error'); redirect("index.php?page=advances"); exit; }
-        $user_id = (int)$_POST['user_id'];
-        $amount = abs((float)str_replace(',', '', (string)($_POST['amount'] ?? 0)));
-        $direction = ($_POST['balance_dir'] ?? 'debit') === 'credit' ? 'credit' : 'debit';
-        $reason = sanitize($_POST['reason'] ?? '');
-        if ($user_id <= 0 || $amount <= 0) {
-            showToast(t('مبلغ و نیرو را کامل وارد کنید'), 'error');
-            redirect("index.php?page=advances");
-        }
-        // تاریخ مؤثر: مانده از این تاریخ در محاسبات دیده می‌شود (پیش‌فرض امروز)
-        $eff_date = to_gregorian(sanitize($_POST['effective_date'] ?? ''));
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$eff_date)) $eff_date = date('Y-m-d');
-        $eff_at = $eff_date . ' ' . date('H:i:s');
-        // طلب نیرو ⇒ منفی (به نفع نیرو) | بدهی نیرو ⇒ مثبت (به ضرر نیرو)
-        $signed = $direction === 'credit' ? -$amount : $amount;
-        $pdo->prepare("INSERT INTO advances (user_id, workshop_id, amount, remaining, reason, status, payment_type, approved_by, approved_at) VALUES (?, ?, ?, ?, ?, 'approved', 'debt', ?, ?)")
-            ->execute([$user_id, $ws_id, $signed, $signed, $reason, $_SESSION['user_id'], $eff_at]);
-        $pdo->prepare("INSERT INTO audit_log (user_id, action, entity_type, entity_id, new_value) VALUES (?, 'create', 'advance', ?, ?)")
-            ->execute([$_SESSION['user_id'], (int)$pdo->lastInsertId(),
-                ($direction === 'credit' ? 'ثبت طلب نیرو ' : 'ثبت بدهی نیرو ') . number_format($amount) . ' — ' . to_jalali($eff_date)]);
-        showToast(t('adv_debt_saved'));
-        redirect("index.php?page=advances");
-    }
-    
     if ($action === 'approve') {
         if (!$is_admin) { showToast(t('دسترسی ندارید'), 'error'); redirect("index.php?page=advances"); exit; }
         $stmt = $pdo->prepare("UPDATE advances SET status = 'approved', approved_by = ?, approved_at = NOW() WHERE id = ? AND workshop_id = ?");
@@ -280,9 +252,6 @@ include 'includes/header.php';
     <div class="btn-group">
         <button onclick="openModal('requestModal')" class="btn btn-primary"><i data-lucide="plus"></i> <?= t('adv_request') ?></button>
         <?php if ($is_admin): ?>
-        <button onclick="openModal('debtModal')" class="btn btn-primary"><i data-lucide="scale"></i> <?= t('adv_register_debt') ?></button>
-        <?php endif; ?>
-        <?php if ($is_admin): ?>
         <button onclick="openManualPayment('advance')" class="btn btn-success"><i data-lucide="banknote"></i> <?= t('adv_pay_advance') ?></button>
         <button onclick="openManualPayment('salary')" class="btn btn-warning"><i data-lucide="wallet"></i> <?= t('adv_pay_salary') ?></button>
         <?php endif; ?>
@@ -420,46 +389,6 @@ include 'includes/header.php';
     </div>
 </div>
 
-<!-- Debt Registration Modal -->
-<div id="debtModal" class="modal-overlay hidden">
-    <div class="modal glass-modal" style="max-width:500px">
-        <div class="modal-header"><h3 class="modal-title">📌 <?= t('btn_register_debt') ?></h3><button onclick="closeModal('debtModal')" class="modal-close">✕</button></div>
-        <form method="POST"><?= get_csrf_field() ?>
-            <input type="hidden" name="action" value="register_debt">
-            <div class="modal-body">
-                <p class="text-muted mb-3" style="font-size:12px"><?= t('adv_debt_desc') ?></p>
-                <div class="form-group">
-                    <label class="form-label"><?= t('wh_name') ?> <?= t('نیرو') ?> *</label>
-                    <select name="user_id" class="form-control" required>
-                        <option value=""><?= t('انتخاب کنید') ?></option>
-                        <?php foreach ($personnel as $p): ?>
-                        <option value="<?= $p['id'] ?>"><?= $p['full_name'] ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label class="form-label"><?= t('adv_debt_dir_label') ?> *</label>
-                    <div class="d-flex gap-2" style="flex-wrap:wrap">
-                        <label class="form-check" style="flex:1;min-width:190px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;cursor:pointer">
-                            <input type="radio" name="balance_dir" value="credit" checked onchange="debtDirHint()">
-                            <span style="color:#16a34a;font-weight:600">＋ <?= t('adv_debt_credit') ?></span>
-                        </label>
-                        <label class="form-check" style="flex:1;min-width:190px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;cursor:pointer">
-                            <input type="radio" name="balance_dir" value="debit" onchange="debtDirHint()">
-                            <span style="color:#dc2626;font-weight:600">− <?= t('adv_debt_debit') ?></span>
-                        </label>
-                    </div>
-                    <div id="debtDirHint" class="text-muted" style="font-size:11px;margin-top:6px"><?= t('adv_debt_credit_hint') ?></div>
-                </div>
-                <div class="form-group"><label class="form-label"><?= t('مبلغ') ?> (<?= t('sal_toman') ?>) *</label><input type="number" name="amount" class="form-control" required min="1" step="1" placeholder="<?= t('مثال') ?>: 10000000"></div>
-                <div class="form-group"><label class="form-label"><?= t('adv_debt_date') ?> *</label><input type="text" name="effective_date" class="form-control jalali-date" value="<?= jalali_now() ?>" required></div>
-                <div class="form-group"><label class="form-label"><?= t('wor_description') ?> (<?= t('adv_reason') ?>) *</label><textarea name="reason" class="form-control" rows="2" required placeholder="<?= t('مثال') ?>: <?= t('مانده') ?> <?= t('حساب') ?> <?= t('rep_month') ?>‌<?= t('های') ?> <?= t('قبل') ?>"></textarea></div>
-            </div>
-            <div class="modal-footer"><button type="submit" class="btn btn-primary"><?= t('btn_register_debt') ?></button></div>
-        </form>
-    </div>
-</div>
-
 <!-- Manual Payment Modal -->
 <div id="manualPaymentModal" class="modal-overlay hidden">
     <div class="modal glass-modal" style="max-width:520px">
@@ -557,17 +486,6 @@ include 'includes/header.php';
 </div>
 
 <script>
-function debtDirHint() {
-    var el = document.getElementById('debtDirHint');
-    if (!el) return;
-    var sel = document.querySelector('input[name="balance_dir"]:checked');
-    var isCredit = !sel || sel.value === 'credit';
-    el.textContent = isCredit
-        ? <?= json_encode(t('adv_debt_credit_hint'), JSON_UNESCAPED_UNICODE) ?>
-        : <?= json_encode(t('adv_debt_debit_hint'), JSON_UNESCAPED_UNICODE) ?>;
-    el.style.color = isCredit ? '#16a34a' : '#dc2626';
-}
-
 function openManualPayment(type) {
     document.getElementById('manual_payment_type').value = type;
     document.getElementById('manualPaymentTitle').textContent = type == 'salary' ? '<?= t('adv_pay_salary') ?>' : '<?= t('adv_pay_advance') ?>';
