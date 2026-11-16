@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $report = tel_sync_calls($pdo, $pages);
         $_SESSION['calls_sync_report'] = $report;
         operations_audit($pdo, $me, 'telefonchy_sync', 'telefonchy', 0, 'inserted:' . (int)$report['inserted'] . ' requested:' . (int)$report['analysis_requested']);
-        redirect('index.php?page=calls');
+        redirect('index.php?page=calls' . ($_GET['from'] ?? $_GET['to'] ? '&from=' . urlencode((string)($_GET['from'] ?? '')) . '&to=' . urlencode((string)($_GET['to'] ?? '')) : ''));
     }
 
     if ($action === 'analyze_all') {
@@ -42,8 +42,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'analyze_one' || $action === 'poll_one') {
         $cuid = trim((string)($_POST['cuid'] ?? ''));
         if (preg_match('/^[A-Za-z0-9._\-]{1,96}$/', $cuid)) {
-            if ($action === 'analyze_one') { tel_request_analysis($pdo, $cuid); showToast('درخواست تحلیل ثبت شد.'); }
-            else { tel_poll_analysis($pdo, $cuid); showToast('وضعیت تحلیل به‌روزرسانی شد.'); }
+            if ($action === 'analyze_one') {
+                $r = tel_request_analysis($pdo, $cuid);
+                if ($r['http'] === 200 || $r['http'] === 202) showToast('درخواست تحلیل ثبت شد (HTTP ' . (int)$r['http'] . '). چند دقیقه بعد دکمهٔ 🔄 را بزنید.');
+                else showToast('خطا در ثبت تحلیل (HTTP ' . (int)$r['http'] . ')' . (!empty($r['error']) ? ' — ' . $r['error'] : ''), 'error');
+            } else {
+                $r = tel_poll_analysis($pdo, $cuid);
+                $msg = 'وضعیت تحلیل: ' . ($r['status'] ?? 'نامشخص');
+                if (isset($r['data']['progress']) && $r['data']['progress'] !== null) $msg .= ' — ' . (int)$r['data']['progress'] . '٪';
+                if (($r['http'] ?? 0) !== 200) $msg .= ' (HTTP ' . (int)$r['http'] . (!empty($r['error']) ? ' — ' . $r['error'] : '') . ')';
+                showToast($msg, ($r['http'] ?? 0) === 200 ? 'success' : 'error');
+            }
         }
         redirect('index.php?page=calls');
     }
@@ -68,16 +77,29 @@ $stats           = tel_calls_stats($pdo);
 $syncReport = $_SESSION['calls_sync_report'] ?? null; unset($_SESSION['calls_sync_report']);
 $bulkReport = $_SESSION['calls_bulk_report'] ?? null; unset($_SESSION['calls_bulk_report']);
 
+// فیلتر بازهٔ تاریخ (شمسی) — مثل: from=1405/08/01&to=1405/08/25
+$fromJ = trim(normalize_digits((string)($_GET['from'] ?? '')));
+$toJ   = trim(normalize_digits((string)($_GET['to'] ?? '')));
+$fromG = $fromJ !== '' ? to_gregorian($fromJ) : '';
+$toG   = $toJ !== '' ? to_gregorian($toJ) : '';
+$where = '';
+$params = [];
+if ($fromG !== '') { $where .= ' AND COALESCE(pc.created_at_tel, pc.created_at) >= ?'; $params[] = $fromG . ' 00:00:00'; }
+if ($toG !== '')   { $where .= ' AND COALESCE(pc.created_at_tel, pc.created_at) <= ?'; $params[] = $toG . ' 23:59:59'; }
 try {
-    $calls = $pdo->query("SELECT pc.*,
+    $sql = "SELECT pc.*,
             ca.analysis_status AS a_status, ca.progress AS a_progress,
             COALESCE(cust.name, lead.name, lead.company) AS matched_name
         FROM phone_calls pc
         LEFT JOIN call_analysis ca ON ca.cuid = pc.cuid
         LEFT JOIN crm_customers cust ON cust.id = pc.customer_id
         LEFT JOIN crm_leads lead ON lead.id = pc.lead_id
+        WHERE 1=1" . $where . "
         ORDER BY COALESCE(pc.created_at_tel, pc.created_at) DESC, pc.id DESC
-        LIMIT 200")->fetchAll();
+        LIMIT 500";
+    $stq = $pdo->prepare($sql);
+    $stq->execute($params);
+    $calls = $stq->fetchAll();
 } catch (Throwable $e) { $calls = []; }
 
 $stMap = [
@@ -166,7 +188,16 @@ include 'includes/header.php';
 </div>
 
 <div class="card animate-in">
-    <div class="card-header"><h3 class="card-title">آخرین <?= count($calls) ?> تماس</h3></div>
+    <div class="card-header d-flex justify-between align-center" style="flex-wrap:wrap;gap:8px">
+        <h3 class="card-title">بازهٔ نمایش: <?= $fromJ !== '' || $toJ !== '' ? htmlspecialchars($fromJ ?: '…') . ' تا ' . htmlspecialchars($toJ ?: '…') : 'همیشه' ?> — <?= count($calls) ?> تماس</h3>
+        <form method="get" action="index.php" class="d-flex align-center gap-2" style="flex-wrap:wrap">
+            <input type="hidden" name="page" value="calls">
+            <input type="text" name="from" class="form-control form-control-sm" style="width:120px;direction:ltr" placeholder="از 1405/08/01" value="<?= htmlspecialchars($fromJ) ?>">
+            <input type="text" name="to" class="form-control form-control-sm" style="width:120px;direction:ltr" placeholder="تا 1405/08/25" value="<?= htmlspecialchars($toJ) ?>">
+            <button type="submit" class="btn btn-ghost btn-sm"><i data-lucide="calendar-search"></i> فیلتر</button>
+            <a href="index.php?page=calls" class="btn btn-ghost btn-sm"><i data-lucide="x"></i> حذف فیلتر</a>
+        </form>
+    </div>
     <div style="overflow-x:auto">
         <table class="print-table" style="width:100%;border-collapse:collapse;font-size:12px">
             <thead>
