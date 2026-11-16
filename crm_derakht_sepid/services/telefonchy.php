@@ -552,9 +552,13 @@ function tel_sync_calls(PDO $pdo, int $maxPages = 3, int $autoMax = 25): array {
     $used = tel_analysis_used_today($pdo);
     $candidates = [];
 
+    // API جدید: بدون تاریخ فقط «امروز» را می‌دهد — بازهٔ ۶۰ روز اخیر (شمسی) را بفرست
+    $dateFrom = to_jalali(date('Y-m-d', strtotime('-60 days'))) . ' 00:00';
+    $dateTo   = jalali_now() . ' 23:59';
+
     for ($page = 1; $page <= $maxPages; $page++) {
         $report['pages_tried'] = $page;
-        $r = tel_fetch_calls_page($pdo, $page);
+        $r = tel_fetch_calls_page($pdo, $page, $dateFrom, $dateTo);
         if (!$r['ok']) {
             $report['errors'][] = 'صفحهٔ ' . $page . ': HTTP ' . $r['http'] . ($r['error'] ? ' — ' . $r['error'] : '');
             break;
