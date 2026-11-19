@@ -1,5 +1,5 @@
 /* Service Worker پایدار — صفحات PHP هرگز کش نمی‌شوند */
-const SW_VERSION = 'derakhtsepid-v2';
+const SW_VERSION = 'derakhtsepid-v3';
 const STATIC_CACHE = SW_VERSION + '-static';
 const PRECACHE = [
   'assets/css/style.css',

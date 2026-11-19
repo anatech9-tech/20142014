@@ -39,17 +39,17 @@
             st.id = 'ot-style';
             st.textContent =
                 '.ot-overlay{position:fixed;inset:0;background:rgba(10,14,30,.45);z-index:9990;cursor:pointer}' +
-                '.ot-box{position:fixed;z-index:9991;border:2px solid #308e89;border-radius:14px;background:rgba(99,102,241,.08);box-shadow:0 0 0 4px rgba(99,102,241,.28),0 8px 30px rgba(0,0,0,.35);transition:all .25s ease;pointer-events:none}' +
+                '.ot-box{position:fixed;z-index:9991;border:2px solid var(--primary,#308e89);border-radius:14px;background:rgba(var(--primary-rgb,48,142,137),.08);box-shadow:0 0 0 4px rgba(var(--primary-rgb,48,142,137),.28),0 8px 30px rgba(0,0,0,.35);transition:all .25s ease;pointer-events:none}' +
                 '.ot-tip{position:fixed;z-index:9992;background:var(--surface,#fff);color:var(--text,#242428);border:1px solid var(--border,#e3e3e9);border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.25);padding:14px 16px;width:300px;max-width:calc(100vw - 24px)}' +
-                '.ot-tip h4{margin:0 0 6px;font-size:14px;color:#308e89;display:flex;align-items:center;gap:6px;font-weight:700}' +
-                '.ot-tip h4 .ot-dot{width:8px;height:8px;border-radius:50%;background:#308e89;display:inline-block}' +
+                '.ot-tip h4{margin:0 0 6px;font-size:14px;color:var(--primary,#308e89);display:flex;align-items:center;gap:6px;font-weight:700}' +
+                '.ot-tip h4 .ot-dot{width:8px;height:8px;border-radius:50%;background:var(--primary,#308e89);display:inline-block}' +
                 '.ot-tip p{margin:0;font-size:12.5px;line-height:2;color:var(--text-secondary,#475569)}' +
                 '.ot-tip .ot-nav{display:flex;align-items:center;justify-content:space-between;margin-top:12px;gap:6px}' +
                 '.ot-tip .ot-counter{font-size:11px;color:#90909f;white-space:nowrap}' +
                 '.ot-tip button{border:0;border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit;transition:opacity .15s}' +
                 '.ot-tip button:hover{opacity:.85}' +
                 '.ot-tip .ot-btn-prev{background:transparent;border:1px solid var(--border,#e3e3e9)!important;color:var(--text,#707080)}' +
-                '.ot-tip .ot-btn-next{background:#308e89;color:#fff;font-weight:600}' +
+                '.ot-tip .ot-btn-next{background:var(--primary,#308e89);color:#fff;font-weight:600}' +
                 '.ot-tip .ot-btn-close{background:#fee2e2;color:#b91c1c}' +
                 '.ot-fade{animation:otFade .2s ease}' +
                 '@keyframes otFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}' +

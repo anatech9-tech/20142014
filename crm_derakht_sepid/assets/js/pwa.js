@@ -41,7 +41,7 @@
         var b = document.createElement('div');
         b.id = 'pwa-install-banner';
         b.style.cssText = 'position:fixed;bottom:16px;left:16px;right:16px;max-width:420px;margin:0 auto;' +
-            'background:linear-gradient(135deg,#308e89,#26756f);color:#fff;border-radius:16px;' +
+            'background:linear-gradient(135deg,var(--primary,#308e89),var(--primary-dark,#26756f));color:#fff;border-radius:16px;' +
             'padding:14px 16px;box-shadow:0 12px 40px rgba(0,0,0,.35);z-index:99998;direction:' + (document.documentElement.dir || 'rtl') + ';' +
             'display:flex;align-items:center;gap:12px;font-size:13px;animation:pwaSlideUp .35s ease';
         b.innerHTML =
@@ -49,7 +49,7 @@
             '<div style="flex:1;line-height:1.7"><strong>' + PWA_TEXT.title + '</strong><br>' +
             '<span style="opacity:.92">' + PWA_TEXT.body + '</span></div>' +
             '<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">' +
-            '<button type="button" id="pwa-install-yes" style="background:#fff;color:#308e89;border:none;' +
+            '<button type="button" id="pwa-install-yes" style="background:#fff;color:var(--primary,#308e89);border:none;' +
             'border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer;font-family:inherit">' + PWA_TEXT.install + '</button>' +
             '<button type="button" id="pwa-install-no" style="background:rgba(255,255,255,.2);color:#fff;border:none;' +
             'border-radius:8px;padding:4px 14px;cursor:pointer;font-family:inherit;font-size:11px">' + PWA_TEXT.later + '</button>' +

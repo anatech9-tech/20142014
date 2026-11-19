@@ -11,6 +11,28 @@ if (!function_exists('p')) {
 }
 $currentPage = $_GET['page'] ?? 'dashboard';
 
+// برچسب نقش و حروف اول نام برای بلوک حساب در پایین سایدبار
+$__role_label = 'کاربر';
+if ($is_admin) {
+    $__role_label = 'مدیر کل';
+} elseif (function_exists('is_project_manager') && is_project_manager()) {
+    $__role_label = 'مدیر پروژه';
+} elseif (function_exists('is_workshop_manager') && is_workshop_manager()) {
+    $__role_label = 'مدیر واحد';
+} elseif ($is_nazer) {
+    $__role_label = 'ناظر کل';
+} elseif ($is_karfarma) {
+    $__role_label = 'کارفرما';
+}
+$__full_name = trim((string)($_SESSION['full_name'] ?? ($_SESSION['username'] ?? 'کاربر')));
+$__initials = '';
+foreach (preg_split('/\s+/', $__full_name) as $__w) {
+    if ($__w === '') continue;
+    $__initials .= mb_substr($__w, 0, 1, 'UTF-8');
+    if (mb_strlen($__initials, 'UTF-8') >= 2) break;
+}
+$__initials = $__initials !== '' ? $__initials : '؟';
+
 // ═══ §v11: تشخیص «حالت ناظر» روی صفحه جاری (برای بنر + غیرفعال‌شدن دکمه‌های ثبت) ═══
 $__is_viewer_page = false;
 if (!access_is_special_account()) {
@@ -38,7 +60,7 @@ if (!access_is_special_account()) {
     <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
     <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
-    <link rel="stylesheet" href="assets/css/style.css?v=20261106">
+    <link rel="stylesheet" href="assets/css/style.css?v=20261106b">
     <link rel="stylesheet" href="assets/css/glass.css">
     <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
 <script>
@@ -83,6 +105,11 @@ if (!access_is_special_account()) {
     (function() {
         var theme = localStorage.getItem('theme') || 'light';
         if (theme === 'dark') document.documentElement.classList.add('dark');
+        var palettes = ['teal', 'ocean', 'orchid', 'ruby', 'amber', 'emerald'];
+        try {
+            var pl = localStorage.getItem('palette');
+            document.documentElement.setAttribute('data-palette', palettes.indexOf(pl) >= 0 ? pl : 'teal');
+        } catch (e) { document.documentElement.setAttribute('data-palette', 'teal'); }
     })();
     </script>
 </head>
@@ -138,13 +165,17 @@ if (!access_is_special_account()) {
                 'calls'             => ['calls', 'phone', t('nav_calls'), $is_admin],
             ];
 
-            // شمارندهٔ پیام‌های خوانده‌نشده برای نشان کنار منوی پیام‌ها (بی‌خطا؛ اگر جدول/نشست نباشد ۰ می‌ماند)
+            // شمارندهٔ پیام‌های خوانده‌نشده + ۵ اعلان اخیر برای زنگ سربرگ (بی‌خطا؛ اگر جدول/نشست نباشد خالی می‌ماند)
             $__unread_notifs = 0;
+            $__recent_notifs = [];
             try {
                 if (!empty($_SESSION['user_id']) && isset($pdo)) {
                     $uns = $pdo->prepare("SELECT COUNT(*) FROM notification_recipients WHERE user_id = ? AND is_read = 0");
                     $uns->execute([(int)$_SESSION['user_id']]);
                     $__unread_notifs = (int)$uns->fetchColumn();
+                    $rst = $pdo->prepare("SELECT n.title, n.created_at, nr.is_read FROM notification_recipients nr JOIN notifications n ON n.id = nr.notification_id WHERE nr.user_id = ? ORDER BY n.created_at DESC LIMIT 5");
+                    $rst->execute([(int)$_SESSION['user_id']]);
+                    $__recent_notifs = $rst->fetchAll(PDO::FETCH_ASSOC);
                 }
             } catch (Throwable $e) {}
             $nav_badges = ['notifications' => $__unread_notifs];
@@ -200,6 +231,11 @@ if (!access_is_special_account()) {
 
             // حساب‌های ویژه (javidhse / کارفرما): همهٔ گروه‌های فعال باز شوند چون منوی بسیار کوتاهی دارند
             $force_open_all = $is_javidhse || $is_karfarma;
+            // فهرست بخش‌های قابل جستجو (فقط صفحات مجاز همین کاربر) برای Ctrl+Q
+            $__search_items = ($is_javidhse || $is_karfarma) ? [] : [['key' => 'dashboard', 'label' => t('nav_dashboard')]];
+            foreach ($ordered_keys as $k) {
+                if ($nav_map[$k][3]) $__search_items[] = ['key' => $nav_map[$k][0], 'label' => $nav_map[$k][2]];
+            }
             $__render_link = function ($nav_key) use ($nav_map, $currentPage, $nav_badges) {
                 [$np, $nic, $nlabel] = $nav_map[$nav_key];
                 $active = $currentPage == $np ? 'active' : '';
@@ -258,8 +294,12 @@ if (!access_is_special_account()) {
             </div>
             <?php endif; ?>
         </nav>
-        <div class="sidebar-footer">
-            <a href="index.php?page=logout" class="nav-item logout"><i data-lucide="log-out"></i><span><?= t('nav_logout') ?></span></a>
+        <div class="sidebar-footer account-footer">
+            <a href="index.php?page=profile" class="account-user" title="پروفایل من">
+                <span class="account-avatar"><?= htmlspecialchars($__initials, ENT_QUOTES, 'UTF-8') ?></span>
+                <span class="account-meta"><strong><?= htmlspecialchars($__full_name, ENT_QUOTES, 'UTF-8') ?></strong><small><?= htmlspecialchars($__role_label, ENT_QUOTES, 'UTF-8') ?></small></span>
+            </a>
+            <a href="index.php?page=logout" class="icon-btn account-logout" title="<?= t('nav_logout') ?>" aria-label="<?= t('nav_logout') ?>"><i data-lucide="log-out"></i></a>
         </div>
     </div>
     <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileMenu()"></div>
@@ -270,6 +310,7 @@ if (!access_is_special_account()) {
                 <h1 class="page-title"><?= htmlspecialchars($pageTitle ?? t('nav_dashboard'), ENT_QUOTES, 'UTF-8') ?></h1>
             </div>
             <div class="topbar-right">
+                <button id="cmdkOpenBtn" class="icon-btn topbar-search-btn" type="button" title="جستجوی بخش‌ها (Ctrl+Q)" aria-label="جستجوی بخش‌ها"><i data-lucide="search"></i><span>جستجوی بخش‌ها…</span><kbd>Ctrl Q</kbd></button>
                 <?php
                 // ساعت سرور، نه ساعت دستگاه. اختلاف سه دقیقه‌ای یا بیشتر با ساعت دستگاه هشدار می‌دهد.
                 $__fa_days = localized_weekday_names();
@@ -354,9 +395,25 @@ if (!access_is_special_account()) {
                     document.addEventListener('click',function(e){if(!cal.hidden&&!cal.contains(e.target)&&e.target!==box){cal.hidden=true;box.setAttribute('aria-expanded','false')}});
                 })();
                 </script>
-                <!-- راهنمای صفحه (تور) — دکمه کنار انتخاب زبان -->
+                <!-- زنگ اعلان‌ها + آخرین ۵ اعلان -->
+                <div class="notif-wrap">
+                    <button id="bellBtn" class="icon-btn" type="button" title="اعلان‌های اخیر" aria-haspopup="dialog" aria-expanded="false" aria-label="اعلان‌ها"><i data-lucide="bell"></i><?php if ($__unread_notifs > 0): ?><span class="bell-badge"><?= min(99, $__unread_notifs) ?></span><?php endif; ?></button>
+                    <div id="bellPopover" class="topbar-popover hidden" role="dialog" aria-label="اعلان‌های اخیر">
+                        <div class="popover-head"><strong>اعلان‌های اخیر</strong><a href="index.php?page=notifications">مشاهده همه ←</a></div>
+                        <?php if (empty($__recent_notifs)): ?>
+                        <div class="popover-empty">📭 اعلانی وجود ندارد.</div>
+                        <?php else: foreach ($__recent_notifs as $rn): ?>
+                        <a class="notif-item<?= empty($rn['is_read']) ? ' unread' : '' ?>" href="index.php?page=notifications">
+                            <span class="notif-text"><?= htmlspecialchars(mb_substr((string)$rn['title'], 0, 90), ENT_QUOTES, 'UTF-8') ?></span>
+                            <span class="notif-time"><?= htmlspecialchars(to_jalali(substr((string)($rn['created_at'] ?? ''), 0, 10)), ENT_QUOTES, 'UTF-8') ?></span>
+                        </a>
+                        <?php endforeach; endif; ?>
+                    </div>
+                </div>
+                <!-- راهنمای صفحه (تور) -->
                 <button id="tourStartBtn" class="icon-btn tour-header-btn" title="راهنمای صفحه (؟)" onclick="startPageTour()">؟</button>
                 <button id="themeBtn" onclick="var t = document.documentElement; if (t.classList.contains('dark')) { t.classList.remove('dark'); localStorage.setItem('theme', 'light'); this.querySelector('i').setAttribute('data-lucide', 'moon'); } else { t.classList.add('dark'); localStorage.setItem('theme', 'dark'); this.querySelector('i').setAttribute('data-lucide', 'sun'); } lucide.createIcons();" class="icon-btn" title="<?= htmlspecialchars(t('ui_theme'), ENT_QUOTES, 'UTF-8') ?>"><i data-lucide="moon"></i></button>
+                <button id="paletteBtn" class="icon-btn" type="button" title="انتخاب پالت رنگی (۶ رنگ × روشن/تیره)" aria-label="انتخاب پالت رنگی" onclick="openModal('paletteModal')"><i data-lucide="palette"></i></button>
                 <?php if (can_see_all_workshops()): ?>
                 <a href="index.php?page=workshops" class="btn btn-ghost btn-sm ws-switcher-btn"><?= t('nav_switch_workshop') ?></a>
                 <?php endif; ?>
@@ -378,6 +435,28 @@ if (!access_is_special_account()) {
 </div>
 <?php endif; ?>
 <?php $_SESSION['toast_message'] = null; $_SESSION['toast_type'] = null; ?>
+
+<!-- مودال انتخاب پالت رنگی (۶×۲) -->
+<div id="paletteModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="انتخاب پالت رنگی">
+    <div class="modal" role="document">
+        <div class="modal-header"><h3 class="modal-title">🎨 انتخاب پالت رنگی</h3><button class="modal-close" type="button" onclick="closeModal('paletteModal')" aria-label="بستن">✕</button></div>
+        <div class="modal-body">
+            <p class="text-muted" style="font-size:11px;margin-bottom:12px">۶ رنگ برند مرجع کارکت. حالت روشن/تاریک را با دکمهٔ ماه/خورشید عوض کن؛ این انتخاب فقط همین مرورگر را رنگ می‌کند.</p>
+            <div class="palette-grid">
+<?php include __DIR__ . '/palette_swatches.php'; ?>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- جستجوی سراسری بخش‌ها (Ctrl+Q) -->
+<div id="cmdkOverlay" class="cmdk-overlay hidden" role="dialog" aria-modal="true" aria-label="جستجوی بخش‌ها">
+    <div class="cmdk-panel">
+        <div class="cmdk-input-row"><i data-lucide="search"></i><input id="cmdkInput" class="cmdk-input" type="text" autocomplete="off" spellcheck="false" placeholder="نام بخش را بنویسید… (مثلاً حقوق، CRM، گزارش)" aria-label="جستجوی بخش‌ها"></div>
+        <div id="cmdkList" class="cmdk-list" role="listbox"></div>
+    </div>
+</div>
+<script>window.__NAV_SEARCH = <?= json_encode($__search_items, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;</script>
 
 <script>
 // Save sidebar scroll position

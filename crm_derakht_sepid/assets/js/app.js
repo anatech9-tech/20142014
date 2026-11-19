@@ -382,3 +382,104 @@ document.addEventListener('DOMContentLoaded', () => {
 
     } catch(e){ console.warn('DOMContentLoaded init error', e); }
 });
+
+// ─── پالت رنگی (۶×۲) + زنگ اعلان + جستجوی سراسری (Ctrl+Q / Ctrl+K) — الگوی مرجع ───
+(function () {
+    'use strict';
+
+    var PALETTES = ['teal', 'ocean', 'orchid', 'ruby', 'amber', 'emerald'];
+
+    function applyPalette(name, save) {
+        if (PALETTES.indexOf(name) < 0) name = 'teal';
+        document.documentElement.setAttribute('data-palette', name);
+        if (save !== false) { try { localStorage.setItem('palette', name); } catch (e) {} }
+        document.querySelectorAll('.palette-swatch').forEach(function (el) {
+            var on = el.getAttribute('data-palette') === name;
+            el.classList.toggle('active', on);
+            el.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+    }
+
+    document.addEventListener('click', function (e) {
+        var sw = e.target && e.target.closest ? e.target.closest('.palette-swatch') : null;
+        if (sw) { applyPalette(sw.getAttribute('data-palette')); }
+    });
+
+    try { applyPalette(localStorage.getItem('palette') || 'teal', false); } catch (e) { applyPalette('teal', false); }
+
+    /* زنگ اعلان: باز/بسته شدن پاپ‌اوور */
+    try {
+        var bellBtn = document.getElementById('bellBtn');
+        var bellPop = document.getElementById('bellPopover');
+        if (bellBtn && bellPop) {
+            bellBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var open = !bellPop.classList.contains('hidden');
+                bellPop.classList.toggle('hidden');
+                bellBtn.setAttribute('aria-expanded', open ? 'false' : 'true');
+                if (!open && window.lucide) { try { lucide.createIcons(); } catch (err) {} }
+            });
+            document.addEventListener('click', function (e) {
+                if (bellPop.classList.contains('hidden')) return;
+                if (bellPop.contains(e.target) || bellBtn.contains(e.target)) return;
+                bellPop.classList.add('hidden');
+                bellBtn.setAttribute('aria-expanded', 'false');
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') { bellPop.classList.add('hidden'); bellBtn.setAttribute('aria-expanded', 'false'); }
+            });
+        }
+    } catch (e) { console.warn('bell popover init error', e); }
+
+    /* جستجوی سراسری بخش‌ها */
+    try {
+        var overlay = document.getElementById('cmdkOverlay');
+        var input = document.getElementById('cmdkInput');
+        var list = document.getElementById('cmdkList');
+        var items = Array.isArray(window.__NAV_SEARCH) ? window.__NAV_SEARCH : [];
+
+        function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+        function render(filter) {
+            var q = (filter || '').trim();
+            var hits = items.filter(function (it) { return !q || String(it.label).indexOf(q) !== -1; });
+            if (!hits.length) {
+                list.innerHTML = '<div class="cmdk-empty">نتیجه‌ای برای «' + esc(q) + '» پیدا نشد.</div>';
+                return;
+            }
+            list.innerHTML = hits.map(function (it, i) {
+                return '<a class="cmdk-item' + (i === 0 ? ' active' : '') + '" role="option" href="index.php?page=' + encodeURIComponent(it.key) + '"><i data-lucide="arrow-left"></i><span>' + esc(it.label) + '</span><small>رفتن به صفحه</small></a>';
+            }).join('');
+            if (window.lucide) { try { lucide.createIcons(); } catch (err) {} }
+        }
+        function openCmdk() {
+            if (!overlay || !input) return;
+            overlay.classList.remove('hidden');
+            input.value = '';
+            render('');
+            setTimeout(function () { try { input.focus(); } catch (e) {} }, 30);
+        }
+        function closeCmdk() { if (overlay) overlay.classList.add('hidden'); }
+
+        var openBtn = document.getElementById('cmdkOpenBtn');
+        if (openBtn) openBtn.addEventListener('click', openCmdk);
+        if (overlay) overlay.addEventListener('click', function (e) { if (e.target === overlay) closeCmdk(); });
+        if (input) input.addEventListener('input', function () { render(input.value); });
+        if (input) input.addEventListener('keydown', function (e) {
+            var first = list ? list.querySelector('.cmdk-item') : null;
+            if (e.key === 'Enter' && first) { e.preventDefault(); window.location.href = first.getAttribute('href'); }
+            else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                var nodes = Array.prototype.slice.call(list.querySelectorAll('.cmdk-item'));
+                if (!nodes.length) return;
+                var idx = nodes.findIndex(function (n) { return n.classList.contains('active'); });
+                idx = e.key === 'ArrowDown' ? Math.min(nodes.length - 1, idx + 1) : Math.max(0, idx - 1);
+                nodes.forEach(function (n, i) { n.classList.toggle('active', i === idx); });
+            }
+        });
+        document.addEventListener('keydown', function (e) {
+            var k = (e.key || '').toLowerCase();
+            if ((e.ctrlKey || e.metaKey) && (k === 'q' || k === 'k' || e.key === 'ق')) { e.preventDefault(); openCmdk(); }
+            else if (e.key === 'Escape') { closeCmdk(); }
+        });
+    } catch (e) { console.warn('cmdk init error', e); }
+})();

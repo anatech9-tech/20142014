@@ -128,6 +128,14 @@ include 'includes/header.php';
 </div>
 
 <div class="card mt-4 animate-in">
+    <div class="card-header"><h3 class="card-title">🎨 انتخاب پالت رنگی</h3></div>
+    <p class="text-muted" style="font-size:11px;margin-bottom:12px">۶ رنگ برند مرجع کارکت؛ حالت روشن/تاریک را با دکمهٔ ماه/خورشید عوض کن. انتخاب شما در همین مرورگر ذخیره می‌شود.</p>
+    <div class="palette-grid">
+<?php include __DIR__ . '/../includes/palette_swatches.php'; ?>
+    </div>
+</div>
+
+<div class="card mt-4 animate-in">
     <div class="card-header"><h3 class="card-title"><?= t('pro_my_workshops') ?></h3></div>
     <div class="table-container"><table>
         <thead><tr><th><?= t('واحد') ?></th><th><?= t('per_daily_salary') ?></th></tr></thead>

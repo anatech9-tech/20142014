@@ -64,9 +64,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= t('log_title') ?> - <?= htmlspecialchars(t('app_name'), ENT_QUOTES, 'UTF-8') ?></title>
-    <link rel="stylesheet" href="assets/css/style.css?v=20261106">
+    <link rel="stylesheet" href="assets/css/style.css?v=20261106b">
     <link rel="stylesheet" href="assets/css/glass.css">
     <link rel="manifest" href="manifest.webmanifest">
+    <script>(function(){var t=localStorage.getItem('theme')||'light';if(t==='dark')document.documentElement.classList.add('dark');var p=['teal','ocean','orchid','ruby','amber','emerald'];try{var pl=localStorage.getItem('palette');document.documentElement.setAttribute('data-palette',p.indexOf(pl)>=0?pl:'teal')}catch(e){document.documentElement.setAttribute('data-palette','teal')}})();</script>
     <meta name="theme-color" content="#308e89">
     <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png">
@@ -108,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </form>
             
             <div class="text-center mt-3">
-                <button @click="theme = theme === 'light' ? 'dark' : 'light'; localStorage.setItem('theme', theme)" class="btn btn-ghost btn-sm">
+                <button @click="theme = theme === 'light' ? 'dark' : 'light'; localStorage.setItem('theme', theme); document.documentElement.classList.toggle('dark', theme === 'dark')" class="btn btn-ghost btn-sm">
                     <?= t('log_change_theme') ?>
                 </button>
             </div>
