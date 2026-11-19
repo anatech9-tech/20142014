@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= t('log_title') ?> - <?= htmlspecialchars(t('app_name'), ENT_QUOTES, 'UTF-8') ?></title>
-    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/style.css?v=20261106">
     <link rel="stylesheet" href="assets/css/glass.css">
     <link rel="manifest" href="manifest.webmanifest">
     <meta name="theme-color" content="#308e89">

@@ -38,7 +38,7 @@ if (!access_is_special_account()) {
     <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
     <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
-    <link rel="stylesheet" href="assets/css/style.css?v=20260905">
+    <link rel="stylesheet" href="assets/css/style.css?v=20261106">
     <link rel="stylesheet" href="assets/css/glass.css">
     <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
 <script>
