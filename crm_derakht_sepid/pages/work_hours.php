@@ -114,7 +114,7 @@ if (!function_exists('can_user_manage_ws_work_hours')) {
             $st_u = $pdo->prepare("SELECT role FROM users WHERE id = ?");
             $st_u->execute([$user_id]);
             $u_role = $st_u->fetchColumn();
-            if (in_array($u_role, ['manager', 'workshop_manager', 'مدیر کارگاه', 'مدیر واحد'], true)) return true;
+            if (in_array($u_role, ['manager', 'workshop_manager', 'مدیر کارگاه', /* مقدار قدیمی دیتابیس */ 'مدیر واحد'], true)) return true;
         }
 
         return false;
