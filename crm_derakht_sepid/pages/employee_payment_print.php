@@ -20,7 +20,7 @@ $month_label = jalali_month_name($sel_month) . ' ' . $sel_year;
 
 $settings = get_workshop_settings($pdo, $ws_id);
 
-// فرم فقط اعضای کارگاه فعلی را می‌آورد؛ اما مبلغ هر عضو، تجمیع کارکردش در همه کارگاه‌هاست.
+// فرم فقط اعضای واحد فعلی را می‌آورد؛ اما مبلغ هر عضو، تجمیع کارکردش در همه واحد‌هاست.
 $st = $pdo->prepare("SELECT u.id, u.full_name, u.is_karigar, COALESCE(MAX(wp_all.monthly_salary),0) AS monthly_salary, COALESCE(MAX(wp_all.daily_salary),0) AS daily_salary, u.iban, u.account_name, u.account_number
     FROM users u
     JOIN workshop_personnel wp_current ON wp_current.user_id=u.id AND wp_current.workshop_id=? AND wp_current.status='active'
@@ -53,7 +53,7 @@ $total_monthly = array_sum(array_column($results, 'monthly'));
 $print_mode = isset($_GET['print']);
 ?>
 <!DOCTYPE html>
-<html lang="<?= htmlspecialchars($lang, ENT_QUOTES, 'UTF-8') ?>" dir="<?= htmlspecialchars($lang_dir, ENT_QUOTES, 'UTF-8') ?>">
+<html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -62,7 +62,7 @@ $print_mode = isset($_GET['print']);
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap');
         * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:'Vazirmatn',Tahoma,sans-serif; direction:<?= $lang_dir ?>; background:#f0f2f5; color:#1a1a2e; min-height:100vh; }
+        body { font-family:'Vazirmatn',Tahoma,sans-serif; direction:rtl; background:#f0f2f5; color:#1a1a2e; min-height:100vh; }
 
         .page { max-width:1000px; margin:20px auto; background:white; border-radius:16px; box-shadow:0 4px 20px rgba(0,0,0,0.08); overflow:hidden; padding:0; }
 

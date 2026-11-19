@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ws_target = (int)($_POST['target_workshop_id'] ?? $ws_id);
         if ($ws_target <= 0) $ws_target = $ws_id;
 
-        // اگر مدیر کارگاه است (و ادمین یا مدیر پروژه نیست) → ثبت درخواست برای تأیید
+        // اگر مدیر واحد است (و ادمین یا مدیر پروژه نیست) → ثبت درخواست برای تأیید
         if (!$can_direct_save) {
             $proposed = [];
             foreach ($keys as $k) {
@@ -33,19 +33,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $stmt = $pdo->prepare("INSERT INTO settings_requests (workshop_id, requested_by, settings_data, status) VALUES (?, ?, ?, 'pending')");
             $stmt->execute([$ws_target, $_SESSION['user_id'], json_encode($proposed, JSON_UNESCAPED_UNICODE)]);
-            showToast(t('درخواست تغییر تنظیمات کارگاه ثبت شد و پس از تأیید مدیر پروژه اعمال خواهد شد'));
+            showToast(t('درخواست تغییر تنظیمات واحد ثبت شد و پس از تأیید مدیر پروژه اعمال خواهد شد'));
             redirect("index.php?page=settings");
             exit;
         }
 
-        // ادمین یا مدیر پروژه: ذخیره مستقیم روی همان کارگاه
+        // ادمین یا مدیر پروژه: ذخیره مستقیم روی همان واحد
         $stmt = $pdo->prepare("INSERT INTO workshop_settings (workshop_id, setting_key, setting_value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
         foreach ($keys as $k) {
             if (isset($_POST[$k])) {
                 $stmt->execute([$ws_target, $k, $_POST[$k]]);
             }
         }
-        showToast(t('تنظیمات اختصاصی کارگاه با موفقیت ذخیره شد'));
+        showToast(t('تنظیمات اختصاصی واحد با موفقیت ذخیره شد'));
         redirect("index.php?page=settings");
         exit;
     }
@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    // ─── پروفایل شرکت / سربرگ چاپ (لوگو/مهر/امضا + اطلاعات ثبتی) — فراکارگاه‌ها، به همه چاپ‌ها اعمال می‌شود ───
+    // ─── پروفایل شرکت / سربرگ چاپ (لوگو/مهر/امضا + اطلاعات ثبتی) — فراواحد‌ها، به همه چاپ‌ها اعمال می‌شود ───
     if ($action === 'save_letterhead') {
         if (!is_strict_admin() && !is_project_manager()) {
             showToast(t('دسترسی ندارید'), 'error');
@@ -136,7 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $pdo->prepare("UPDATE settings_requests SET status = 'approved', approved_by = ?, approved_at = NOW() WHERE id = ?")
                 ->execute([$_SESSION['user_id'], $req_id]);
-            showToast(t('درخواست تغییر تنظیمات کارگاه تأیید و اعمال شد'));
+            showToast(t('درخواست تغییر تنظیمات واحد تأیید و اعمال شد'));
         }
         redirect("index.php?page=settings");
         exit;
@@ -196,7 +196,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare("UPDATE workshops SET employer_name = ? {$extra_sql} WHERE id = ?");
             $stmt->execute($params);
         }
-        showToast(t('تنظیمات کارفرمای کارگاه‌ها با موفقیت ذخیره شد'));
+        showToast(t('تنظیمات کارفرمای واحد‌ها با موفقیت ذخیره شد'));
         redirect("index.php?page=settings");
         exit;
     }
@@ -317,20 +317,20 @@ include 'includes/header.php';
 <div class="mb-3" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(59,130,246,.08);border-radius:10px;border:1px solid var(--border)">
     <span style="font-size:18px">🏢</span>
     <div>
-        <strong><?= t('کارگاه جاری:') ?> <?= htmlspecialchars($_SESSION['workshop_name'] ?? '') ?></strong>
-        <div class="text-muted" style="font-size:11.5px"><?= t('هر تغییری در این صفحه، فقط و فقط برای همین کارگاه ذخیره و اعمال می‌شود و کارگاه‌های دیگر تغییر نخواهند کرد.') ?></div>
+        <strong><?= t('واحد جاری:') ?> <?= htmlspecialchars($_SESSION['workshop_name'] ?? '') ?></strong>
+        <div class="text-muted" style="font-size:11.5px"><?= t('هر تغییری در این صفحه، فقط و فقط برای همین واحد ذخیره و اعمال می‌شود و واحد‌های دیگر تغییر نخواهند کرد.') ?></div>
     </div>
 </div>
 
 <?php if ($can_direct_save && !empty($pending_set_requests)): ?>
-<!-- کارت درخواست‌های تأیید تنظیمات کارگاه -->
+<!-- کارت درخواست‌های تأیید تنظیمات واحد -->
 <div class="card mb-4 animate-in" style="border-right:4px solid #f59e0b">
-    <div class="card-header"><h3 class="card-title">🔔 <?= t('درخواست‌های تغییر تنظیمات کارگاه در انتظار تأیید') ?> (<?= count($pending_set_requests) ?>)</h3></div>
+    <div class="card-header"><h3 class="card-title">🔔 <?= t('درخواست‌های تغییر تنظیمات واحد در انتظار تأیید') ?> (<?= count($pending_set_requests) ?>)</h3></div>
     <div class="table-container">
         <table>
             <thead>
                 <tr>
-                    <th><?= t('کارگاه') ?></th>
+                    <th><?= t('واحد') ?></th>
                     <th><?= t('درخواست‌دهنده') ?></th>
                     <th><?= t('تاریخ درخواست') ?></th>
                     <th><?= t('خلاصه تغییرات پیشنهادی') ?></th>
@@ -469,7 +469,7 @@ include 'includes/header.php';
 
     <div class="mt-4">
         <button type="submit" class="btn btn-primary btn-lg">
-            <i data-lucide="save"></i> <?= $can_direct_save ? t('set_save') . ' ' . t('این کارگاه') : t('ارسال درخواست تغییر تنظیمات جهت تأیید مدیر پروژه') ?>
+            <i data-lucide="save"></i> <?= $can_direct_save ? t('set_save') . ' ' . t('این واحد') : t('ارسال درخواست تغییر تنظیمات جهت تأیید مدیر پروژه') ?>
         </button>
     </div>
 </form>
@@ -571,17 +571,17 @@ $__roleNames = ['sales_expert' => 'کارشناس فروش', 'sales_manager' => 
 <?php
 $ws_list_for_emp = $pdo->query("SELECT id, name, employer_name, employer_logo FROM workshops WHERE status = 'active' ORDER BY id")->fetchAll();
 ?>
-<!-- تنظیمات لوگو و نام کارفرمای کارگاه‌ها -->
+<!-- تنظیمات لوگو و نام کارفرمای واحد‌ها -->
 <div class="card mt-4 animate-in">
-    <div class="card-header"><h3 class="card-title">🏢 <?= t('تنظیمات کارفرما و لوگو برای کارگاه‌ها (سربرگ فرم‌های گزارش)') ?></h3></div>
-    <p class="text-muted mb-3" style="font-size:12px"><?= t('می‌توانید برای هر کارگاه لوگو و نام کارفرما تعیین کنید تا در سربرگ گزارش روزانه و HSE نمایش داده شود. در صورت خالی بودن، فیلد خالی می‌ماند؛ در صورت بارگذاری لوگو، لوگو نمایش داده می‌شود و در صورت درج نام، نام کارفرما درج خواهد شد.') ?></p>
+    <div class="card-header"><h3 class="card-title">🏢 <?= t('تنظیمات کارفرما و لوگو برای واحد‌ها (سربرگ فرم‌های گزارش)') ?></h3></div>
+    <p class="text-muted mb-3" style="font-size:12px"><?= t('می‌توانید برای هر واحد لوگو و نام کارفرما تعیین کنید تا در سربرگ گزارش روزانه و فرم ایمنی نمایش داده شود. در صورت خالی بودن، فیلد خالی می‌ماند؛ در صورت بارگذاری لوگو، لوگو نمایش داده می‌شود و در صورت درج نام، نام کارفرما درج خواهد شد.') ?></p>
     <form method="POST" enctype="multipart/form-data"><?= get_csrf_field() ?>
         <input type="hidden" name="action" value="save_workshop_employers">
         <div style="overflow-x:auto">
             <table class="table" style="font-size:13px">
                 <thead>
                     <tr>
-                        <th style="width:25%"><?= t('نام کارگاه') ?></th>
+                        <th style="width:25%"><?= t('نام واحد') ?></th>
                         <th style="width:35%"><?= t('نام کارفرما') ?></th>
                         <th style="width:40%"><?= t('لوگوی کارفرما') ?></th>
                     </tr>
@@ -610,7 +610,7 @@ $ws_list_for_emp = $pdo->query("SELECT id, name, employer_name, employer_logo FR
             </table>
         </div>
         <div class="mt-3">
-            <button type="submit" class="btn btn-primary"><i data-lucide="save"></i> <?= t('ذخیره کارفرمای کارگاه‌ها') ?></button>
+            <button type="submit" class="btn btn-primary"><i data-lucide="save"></i> <?= t('ذخیره کارفرمای واحد‌ها') ?></button>
         </div>
     </form>
 </div>

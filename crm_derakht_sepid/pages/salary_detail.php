@@ -17,13 +17,13 @@ $is_self = ($uid === (int)$_SESSION['user_id']);
 $is_super = can_see_all_workshops(); // مدیر کل، مدیر پروژه، ناظر کل
 $is_manager = has_permission('manage_salary') || is_workshop_manager();
 
-// بررسی عضویت فعال در کارگاه فعال سشن
+// بررسی عضویت فعال در واحد فعال سشن
 $chk_ws = $pdo->prepare("SELECT 1 FROM workshop_personnel WHERE user_id = ? AND workshop_id = ? AND status = 'active'");
 $chk_ws->execute([$uid, $ws_id]);
 $is_my_personnel = (bool)$chk_ws->fetchColumn();
 
 if ($is_self) {
-    // بند ۲ کاربر: هر کس بتواند تایم‌شیت خودش را کامل (همراه با تمامی مأموریت‌ها در همه کارگاه‌ها) ببیند
+    // بند ۲ کاربر: هر کس بتواند تایم‌شیت خودش را کامل (همراه با تمامی مأموریت‌ها در همه واحد‌ها) ببیند
     $detail_scope = 'all';
     $d_ws = 0;
 } elseif ($is_super) {
@@ -31,12 +31,12 @@ if ($is_self) {
     $detail_scope = (($_GET['scope'] ?? 'all') === 'ws') ? 'ws' : 'all';
     $d_ws = $detail_scope === 'ws' ? (int)$ws_id : 0;
 } elseif ($is_manager && $is_my_personnel) {
-    // بند ۳ کاربر: مدیر کارگاه تایم‌شیت نیروهای کارگاه خودش را کامل ببیند (کارکرد در همه کارگاه‌ها از گذشته تا آینده)
+    // بند ۳ کاربر: مدیر واحد تایم‌شیت نیروهای واحد خودش را کامل ببیند (کارکرد در همه واحد‌ها از گذشته تا آینده)
     $detail_scope = 'all';
     $d_ws = 0;
 } else {
-    // بند ۴ کاربر: مدیر کارگاه مقصد مأموریت نباید بتواند تایم‌شیت و حقوق نیروی مأمور را ببیند
-    echo '<div style="font-family:tahoma,sans-serif;padding:30px;text-align:center;direction:rtl"><h3>' . t('دسترسی غیرمجاز') . '</h3><p>' . t('شما فقط به پرسنل و کارکرد کارگاه اختصاصی خود دسترسی دارید و امکان مشاهده کارکرد نیروهای مأمور یا سایر کارگاه‌ها را ندارید.') . '</p><p><a href="index.php?page=salary">' . t('بازگشت به صفحه حقوق') . '</a></p></div>';
+    // بند ۴ کاربر: مدیر واحد مقصد مأموریت نباید بتواند تایم‌شیت و حقوق نیروی مأمور را ببیند
+    echo '<div style="font-family:tahoma,sans-serif;padding:30px;text-align:center;direction:rtl"><h3>' . t('دسترسی غیرمجاز') . '</h3><p>' . t('شما فقط به پرسنل و کارکرد واحد اختصاصی خود دسترسی دارید و امکان مشاهده کارکرد نیروهای مأمور یا سایر واحد‌ها را ندارید.') . '</p><p><a href="index.php?page=salary">' . t('بازگشت به صفحه حقوق') . '</a></p></div>';
     exit;
 }
 
@@ -57,7 +57,7 @@ $user = array_merge($user, salary_effective_base($pdo, $uid, $d_ws));
 
 $is_karigar = (int)$user['is_karigar'];
 
-// هر user_id در صفحهٔ جزئیات مستقل است. هم‌نامی یا عضویت در چند کارگاه
+// هر user_id در صفحهٔ جزئیات مستقل است. هم‌نامی یا عضویت در چند واحد
 // به‌تنهایی مجوز ادغام سوابق نیست؛ هیچ حساب دیگری به‌صورت خودکار به این ردیف
 // اضافه نمی‌شود. رابطهٔ احتمالی باید با diagnostic و تأیید مدیر احراز شود.
 $detail_user_ids = [$uid];
@@ -97,7 +97,7 @@ $month_label = $jmi['label'];
 // ساعت کاری الزامی ماه = روزهای تقویمیِ کاری − مرخصیِ تأییدشده؛ غیبت بدون مرخصی کم نمی‌شود.
 $required_hours_info = !$is_karigar ? employee_required_hours($pdo, $uid, $d_ws, $m_start, $m_end, $settings) : null;
 
-// Get all work hours for this jalali month (§v8: همراه نام کارگاه)
+// Get all work hours for this jalali month (§v8: همراه نام واحد)
 $stmt = $pdo->prepare("SELECT wh.*, w.name AS ws_name FROM work_hours wh LEFT JOIN workshops w ON w.id = wh.workshop_id WHERE wh.user_id IN ($detail_user_placeholders)" . _ws_filter($d_ws, 'wh.workshop_id') . " AND wh.work_date BETWEEN ? AND ? ORDER BY wh.work_date, wh.start_time");
 $stmt->execute(array_merge($detail_user_ids, [$m_start, $m_end]));
 $hours = $stmt->fetchAll();
@@ -354,7 +354,7 @@ $print_mode = isset($_GET['print']);
 $print_orient = (($_GET['orient'] ?? 'portrait') === 'landscape') ? 'landscape' : 'portrait';
 ?>
 <!DOCTYPE html>
-<html lang="<?= htmlspecialchars($lang, ENT_QUOTES, 'UTF-8') ?>" dir="<?= htmlspecialchars($lang_dir, ENT_QUOTES, 'UTF-8') ?>">
+<html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -364,7 +364,7 @@ $print_orient = (($_GET['orient'] ?? 'portrait') === 'landscape') ? 'landscape' 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap');
         * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:'Vazirmatn',Tahoma,sans-serif; direction:<?= $lang_dir ?>; background:#f0f2f5; color:#1a1a2e; }
+        body { font-family:'Vazirmatn',Tahoma,sans-serif; direction:rtl; background:#f0f2f5; color:#1a1a2e; }
         .page-container { max-width:900px; width:calc(100% - 24px); margin:20px auto; background:white; border-radius:16px; box-shadow:0 4px 20px rgba(0,0,0,0.08); overflow:hidden; }
         .top-bar { display:flex; justify-content:space-between; align-items:center; padding:16px 24px; background:linear-gradient(135deg,#667eea,#764ba2); color:white; }
         .top-bar h1 { font-size:18px; font-weight:700; }
@@ -440,7 +440,7 @@ $print_orient = (($_GET['orient'] ?? 'portrait') === 'landscape') ? 'landscape' 
             .bp-tag { display:inline-block; font-size:<?= $print_orient === 'landscape' ? '7.5px' : '6.5px' ?>; padding:1px 3px; margin:1px 0;
                       white-space:normal; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
             /* §v13: تاریخ و ساعت‌ها هرگز نباید وسطشان بشکند (مثلاً «۱۴۰۵/۰۶/۰۱»
-               که رقم آخرش می‌افتاد خط بعد). فقط ستون کارگاه اجازهٔ شکستن دارد. */
+               که رقم آخرش می‌افتاد خط بعد). فقط ستون واحد اجازهٔ شکستن دارد. */
             td.col-date, td.col-time, th.col-date, th.col-time {
                 white-space:nowrap !important; word-break:keep-all !important;
                 overflow-wrap:normal !important; hyphens:none !important;
@@ -462,7 +462,7 @@ $print_orient = (($_GET['orient'] ?? 'portrait') === 'landscape') ? 'landscape' 
     <div class="user-info">
         <div>
             <div class="user-name"><?= htmlspecialchars($user['full_name']) ?>
-                <span class="bp-tag" style="background:#eef2ff;color:#4f46e5;font-size:11px;vertical-align:middle"><?= $detail_scope === 'ws' ? '🏢 ' . strtr(t('فقط کارگاه «{workshop}»'), ['{workshop}' => htmlspecialchars($_SESSION['workshop_name'] ?? '')]) : '🌐 ' . t('حقوق تجمیعی همه کارگاه‌ها') ?></span>
+                <span class="bp-tag" style="background:#eef2ff;color:#4f46e5;font-size:11px;vertical-align:middle"><?= $detail_scope === 'ws' ? '🏢 ' . strtr(t('فقط واحد «{workshop}»'), ['{workshop}' => htmlspecialchars($_SESSION['workshop_name'] ?? '')]) : '🌐 ' . t('حقوق تجمیعی همه واحد‌ها') ?></span>
             </div>
             <div class="user-meta">
                 <?php if ($is_karigar): ?>
@@ -484,7 +484,7 @@ $print_orient = (($_GET['orient'] ?? 'portrait') === 'landscape') ? 'landscape' 
     <div class="month-selector" style="border-bottom:0;padding-bottom:4px">
         <span style="font-size:13px;font-weight:600;margin-left:8px"><?= t('نمای') ?> <?= t('کارکرد') ?>:</span>
         <a href="?page=salary_detail&user_id=<?= $uid ?>&month=<?= urlencode($selected_month) ?>&scope=all" class="month-btn <?= $detail_scope === 'all' ? 'active' : '' ?>">🌐 <?= t('تجمیعی') ?> <?= t('همه') ?> <?= t('nav_workshops') ?></a>
-        <a href="?page=salary_detail&user_id=<?= $uid ?>&month=<?= urlencode($selected_month) ?>&scope=ws" class="month-btn <?= $detail_scope === 'ws' ? 'active' : '' ?>">🏢 <?= t('فقط این کارگاه') ?></a>
+        <a href="?page=salary_detail&user_id=<?= $uid ?>&month=<?= urlencode($selected_month) ?>&scope=ws" class="month-btn <?= $detail_scope === 'ws' ? 'active' : '' ?>">🏢 <?= t('فقط این واحد') ?></a>
     </div>
     <?php endif; ?>
     <div class="month-selector">
@@ -551,7 +551,7 @@ $print_orient = (($_GET['orient'] ?? 'portrait') === 'landscape') ? 'landscape' 
         <table>
             <thead>
                 <tr>
-                    <th class="col-date"><?= t('wh_date') ?></th><th><?= t('wh_day') ?></th><th><?= t('کارگاه') ?></th><th class="col-time"><?= t('wh_checkout_start') ?></th><th class="col-time"><?= t('wh_checkout_end') ?></th>
+                    <th class="col-date"><?= t('wh_date') ?></th><th><?= t('wh_day') ?></th><th><?= t('واحد') ?></th><th class="col-time"><?= t('wh_checkout_start') ?></th><th class="col-time"><?= t('wh_checkout_end') ?></th>
                     <?php if ($is_karigar): ?>
                         <th><?= t('کل کار') ?></th><th><?= t('wh_hours') ?> <?= t('پرداخت') ?></th><th><?= t('sal_overtime') ?></th><th><?= t('sal_work_days') ?></th>
                     <?php else: ?>

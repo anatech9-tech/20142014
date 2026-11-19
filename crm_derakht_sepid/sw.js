@@ -62,9 +62,9 @@ self.addEventListener('fetch', event => {
 });
 
 self.addEventListener('push', event => {
-  let data={title:'کارگاه',body:'اعلان جدید'};
+  let data={title:'واحد',body:'اعلان جدید'};
   try { if(event.data) data=event.data.json(); } catch(e) {}
-  event.waitUntil(self.registration.showNotification(data.title || 'کارگاه', {
+  event.waitUntil(self.registration.showNotification(data.title || 'واحد', {
     body:data.body || '', icon:'assets/icons/icon-192.png', badge:'assets/icons/icon-192.png', dir:'rtl', lang:'fa'
   }));
 });

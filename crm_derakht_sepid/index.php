@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $page !== 'login' && !verify_csrf($
 // صفحات مجاز برای yaser و کارفرما
 $karfarma_pages = ['login', 'logout', 'dashboard', 'forms', 'profile'];
 
-// صفحات مجاز برای javidhse (اسناد §11 — فقط فرم HSE + پروفایل)
+// صفحات مجاز برای javidhse (اسناد §11 — فقط فرم ایمنی + پروفایل)
 $javidhse_pages = ['login', 'logout', 'forms', 'profile'];
 
 // بررسی yaser و کارفرما
@@ -79,7 +79,7 @@ if (is_logged_in() && is_nazer_kol() && $_SERVER['REQUEST_METHOD'] === 'POST' &&
     redirect('index.php?page=' . $page);
 }
 
-// ═══ §v11: گیت دسترسی صفحه‌ای (فقط حساب‌های عادی — ادمین/ناظر/مدیر کارگاه طبق قواعد خودشان) ═══
+// ═══ §v11: گیت دسترسی صفحه‌ای (فقط حساب‌های عادی — ادمین/ناظر/مدیر واحد طبق قواعد خودشان) ═══
 // yaser و javidhse هم که قبلاً بالا مدیریت شدند؛ اینجا فقط روی صفحات مدیریتی/فرم‌ها اعمال می‌شود
 if (is_logged_in() && !access_is_special_account()) {
     $__gate_key = access_gate_page_map()[$page] ?? null;

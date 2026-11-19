@@ -36,7 +36,7 @@ if ($__grant && $_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action'] ?? '')=
 
     $chk=$pdo->prepare("SELECT 1 FROM users u JOIN workshop_personnel wp ON wp.user_id=u.id WHERE u.id=? AND u.status='active' AND wp.workshop_id=? AND wp.status='active'");
     $chk->execute([$target,$gws]);
-    if (!$chk->fetchColumn()) te_flash('نیروی انتخاب‌شده عضو فعال این کارگاه نیست','error');
+    if (!$chk->fetchColumn()) te_flash('نیروی انتخاب‌شده عضو فعال این واحد نیست','error');
     elseif (!$start || ($endRaw!=='' && !$end)) te_flash('ساعت ورود یا خروج نامعتبر است','error');
     else {
         $q=$pdo->prepare("SELECT id,start_time,end_time,is_night FROM work_hours WHERE user_id=? AND workshop_id=? AND work_date=? ORDER BY id");
@@ -142,7 +142,7 @@ input[type=time] { background:#0e141d; border:1px solid #33405a; color:#e8eef5; 
 ?>
 <div class="box">
     <div class="meta">
-        <span>🏢 کارگاه: <b><?= htmlspecialchars($__ws_name) ?></b></span>
+        <span>🏢 واحد: <b><?= htmlspecialchars($__ws_name) ?></b></span>
         <span>📅 تاریخ: <b><?= to_jalali($gd) ?></b></span>
         <span><?= (($__grant['shift_type'] ?? 'day') === 'night') ? '🌙' : '☀️' ?> شیفت: <b><?= temp_grant_shift_label($__grant) ?></b></span>
         <span>⏳ اعتبار: <b><?= substr($gw_start,11,5) ?> تا <?= to_jalali(substr($gw_end,0,10)) ?> ساعت <?= substr($gw_end,11,5) ?></b></span>
@@ -174,7 +174,7 @@ input[type=time] { background:#0e141d; border:1px solid #33405a; color:#e8eef5; 
             <input type="time" name="end_time" value="<?= $r && $r['end_time'] !== '00:00:00' ? substr((string)$r['end_time'], 0, 5) : '' ?>">
             <button class="b-save" type="submit" <?= $ambiguous ? 'disabled' : '' ?>><?= $r ? 'به‌روزرسانی' : 'ثبت' ?></button>
         </form></td>
-        <td colspan="2" class="sub">خروج خالی = هنوز در کارگاه</td>
+        <td colspan="2" class="sub">خروج خالی = هنوز در واحد</td>
     </tr>
     <?php endforeach; ?>
     </tbody>

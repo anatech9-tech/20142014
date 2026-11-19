@@ -47,12 +47,12 @@ if ($temp_grant && $_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!temp_grant_row_in_shift(['start_time' => $tg_st . ':00', 'end_time' => '00:00:00', 'is_night' => 0], $tg_shift)) {
             $tg_deny('ساعت ورود خارج از ' . ($tg_shift === 'night' ? 'شیفت شب' : 'شیفت روز') . ' است');
         }
-        // فقط نیروهای همین کارگاه
+        // فقط نیروهای همین واحد
         $tg_ids = $tg_action === 'checkin' ? (array)($_POST['selected_users'] ?? []) : [(int)($_POST['user_id'] ?? 0)];
         $tg_chk = $pdo->prepare("SELECT 1 FROM workshop_personnel WHERE user_id=? AND workshop_id=? AND status='active'");
-        foreach ($tg_ids as $tg_u) { $tg_chk->execute([(int)$tg_u, $ws_id]); if (!$tg_chk->fetchColumn()) $tg_deny('نیروی انتخاب‌شده عضو این کارگاه نیست'); }
+        foreach ($tg_ids as $tg_u) { $tg_chk->execute([(int)$tg_u, $ws_id]); if (!$tg_chk->fetchColumn()) $tg_deny('نیروی انتخاب‌شده عضو این واحد نیست'); }
     }
-    // ویرایش/خروج: فقط رکوردهای همان کارگاه + همان روز + همان شیفت
+    // ویرایش/خروج: فقط رکوردهای همان واحد + همان روز + همان شیفت
     if (in_array($tg_action, ['checkout', 'edit', 'bulk_checkout', 'bulk_edit'], true)) {
         $tg_rec = in_array($tg_action, ['checkout', 'edit'], true) ? [(int)($_POST['id'] ?? 0)] : array_map('intval', (array)($_POST['ids'] ?? []));
         $tg_q = $pdo->prepare("SELECT start_time, end_time, is_night FROM work_hours WHERE id=? AND workshop_id=? AND work_date=?");
@@ -72,7 +72,7 @@ if ($temp_grant && $_SERVER['REQUEST_METHOD'] === 'POST') {
 $can_see_others = $can_manage || can_see_others_hours() || in_array($work_hours_mode, ['viewer', 'editor'], true);
 $is_own_view = !$can_see_others;
 
-// ═══ مأموریت بین کارگاه‌ها (§3): نام کارگاه‌ها + هلپر همگام‌سازی وضعیت مأموریت با رکورد ساعت ═══
+// ═══ مأموریت بین واحد‌ها (§3): نام واحد‌ها + هلپر همگام‌سازی وضعیت مأموریت با رکورد ساعت ═══
 $ws_name_map = [];
 try {
     foreach ($pdo->query("SELECT id, name FROM workshops WHERE status = 'active'")->fetchAll() as $w) {
@@ -96,32 +96,32 @@ if (!function_exists('wh_sync_mission')) {
     }
 }
 
-// §1: بررسی دسترسی کاربر به مدیریت ساعت کاری یک کارگاه خاص
+// §1: بررسی دسترسی کاربر به مدیریت ساعت کاری یک واحد خاص
 if (!function_exists('can_user_manage_ws_work_hours')) {
     function can_user_manage_ws_work_hours(PDO $pdo, int $user_id, int $target_ws): bool {
         if ($user_id <= 0 || $target_ws <= 0) return false;
         if (is_strict_admin() || is_project_manager()) return true;
 
-        // ۱. بررسی دسترسی صریح مدیریت ساعت در کارگاه هدف
+        // ۱. بررسی دسترسی صریح مدیریت ساعت در واحد هدف
         $st = $pdo->prepare("SELECT 1 FROM user_permissions WHERE user_id = ? AND workshop_id = ? AND permission IN ('manage_work_hours', 'office_manager', 'workshop_manager')");
         $st->execute([$user_id, $target_ws]);
         if ($st->fetchColumn()) return true;
 
-        // ۲. بررسی عضویت و نقش فعال در کارگاه هدف
+        // ۲. بررسی عضویت و نقش فعال در واحد هدف
         $st_wp = $pdo->prepare("SELECT 1 FROM workshop_personnel WHERE user_id = ? AND workshop_id = ? AND status = 'active'");
         $st_wp->execute([$user_id, $target_ws]);
         if ($st_wp->fetchColumn()) {
             $st_u = $pdo->prepare("SELECT role FROM users WHERE id = ?");
             $st_u->execute([$user_id]);
             $u_role = $st_u->fetchColumn();
-            if (in_array($u_role, ['manager', 'workshop_manager', 'مدیر کارگاه'], true)) return true;
+            if (in_array($u_role, ['manager', 'workshop_manager', 'مدیر کارگاه', 'مدیر واحد'], true)) return true;
         }
 
         return false;
     }
 }
 
-// §1: بررسی مجوز تغییر یا حذف ساعت نیروی مأمور از کارگاه دیگر
+// §1: بررسی مجوز تغییر یا حذف ساعت نیروی مأمور از واحد دیگر
 if (!function_exists('can_user_edit_wh_record')) {
     function can_user_edit_wh_record(PDO $pdo, int $wh_id): bool {
         if (is_strict_admin() || is_project_manager()) return true;
@@ -134,12 +134,12 @@ if (!function_exists('can_user_edit_wh_record')) {
         if (!$row) return false;
 
         $source_ws = (int)($row['mission_source_ws'] ?: ($row['source_workshop_id'] ?? 0));
-        // اگر این رکورد مأموریت از کارگاه دیگر نیست، دسترسی عادی کاربر به کارگاه مقصد معتبر است
+        // اگر این رکورد مأموریت از واحد دیگر نیست، دسترسی عادی کاربر به واحد مقصد معتبر است
         if ($source_ws <= 0 || $source_ws === (int)$row['workshop_id']) {
             return true;
         }
 
-        // اگر رکورد مأموریت از کارگاه دیگر است: فقط کاربران دارای دسترسی در کارگاه مبدأ مجاز به ویرایش هستند
+        // اگر رکورد مأموریت از واحد دیگر است: فقط کاربران دارای دسترسی در واحد مبدأ مجاز به ویرایش هستند
         $uid = (int)($_SESSION['user_id'] ?? 0);
         return can_user_manage_ws_work_hours($pdo, $uid, $source_ws);
     }
@@ -160,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $gu = (int)($_POST['grant_user'] ?? 0);
             $gd = to_gregorian($_POST['grant_date'] ?? '');
             $gs = (($_POST['grant_shift'] ?? 'day') === 'night') ? 'night' : 'day';
-            // دریافت‌کننده حتماً باید نیروی فعال همین کارگاه باشد.
+            // دریافت‌کننده حتماً باید نیروی فعال همین واحد باشد.
             $validUser = $pdo->prepare("SELECT 1 FROM users u JOIN workshop_personnel wp ON wp.user_id=u.id WHERE u.id=? AND u.status='active' AND wp.workshop_id=? AND wp.status='active'");
             $validUser->execute([$gu, $ws_id]);
             if ($gu > 0 && $gd && $validUser->fetchColumn()) {
@@ -185,7 +185,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $work_date = to_gregorian($_POST['work_date'] ?? jalali_now());
         $note = sanitize($_POST['note'] ?? '');
         $selected_users = $_POST['selected_users'] ?? [];
-        // §3.2: تیک مأموریت به ازای هر نفر + کارگاه مقصد مشترک
+        // §3.2: تیک مأموریت به ازای هر نفر + واحد مقصد مشترک
         $mission_users = array_map('intval', $_POST['mission_user'] ?? []);
         $mission_ws = (int)($_POST['mission_ws'] ?? 0);
         if ($mission_ws <= 0 || $mission_ws === (int)$ws_id) $mission_users = [];
@@ -198,12 +198,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $inserted = 0; $missioned = 0;
         foreach ($selected_users as $pid) {
             $pid = (int)$pid;
-            // ── مأموریت: رکورد در کارگاه مقصد ثبت می‌شود، نفر در کارگاه اصلی می‌ماند ──
+            // ── مأموریت: رکورد در واحد مقصد ثبت می‌شود، نفر در واحد اصلی می‌ماند ──
             if (in_array($pid, $mission_users, true)) {
                 $chk = $pdo->prepare("SELECT id FROM work_hours WHERE user_id = ? AND workshop_id = ? AND work_date = ? AND end_time = '00:00:00'");
                 $chk->execute([$pid, $mission_ws, $work_date]);
                 if ($chk->fetch()) continue;
-                $notes = trim(('مأموریت از کارگاه «' . $source_name . '»') . ($note !== '' ? ' — ' . $note : ''));
+                $notes = trim(('مأموریت از واحد «' . $source_name . '»') . ($note !== '' ? ' — ' . $note : ''));
                 $pdo->prepare("INSERT INTO missions (user_id, source_workshop_id, target_workshop_id, start_date, start_time, status, description, created_by) VALUES (?, ?, ?, ?, ?, 'active', ?, ?)")
                     ->execute([$pid, $ws_id, $mission_ws, $work_date, $start_time, $notes, $_SESSION['user_id']]);
                 $mid = (int)$pdo->lastInsertId();
@@ -224,7 +224,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $inserted++;
         }
         $msg = strtr(t('{count} نفر ورود ثبت شد'), ['{count}' => $inserted]);
-        if ($missioned) $msg .= strtr(t(' + 🚀 {count} نفر مأموریت به کارگاه «{workshop}»'), ['{count}' => $missioned, '{workshop}' => $target_name]);
+        if ($missioned) $msg .= strtr(t(' + 🚀 {count} نفر مأموریت به واحد «{workshop}»'), ['{count}' => $missioned, '{workshop}' => $target_name]);
         showToast($msg);
         redirect("index.php?page=work_hours&date=" . urlencode($_POST['work_date'] ?? jalali_now()) . $fqs);
     }
@@ -293,7 +293,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $start_time = $_POST['start_time'] ?: date('H:i');
         $work_date = to_gregorian($_POST['work_date'] ?? jalali_now());
         $note = sanitize($_POST['note'] ?? '');
-        // §3.1: تیک مأموریت — رکورد برای کارگاه مقصد ساخته می‌شود، نفر در کارگاه اصلی می‌ماند
+        // §3.1: تیک مأموریت — رکورد برای واحد مقصد ساخته می‌شود، نفر در واحد اصلی می‌ماند
         $is_mission = !empty($_POST['is_mission']);
         $mission_ws = (int)($_POST['mission_ws'] ?? 0);
         if ($mission_ws <= 0 || $mission_ws === (int)$ws_id) $is_mission = false;
@@ -308,14 +308,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             showToast(t('این نیرو قبلاً ورود باز دارد'), 'error');
         } else {
             if ($is_mission) {
-                $notes = trim(('مأموریت از کارگاه «' . $source_name . '»') . ($note !== '' ? ' — ' . $note : ''));
+                $notes = trim(('مأموریت از واحد «' . $source_name . '»') . ($note !== '' ? ' — ' . $note : ''));
                 $pdo->prepare("INSERT INTO missions (user_id, source_workshop_id, target_workshop_id, start_date, start_time, status, description, created_by) VALUES (?, ?, ?, ?, ?, 'active', ?, ?)")
                     ->execute([$user_id_check, $ws_id, $mission_ws, $work_date, $start_time, $notes, $_SESSION['user_id']]);
                 $mid = (int)$pdo->lastInsertId();
                 $stmt = $pdo->prepare("INSERT INTO work_hours (user_id, workshop_id, work_date, start_time, end_time, is_night, note, created_by, mission_id, mission_source_ws) VALUES (?, ?, ?, ?, '00:00:00', 0, ?, ?, ?, ?)");
                 $stmt->execute([$user_id_check, $mission_ws, $work_date, $start_time, $notes, $_SESSION['user_id'], $mid, $ws_id]);
                 arash_coin_sync_work_hour_rewards($pdo, (int)$pdo->lastInsertId(), (int)$_SESSION['user_id']);
-                showToast(strtr(t('🚀 مأموریت به کارگاه «{workshop}» ثبت شد — ساعت در کارگاه مقصد حساب می‌شود'), ['{workshop}' => $target_name]));
+                showToast(strtr(t('🚀 مأموریت به واحد «{workshop}» ثبت شد — ساعت در واحد مقصد حساب می‌شود'), ['{workshop}' => $target_name]));
             } else {
                 $stmt = $pdo->prepare("INSERT INTO work_hours (user_id, workshop_id, work_date, start_time, end_time, is_night, note, created_by) VALUES (?, ?, ?, ?, '00:00:00', 0, ?, ?)");
                 $stmt->execute([$user_id_check, $ws_id, $work_date, $start_time, $note, $_SESSION['user_id']]);
@@ -330,7 +330,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'checkout' && $can_manage) {
         $id = (int)$_POST['id'];
         if (!can_user_edit_wh_record($pdo, $id)) {
-            showToast(t('تغییر ساعت نیروی مأمور فقط توسط مدیر پروژه یا کارگاه مبدأ امکان‌پذیر است'), 'error');
+            showToast(t('تغییر ساعت نیروی مأمور فقط توسط مدیر پروژه یا واحد مبدأ امکان‌پذیر است'), 'error');
             redirect("index.php?page=work_hours&date=" . urlencode($_POST['date'] ?? $_GET['date'] ?? jalali_now()) . $fqs);
             exit;
         }
@@ -357,7 +357,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'edit' && $can_manage) {
         $id = (int)$_POST['id'];
         if (!can_user_edit_wh_record($pdo, $id)) {
-            showToast(t('تغییر ساعت نیروی مأمور فقط توسط مدیر پروژه یا کارگاه مبدأ امکان‌پذیر است'), 'error');
+            showToast(t('تغییر ساعت نیروی مأمور فقط توسط مدیر پروژه یا واحد مبدأ امکان‌پذیر است'), 'error');
             redirect("index.php?page=work_hours&date=" . urlencode($_POST['date'] ?? $_GET['date'] ?? jalali_now()) . $fqs);
             exit;
         }
@@ -376,7 +376,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'delete' && $can_manage) {
         $id = (int)$_POST['id'];
         if (!can_user_edit_wh_record($pdo, $id)) {
-            showToast(t('حذف ساعت نیروی مأمور فقط توسط مدیر پروژه یا کارگاه مبدأ امکان‌پذیر است'), 'error');
+            showToast(t('حذف ساعت نیروی مأمور فقط توسط مدیر پروژه یا واحد مبدأ امکان‌پذیر است'), 'error');
             redirect("index.php?page=work_hours&date=" . urlencode($_POST['date'] ?? $_GET['date'] ?? jalali_now()) . $fqs);
             exit;
         }
@@ -412,7 +412,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         if ($blocked > 0 && $done === 0) {
-            showToast(t('تغییر ساعت نیروهای مأمور فقط توسط مدیر پروژه یا کارگاه مبدأ امکان‌پذیر است'), 'error');
+            showToast(t('تغییر ساعت نیروهای مأمور فقط توسط مدیر پروژه یا واحد مبدأ امکان‌پذیر است'), 'error');
         } elseif ($blocked > 0) {
             showToast(strtr(t('خروج {count} نفر ثبت شد ({blocked} نیروی مأمور رد شدند)'), ['{count}' => $done, '{blocked}' => $blocked]));
         } else {
@@ -436,7 +436,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($stmt->rowCount() > 0) { arash_coin_sync_work_hour_rewards($pdo, (int)$id, (int)$_SESSION['user_id']); $done++; }
         }
         if ($blocked > 0 && $done === 0) {
-            showToast(t('تغییر ساعت نیروهای مأمور فقط توسط مدیر پروژه یا کارگاه مبدأ امکان‌پذیر است'), 'error');
+            showToast(t('تغییر ساعت نیروهای مأمور فقط توسط مدیر پروژه یا واحد مبدأ امکان‌پذیر است'), 'error');
         } elseif ($blocked > 0) {
             showToast(strtr(t('ساعت {count} رکورد ویرایش شد ({blocked} نیروی مأمور رد شدند)'), ['{count}' => $done, '{blocked}' => $blocked]));
         } else {
@@ -459,7 +459,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($stmt->rowCount() > 0) $done++;
         }
         if ($blocked > 0 && $done === 0) {
-            showToast(t('حذف ساعت نیروهای مأمور فقط توسط مدیر پروژه یا کارگاه مبدأ امکان‌پذیر است'), 'error');
+            showToast(t('حذف ساعت نیروهای مأمور فقط توسط مدیر پروژه یا واحد مبدأ امکان‌پذیر است'), 'error');
         } elseif ($blocked > 0) {
             showToast(strtr(t('{count} رکورد حذف شد ({blocked} نیروی مأمور رد شدند)'), ['{count}' => $done, '{blocked}' => $blocked]));
         } else {
@@ -481,7 +481,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($mission && $mission['status'] === 'active') {
             $src_ws = (int)$mission['source_workshop_id'];
             if (!is_strict_admin() && !is_project_manager() && !can_user_manage_ws_work_hours($pdo, (int)$_SESSION['user_id'], $src_ws)) {
-                showToast(t('ثبت پایان مأموریت فقط توسط کارگاه مبدأ یا مدیر پروژه امکان‌پذیر است'), 'error');
+                showToast(t('ثبت پایان مأموریت فقط توسط واحد مبدأ یا مدیر پروژه امکان‌پذیر است'), 'error');
                 redirect("index.php?page=work_hours&date=" . urlencode($_POST['date'] ?? $_GET['date'] ?? jalali_now()) . $fqs);
                 exit;
             }
@@ -510,7 +510,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect("index.php?page=work_hours&date=" . urlencode($_POST['date'] ?? $_GET['date'] ?? jalali_now()) . $fqs);
     }
 
-    // ── ویرایش ساعت مأموریت از کارگاه مبدأ ──
+    // ── ویرایش ساعت مأموریت از واحد مبدأ ──
     if ($action === 'edit_mission' && $can_manage) {
         $mid = (int)$_POST['mission_id'];
         $start_time = sanitize($_POST['start_time'] ?? '');
@@ -523,7 +523,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($mission) {
             $src_ws = (int)$mission['source_workshop_id'];
             if (!is_strict_admin() && !is_project_manager() && !can_user_manage_ws_work_hours($pdo, (int)$_SESSION['user_id'], $src_ws)) {
-                showToast(t('ویرایش ساعت مأموریت فقط توسط کارگاه مبدأ یا مدیر پروژه امکان‌پذیر است'), 'error');
+                showToast(t('ویرایش ساعت مأموریت فقط توسط واحد مبدأ یا مدیر پروژه امکان‌پذیر است'), 'error');
                 redirect("index.php?page=work_hours&date=" . urlencode($_POST['date'] ?? $_GET['date'] ?? jalali_now()) . $fqs);
                 exit;
             }
@@ -560,7 +560,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($mission) {
             $src_ws = (int)$mission['source_workshop_id'];
             if (!is_strict_admin() && !is_project_manager() && !can_user_manage_ws_work_hours($pdo, (int)$_SESSION['user_id'], $src_ws)) {
-                showToast(t('حذف مأموریت فقط توسط کارگاه مبدأ یا مدیر پروژه امکان‌پذیر است'), 'error');
+                showToast(t('حذف مأموریت فقط توسط واحد مبدأ یا مدیر پروژه امکان‌پذیر است'), 'error');
                 redirect("index.php?page=work_hours&date=" . urlencode($_POST['date'] ?? $_GET['date'] ?? jalali_now()) . $fqs);
                 exit;
             }
@@ -609,7 +609,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         if ($blocked > 0 && $done === 0) {
-            showToast(t('ثبت پایان مأموریت‌ها فقط توسط کارگاه مبدأ یا مدیر پروژه امکان‌پذیر است'), 'error');
+            showToast(t('ثبت پایان مأموریت‌ها فقط توسط واحد مبدأ یا مدیر پروژه امکان‌پذیر است'), 'error');
         } elseif ($blocked > 0) {
             showToast(strtr(t('خروج دسته‌جمعی {count} مأموریت ثبت شد ({blocked} مأموریت رد شد)'), ['{count}' => $done, '{blocked}' => $blocked]));
         } else {
@@ -657,7 +657,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         if ($blocked > 0 && $done === 0) {
-            showToast(t('ویرایش ساعت مأموریت‌ها فقط توسط کارگاه مبدأ یا مدیر پروژه امکان‌پذیر است'), 'error');
+            showToast(t('ویرایش ساعت مأموریت‌ها فقط توسط واحد مبدأ یا مدیر پروژه امکان‌پذیر است'), 'error');
         } elseif ($blocked > 0) {
             showToast(strtr(t('ساعت {count} مأموریت با موفقیت ویرایش شد ({blocked} مأموریت رد شد)'), ['{count}' => $done, '{blocked}' => $blocked]));
         } else {
@@ -692,7 +692,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         if ($blocked > 0 && $done === 0) {
-            showToast(t('حذف مأموریت‌ها فقط توسط کارگاه مبدأ یا مدیر پروژه امکان‌پذیر است'), 'error');
+            showToast(t('حذف مأموریت‌ها فقط توسط واحد مبدأ یا مدیر پروژه امکان‌پذیر است'), 'error');
         } elseif ($blocked > 0) {
             showToast(strtr(t('{count} مأموریت با موفقیت حذف شدند ({blocked} مأموریت رد شد)'), ['{count}' => $done, '{blocked}' => $blocked]));
         } else {
@@ -746,7 +746,7 @@ $stmt = $pdo->prepare("SELECT u.id, u.full_name, u.is_karigar FROM users u JOIN 
 $stmt->execute([$ws_id]);
 $personnel = $stmt->fetchAll();
 
-// Work hours for selected date (همراه نام کارگاه مبدأ مأموریت)
+// Work hours for selected date (همراه نام واحد مبدأ مأموریت)
 if ($is_own_view && !$can_see_others) {
     $stmt = $pdo->prepare("SELECT wh.*, u.full_name, u.is_karigar, mws.name AS mission_source_name FROM work_hours wh JOIN users u ON wh.user_id = u.id LEFT JOIN workshops mws ON mws.id = wh.mission_source_ws WHERE wh.workshop_id = ? AND wh.work_date = ? AND wh.user_id = ? ORDER BY wh.start_time");
     $stmt->execute([$ws_id, $greg_date, $_SESSION['user_id']]);
@@ -760,9 +760,9 @@ if ($temp_grant) {
     $work_hours = array_values(array_filter($work_hours, fn($r) => temp_grant_row_in_shift($r, $tg_shift)));
 }
 
-// مأموریت‌های مربوط به همین تاریخ برای این کارگاه (مبدأ)
-// بند ۲: در کارگاه مقصد، نیروها فقط در جدول ساعت کاری بالا نمایش داده می‌شوند و نباید در مأموریت‌های پایین تکرار شوند.
-// در کارگاه مبدأ، نیروهای اعزام‌شده در مأموریت‌های پایین نمایش داده می‌شوند و در جدول ساعت کاری بالا حضور ندارند.
+// مأموریت‌های مربوط به همین تاریخ برای این واحد (مبدأ)
+// بند ۲: در واحد مقصد، نیروها فقط در جدول ساعت کاری بالا نمایش داده می‌شوند و نباید در مأموریت‌های پایین تکرار شوند.
+// در واحد مبدأ، نیروهای اعزام‌شده در مأموریت‌های پایین نمایش داده می‌شوند و در جدول ساعت کاری بالا حضور ندارند.
 // بند ۳: نیروهایی که دسترسی مدیریت ساعت کاری را ندارند، فقط مأموریت خودشان را می‌بینند.
 $can_see_all_missions = $can_manage || can_see_others_hours() || in_array($work_hours_mode, ['viewer', 'editor'], true);
 $day_missions = [];
@@ -801,7 +801,7 @@ try {
         $day_missions = $stmt->fetchAll();
     }
 } catch (Throwable $e) { $day_missions = []; }
-// کارگاه‌های مقصد مأموریت (غیر از کارگاه فعلی)
+// واحد‌های مقصد مأموریت (غیر از واحد فعلی)
 $mission_targets = [];
 foreach ($ws_name_map as $wid => $wname) { if ($wid !== (int)$ws_id) $mission_targets[$wid] = $wname; }
 
@@ -843,7 +843,7 @@ $filter_type = $_GET['type'] ?? 'all';
     $recent_grants = $gg->fetchAll();
 ?>
 <div class="card mb-4 animate-in" style="border:1px solid #e7d9ae;background:#fdfaf1">
-    <div style="font-weight:700;font-size:14px;margin-bottom:10px">🔑 دسترسی موقت ثبت ساعت <span class="text-muted" style="font-weight:400;font-size:12px">(کیوسک شیفت — برای وقتی که خودتان کارگاه نیستید)</span></div>
+    <div style="font-weight:700;font-size:14px;margin-bottom:10px">🔑 دسترسی موقت ثبت ساعت <span class="text-muted" style="font-weight:400;font-size:12px">(کیوسک شیفت — برای وقتی که خودتان واحد نیستید)</span></div>
     <form method="POST" class="d-flex gap-2" style="flex-wrap:wrap;align-items:center">
         <?= get_csrf_field() ?>
         <input type="hidden" name="action" value="grant_create">
@@ -1058,21 +1058,21 @@ $shift_filter = $_GET['shift'] ?? 'all';
             $shift_label = $is_day_shift ? '☀️ ' . t('روز') : '🌙 ' . t('شب');
             $shift_style = $is_day_shift ? 'background:#fef3c7;color:#92400e' : 'background:#1e293b;color:#e2e8f0';
             $shift_title = $is_day_shift ? t('شیفت صبح (7 صبح - 9 شب)') : t('شیفت شب (9 شب - 7 صبح)');
-            // §1: کنترل مجوز تغییر ساعت نیروی مأمور از کارگاه دیگر
+            // §1: کنترل مجوز تغییر ساعت نیروی مأمور از واحد دیگر
             $is_visiting_mission = (!empty($wh['mission_id']) || !empty($wh['mission_source_ws']));
             $wh_source_ws = (int)($wh['mission_source_ws'] ?? 0);
             $can_edit_this_wh = $can_manage && (!$is_visiting_mission || $wh_source_ws <= 0 || $wh_source_ws === (int)$ws_id || is_strict_admin() || is_project_manager() || can_user_edit_wh_record($pdo, (int)$wh['id']));
         ?>
         <div class="wh-item" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap">
             <?php if ($can_manage): ?>
-            <input type="checkbox" class="wh-check" value="<?= $wh['id'] ?>" data-open="<?= $is_open ? 1 : 0 ?>" data-can-edit="<?= $can_edit_this_wh ? 1 : 0 ?>" onchange="updateBulkUI()" style="flex-shrink:0" <?= !$can_edit_this_wh ? 'disabled title="' . t('تغییر ساعت نیروی مأمور فقط توسط کارگاه مبدأ یا مدیر پروژه امکان‌پذیر است') . '"' : '' ?>>
+            <input type="checkbox" class="wh-check" value="<?= $wh['id'] ?>" data-open="<?= $is_open ? 1 : 0 ?>" data-can-edit="<?= $can_edit_this_wh ? 1 : 0 ?>" onchange="updateBulkUI()" style="flex-shrink:0" <?= !$can_edit_this_wh ? 'disabled title="' . t('تغییر ساعت نیروی مأمور فقط توسط واحد مبدأ یا مدیر پروژه امکان‌پذیر است') . '"' : '' ?>>
             <?php endif; ?>
             <div style="flex:1;min-width:120px">
                 <strong><?= $wh['full_name'] ?></strong>
                 <?php if ($wh['is_karigar'] == 1): ?><span class="tag tag-karigar" style="margin-right:6px;font-size:10px"><?= t('sal_worker') ?></span>
                 <?php elseif ($wh['is_karigar'] == 2): ?><span class="tag" style="margin-right:6px;font-size:10px;background:#e0e7ff;color:#3730a3"><?= t('پیمانکار') ?></span>
                 <?php endif; ?>
-                <?php if (!empty($wh['mission_id'])): ?><span class="tag" style="margin-right:6px;font-size:10px;background:#dbeafe;color:#1d4ed8" title="<?= t('wh_hours') ?> <?= t('این') ?> <?= t('نیرو') ?> <?= t('در') ?> <?= t('همین') ?> <?= t('کارگاه') ?> (<?= t('مقصد') ?> <?= t('مأموریت') ?>) <?= t('حساب') ?> <?= t('می‌شود') ?>">🚀 <?= t('نیروی کمکی') ?> <?= t('lea_from') ?> <?= t('کارگاه') ?> «<?= $wh['mission_source_name'] ?: t('اصلی') ?>»</span><?php endif; ?>
+                <?php if (!empty($wh['mission_id'])): ?><span class="tag" style="margin-right:6px;font-size:10px;background:#dbeafe;color:#1d4ed8" title="<?= t('wh_hours') ?> <?= t('این') ?> <?= t('نیرو') ?> <?= t('در') ?> <?= t('همین') ?> <?= t('واحد') ?> (<?= t('مقصد') ?> <?= t('مأموریت') ?>) <?= t('حساب') ?> <?= t('می‌شود') ?>">🚀 <?= t('نیروی کمکی') ?> <?= t('lea_from') ?> <?= t('واحد') ?> «<?= $wh['mission_source_name'] ?: t('اصلی') ?>»</span><?php endif; ?>
             </div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                 <span style="font-size:13px;font-weight:600"><?= substr($wh['start_time'],0,5) ?></span>
@@ -1097,7 +1097,7 @@ $shift_filter = $_GET['shift'] ?? 'all';
                     <?php if ($can_edit_this_wh): ?>
                     <button onclick="openCheckoutModal(<?= $wh['id'] ?>, '<?= substr($wh['start_time'],0,5) ?>')" class="btn btn-success btn-sm"><i data-lucide="log-out"></i> <?= t('btn_checkout') ?></button>
                     <?php else: ?>
-                    <span class="tag" style="background:#f1f5f9;color:#64748b;font-size:11px" title="<?= t('تغییر ساعت نیروی مأمور فقط توسط کارگاه مبدأ یا مدیر پروژه امکان‌پذیر است') ?>"><i data-lucide="lock" style="width:12px;height:12px;vertical-align:middle"></i> <?= t('قفل کارگاه مبدأ') ?></span>
+                    <span class="tag" style="background:#f1f5f9;color:#64748b;font-size:11px" title="<?= t('تغییر ساعت نیروی مأمور فقط توسط واحد مبدأ یا مدیر پروژه امکان‌پذیر است') ?>"><i data-lucide="lock" style="width:12px;height:12px;vertical-align:middle"></i> <?= t('قفل واحد مبدأ') ?></span>
                     <?php endif; ?>
                 <?php endif; ?>
                 <?php if ($can_manage && !$is_open): ?>
@@ -1112,7 +1112,7 @@ $shift_filter = $_GET['shift'] ?? 'all';
                     </form>
                     <?php endif; ?>
                     <?php else: ?>
-                    <span class="tag" style="background:#f1f5f9;color:#64748b;font-size:11px" title="<?= t('تغییر ساعت نیروی مأمور فقط توسط کارگاه مبدأ یا مدیر پروژه امکان‌پذیر است') ?>"><i data-lucide="lock" style="width:12px;height:12px;vertical-align:middle"></i> <?= t('قفل کارگاه مبدأ') ?></span>
+                    <span class="tag" style="background:#f1f5f9;color:#64748b;font-size:11px" title="<?= t('تغییر ساعت نیروی مأمور فقط توسط واحد مبدأ یا مدیر پروژه امکان‌پذیر است') ?>"><i data-lucide="lock" style="width:12px;height:12px;vertical-align:middle"></i> <?= t('قفل واحد مبدأ') ?></span>
                     <?php endif; ?>
                 <?php endif; ?>
                 <?php if ($wh['user_id'] == $_SESSION['user_id'] && $wh['end_time'] !== '00:00:00' && ($wh['protest_status'] === 'none' || empty($wh['protest_status']))): ?>
@@ -1152,8 +1152,8 @@ $shift_filter = $_GET['shift'] ?? 'all';
                 </th>
                 <?php endif; ?>
                 <th><?= t('نیرو') ?></th>
-                <th><?= t('کارگاه مبدأ') ?></th>
-                <th><?= t('کارگاه مقصد') ?></th>
+                <th><?= t('واحد مبدأ') ?></th>
+                <th><?= t('واحد مقصد') ?></th>
                 <th><?= t('wh_hours') ?> <?= t('ورود / شروع') ?></th>
                 <th><?= t('wh_hours') ?> <?= t('خروج / پایان') ?></th>
                 <th><?= t('wh_status') ?></th>
@@ -1168,9 +1168,9 @@ $shift_filter = $_GET['shift'] ?? 'all';
             $m_end = ($m['effective_end_time'] && $m['effective_end_time'] !== '00:00:00') ? substr($m['effective_end_time'], 0, 5) : (($m['end_time'] && $m['end_time'] !== '00:00:00') ? substr($m['end_time'], 0, 5) : '');
             $is_active = ($m['status'] === 'active' && empty($m_end));
             if ((int)$m['target_workshop_id'] === (int)$ws_id) {
-                $status_line = strtr(t('نیروی کمکی از کارگاه «{workshop}»'), ['{workshop}' => $src_name]);
+                $status_line = strtr(t('نیروی کمکی از واحد «{workshop}»'), ['{workshop}' => $src_name]);
             } else {
-                $status_line = strtr(t('مأموریت به کارگاه «{workshop}»'), ['{workshop}' => $tgt_name]);
+                $status_line = strtr(t('مأموریت به واحد «{workshop}»'), ['{workshop}' => $tgt_name]);
             }
         ?>
         <tr>
@@ -1222,16 +1222,16 @@ $shift_filter = $_GET['shift'] ?? 'all';
                 <div class="form-group"><label class="form-label"><?= t('wh_date') ?></label><input type="text" name="work_date" class="form-control" value="<?= $selected_date ?>" readonly></div>
                 <div class="form-group"><label class="form-label"><?= t('wh_start') ?></label><input type="time" name="start_time" class="form-control" value="<?= date('H:i') ?>"></div>
                 <?php if (!empty($mission_targets)): ?>
-                <!-- §3.2: مأموریت گروهی — کارگاه مقصد مشترک + تیک 🚀 کنار هر نفر -->
+                <!-- §3.2: مأموریت گروهی — واحد مقصد مشترک + تیک 🚀 کنار هر نفر -->
                 <div class="form-group" style="padding:10px;background:#eff6ff;border-radius:8px">
                     <label class="form-label">🚀 <?= t('مأموریت') ?> (<?= t('اختیاری') ?>)</label>
                     <select name="mission_ws" id="groupMissionWs" class="form-control" onchange="groupMissionChanged()">
-                        <option value=""><?= t('بدون') ?> <?= t('مأموریت') ?> — <?= t('btn_checkin') ?> <?= t('در') ?> <?= t('همین') ?> <?= t('کارگاه') ?></option>
+                        <option value=""><?= t('بدون') ?> <?= t('مأموریت') ?> — <?= t('btn_checkin') ?> <?= t('در') ?> <?= t('همین') ?> <?= t('واحد') ?></option>
                         <?php foreach ($mission_targets as $wid => $wname): ?>
-                        <option value="<?= $wid ?>"><?= t('مأموریت') ?> <?= t('به') ?> <?= t('کارگاه') ?> «<?= $wname ?>»</option>
+                        <option value="<?= $wid ?>"><?= t('مأموریت') ?> <?= t('به') ?> <?= t('واحد') ?> «<?= $wname ?>»</option>
                         <?php endforeach; ?>
                     </select>
-                    <div class="text-muted" style="font-size:10px;margin-top:4px"><?= t('برای') ?> <?= t('نفرهایی') ?> <?= t('که') ?> <?= t('تیک') ?> 🚀 <?= t('آن') ?>‌<?= t('ها') ?> <?= t('فعال') ?> <?= t('باشد') ?>، <?= t('رکورد') ?> <?= t('wh_hours') ?> <?= t('در') ?> <?= t('per_to_workshop') ?> <?= t('ثبت') ?> <?= t('می‌شود') ?> (<?= t('per_count') ?> <?= t('در') ?> <?= t('کارگاه') ?> <?= t('اصلی') ?> <?= t('می‌ماند') ?>)</div>
+                    <div class="text-muted" style="font-size:10px;margin-top:4px"><?= t('برای') ?> <?= t('نفرهایی') ?> <?= t('که') ?> <?= t('تیک') ?> 🚀 <?= t('آن') ?>‌<?= t('ها') ?> <?= t('فعال') ?> <?= t('باشد') ?>، <?= t('رکورد') ?> <?= t('wh_hours') ?> <?= t('در') ?> <?= t('per_to_workshop') ?> <?= t('ثبت') ?> <?= t('می‌شود') ?> (<?= t('per_count') ?> <?= t('در') ?> <?= t('واحد') ?> <?= t('اصلی') ?> <?= t('می‌ماند') ?>)</div>
                 </div>
                 <?php endif; ?>
                 <!-- Filter checkboxes -->
@@ -1301,9 +1301,9 @@ $shift_filter = $_GET['shift'] ?? 'all';
                 <div class="form-group"><label class="form-label"><?= t('wh_date') ?></label><input type="text" name="work_date" class="form-control" value="<?= $selected_date ?>" readonly></div>
                 <div class="form-group"><label class="form-label"><?= t('wh_start') ?></label><input type="time" name="start_time" class="form-control" value="<?= date('H:i') ?>"></div>
                 <?php if (!empty($mission_targets)): ?>
-                <!-- §3.1: تیک مأموریت — ساعت برای کارگاه مقصد ثبت می‌شود -->
+                <!-- §3.1: تیک مأموریت — ساعت برای واحد مقصد ثبت می‌شود -->
                 <div class="form-group" style="padding:10px;background:#eff6ff;border-radius:8px">
-                    <label class="form-check" style="margin-bottom:8px"><input type="checkbox" name="is_mission" value="1" id="singleMissionTick" onchange="singleMissionChanged()"><span>🚀 <?= t('مأموریت') ?> <?= t('به') ?> <?= t('کارگاه') ?> <?= t('دیگر') ?></span></label>
+                    <label class="form-check" style="margin-bottom:8px"><input type="checkbox" name="is_mission" value="1" id="singleMissionTick" onchange="singleMissionChanged()"><span>🚀 <?= t('مأموریت') ?> <?= t('به') ?> <?= t('واحد') ?> <?= t('دیگر') ?></span></label>
                     <div id="singleMissionBox" style="display:none">
                         <select name="mission_ws" class="form-control">
                             <option value=""><?= t('per_to_workshop') ?> <?= t('را') ?> <?= t('انتخاب کنید') ?></option>
@@ -1311,7 +1311,7 @@ $shift_filter = $_GET['shift'] ?? 'all';
                             <option value="<?= $wid ?>"><?= $wname ?></option>
                             <?php endforeach; ?>
                         </select>
-                        <div class="text-muted" style="font-size:10px;margin-top:4px"><?= t('per_count') ?> <?= t('در') ?> <?= t('کارگاه') ?> <?= t('اصلی') ?> <?= t('می‌ماند') ?>؛ <?= t('wh_hours') ?>/<?= t('رکورد') ?> <?= t('در') ?> <?= t('per_to_workshop') ?> <?= t('حساب') ?> <?= t('می‌شود') ?> <?= t('و') ?> <?= t('در') ?> <?= t('این') ?> <?= t('صفحه') ?> <?= t('به') ?><?= t('‌صورت') ?> «<?= t('مأموریت') ?> <?= t('به') ?> <?= t('per_to_workshop') ?>» <?= t('btn_show') ?> <?= t('داده') ?> <?= t('می‌شود') ?></div>
+                        <div class="text-muted" style="font-size:10px;margin-top:4px"><?= t('per_count') ?> <?= t('در') ?> <?= t('واحد') ?> <?= t('اصلی') ?> <?= t('می‌ماند') ?>؛ <?= t('wh_hours') ?>/<?= t('رکورد') ?> <?= t('در') ?> <?= t('per_to_workshop') ?> <?= t('حساب') ?> <?= t('می‌شود') ?> <?= t('و') ?> <?= t('در') ?> <?= t('این') ?> <?= t('صفحه') ?> <?= t('به') ?><?= t('‌صورت') ?> «<?= t('مأموریت') ?> <?= t('به') ?> <?= t('per_to_workshop') ?>» <?= t('btn_show') ?> <?= t('داده') ?> <?= t('می‌شود') ?></div>
                     </div>
                 </div>
                 <?php endif; ?>
@@ -1400,7 +1400,7 @@ $shift_filter = $_GET['shift'] ?? 'all';
                     <label class="form-label"><?= t('توضیحات مأموریت') ?></label>
                     <input type="text" name="mission_desc" id="em_edit_desc" class="form-control">
                 </div>
-                <p class="text-muted" style="font-size:11px">📌 <?= t('ساعت مأموریت هم در کارگاه مبدأ و هم در کارگاه مقصد با این مقادیر بروزرسانی می‌شود.') ?></p>
+                <p class="text-muted" style="font-size:11px">📌 <?= t('ساعت مأموریت هم در واحد مبدأ و هم در واحد مقصد با این مقادیر بروزرسانی می‌شود.') ?></p>
             </div>
             <div class="modal-footer">
                 <button type="submit" class="btn btn-primary"><?= t('btn_save') ?></button>

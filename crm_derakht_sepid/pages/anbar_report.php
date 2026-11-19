@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['approve_step'])) {
     $user_name = $_SESSION['full_name'] ?? $_SESSION['user_name'] ?? '';
     $allowed = false;
     if ($step === 1) $allowed = $can_sign_keeper;   // انباردار
-    if ($step === 2) $allowed = $is_admin;          // سرپرست کارگاه
+    if ($step === 2) $allowed = $is_admin;          // سرپرست واحد
 
     if ($allowed) {
         $folder = __DIR__ . '/../uploads/reports/';
@@ -149,7 +149,7 @@ $st = $pdo->prepare("SELECT name, quantity, min_quantity, unit FROM inventory_it
 $st->execute([$ws_id]);
 $low_items = $st->fetchAll();
 
-// ═══ گزارش‌های روزانه واحد انبار (§v6 — مثل فرم HSE؛ قبلاً فقط در فرم اجرا می‌آمدند) ═══
+// ═══ گزارش‌های روزانه واحد انبار (§v6 — مثل فرم ایمنی؛ قبلاً فقط در فرم عملیات می‌آمدند) ═══
 $anbar_acts = [];
 $dr_has_status = db_has_column($pdo, 'daily_reports', 'status');
 $sql = "SELECT dr.wo_description, dr.report_text, u.full_name FROM daily_reports dr JOIN users u ON u.id = dr.user_id WHERE dr.workshop_id = ? AND dr.report_date = ? AND dr.category = 'anbar'";
@@ -171,7 +171,7 @@ $prev_d = date('Y-m-d', strtotime($report_date_g . ' -1 day'));
 $next_d = date('Y-m-d', strtotime($report_date_g . ' +1 day'));
 ?>
 <!DOCTYPE html>
-<html lang="<?= htmlspecialchars($lang, ENT_QUOTES, 'UTF-8') ?>" dir="<?= htmlspecialchars($lang_dir, ENT_QUOTES, 'UTF-8') ?>">
+<html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -179,7 +179,7 @@ $next_d = date('Y-m-d', strtotime($report_date_g . ' +1 day'));
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap');
         * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:'Vazirmatn',Tahoma,sans-serif; direction:<?= $lang_dir ?>; background:#eef1f6; color:#1a1a2e; }
+        body { font-family:'Vazirmatn',Tahoma,sans-serif; direction:rtl; background:#eef1f6; color:#1a1a2e; }
         .a4 { max-width:210mm; margin:18px auto; background:#fff; border-radius:12px; box-shadow:0 4px 24px rgba(0,0,0,0.09); padding:20px 24px; }
         .print-header { display:flex; justify-content:space-between; align-items:center; border-bottom:3px double #333; padding-bottom:10px; gap:14px; margin-bottom:4px; }
         .print-header img { height:58px; }
@@ -260,7 +260,7 @@ $next_d = date('Y-m-d', strtotime($report_date_g . ' +1 day'));
             <input class="inp" style="width:130px" name="keeper_name" form="anbForm" value="<?= htmlspecialchars($keeper_name) ?>">
             <?php else: ?><?= htmlspecialchars($keeper_name) ?><?php endif; ?>
         </div>
-        <div><strong><?= t('wh_name') ?> <?= t('پروژه') ?> / <?= t('کارگاه') ?>:</strong>
+        <div><strong><?= t('wh_name') ?> <?= t('پروژه') ?> / <?= t('واحد') ?>:</strong>
             <?php if (!$print_mode && !$is_javidhse && !$is_yaser): ?>
             <input class="inp" style="width:160px" name="project_name" form="anbForm" value="<?= htmlspecialchars($project_name) ?>">
             <?php else: ?><?= htmlspecialchars($project_name) ?><?php endif; ?>
@@ -377,7 +377,7 @@ $next_d = date('Y-m-d', strtotime($report_date_g . ' +1 day'));
     <?php letterhead_footer() ?>
 
     <?php if (!$print_mode && $next_step > 0):
-        $step_labels = [1 => t('تأیید انباردار'), 2 => t('تأیید سرپرست کارگاه')];
+        $step_labels = [1 => t('تأیید انباردار'), 2 => t('تأیید سرپرست واحد')];
     ?>
     <form method="POST" class="no-print" style="display:flex;gap:8px;justify-content:center;margin-top:18px;align-items:center"><?= get_csrf_field() ?>
         <input type="hidden" name="approve_step" value="<?= $next_step ?>">

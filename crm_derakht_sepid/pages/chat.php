@@ -444,9 +444,9 @@ function pollMessages() {
                     && 'Notification' in window && Notification.permission === 'granted') {
                     var lastMsg = msgs[cnt - 1];
                     var lang = (document.documentElement.lang || 'fa').toLowerCase().split('-')[0];
-                    var dir = document.documentElement.dir || (lang === 'en' ? 'ltr' : 'rtl');
+                    var dir = document.documentElement.dir || 'rtl';
                     var newMessage = {fa: '<?= t('پیام جدید') ?>', ar: 'رسالة جديدة', en: 'New message'}[lang] || 'New message';
-                    var workshop = {fa: '<?= t('کارگاه') ?>', ar: 'الورشة', en: 'Workshop'}[lang] || 'Workshop';
+                    var workshop = {fa: '<?= t('واحد') ?>', ar: 'الورشة', en: 'Workshop'}[lang] || 'Workshop';
                     var body = (lastMsg.textContent || '').replace(/\s+/g, ' ').trim().substring(0, 90) || newMessage;
                     var who = document.querySelector('.chat-head-title, .chat-title, h3');
                     var n = new Notification((who ? who.textContent.trim() : newMessage) + ' — ' + workshop, {

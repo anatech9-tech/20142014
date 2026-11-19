@@ -212,7 +212,7 @@ include 'includes/header.php';
             <input type="hidden" name="is_task" value="1">
             <input type="hidden" name="type" value="warning">
             <div class="modal-body">
-                <div class="form-group"><label class="form-label"><?= t('عنوان') ?> <?= t('nav_work_orders') ?> *</label><input type="text" name="task_title" class="form-control" required placeholder="<?= t('مثال') ?>: <?= t('بازدید') ?> <?= t('lea_from') ?> <?= t('ساختمان') ?>"></div>
+                <div class="form-group"><label class="form-label"><?= t('عنوان') ?> <?= t('nav_work_orders') ?> *</label><input type="text" name="task_title" class="form-control" required placeholder="<?= t('مثال') ?>: <?= t('بازدید') ?> <?= t('lea_from') ?> <?= t('مشتریان') ?>"></div>
                 <div class="form-group"><label class="form-label"><?= t('wor_description') ?> <?= t('و') ?> <?= t('sal_details') ?> *</label><textarea name="message" class="form-control" required rows="4" placeholder="<?= t('sal_details') ?> <?= t('کار') ?> <?= t('مورد') ?> <?= t('نظر') ?>..."></textarea></div>
                 <div class="form-group"><label class="form-check"><input type="checkbox" name="is_group" value="1" checked><span><?= t('btn_submit') ?> <?= t('به همه') ?></span></label></div>
                 <div class="form-group" id="taskUsersGroup" style="display:none"><label class="form-label"><?= t('انتخاب افراد') ?></label>

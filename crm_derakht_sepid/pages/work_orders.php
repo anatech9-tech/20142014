@@ -347,7 +347,7 @@ function updateItemField(itemId) {
                     <div class="form-group" style="flex:1;min-width:200px">
                         <label class="form-label"><?= t('btn_submit') ?> <?= t('به') ?> <?= t('واحد') ?> *</label>
                         <select name="target_team" class="form-control" required>
-                            <option value="ejra">🔧 <?= t('واحد اجرا') ?></option>
+                            <option value="ejra">🔧 واحد عملیات</option>
                             <option value="hse">🛡️ <?= t('hse_sign_keeper') ?></option>
                             <option value="anbar">📦 <?= t('anbar_keeper') ?></option>
                         </select>

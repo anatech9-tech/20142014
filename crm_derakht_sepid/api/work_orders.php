@@ -16,7 +16,7 @@ $user_id = $_SESSION['user_id'];
 
 if (!$ws_id) {
     header('Content-Type: application/json; charset=utf-8');
-    echo json_encode(['error' => t('کارگاه انتخاب نشده')]);
+    echo json_encode(['error' => t('واحد انتخاب نشده')]);
     exit;
 }
 

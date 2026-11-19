@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 ?>
 <!DOCTYPE html>
-<html lang="<?= htmlspecialchars($lang, ENT_QUOTES, 'UTF-8') ?>" dir="<?= htmlspecialchars($lang_dir, ENT_QUOTES, 'UTF-8') ?>">
+<html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -67,27 +67,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="assets/css/style.css">
     <link rel="stylesheet" href="assets/css/glass.css">
     <link rel="manifest" href="manifest.webmanifest">
-    <meta name="theme-color" content="#16233f">
+    <meta name="theme-color" content="#308e89">
     <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png">
     <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;200;300;400;500;600;700;800;900&display=swap">
     <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js" defer></script>
 </head>
-<body x-data="{theme: localStorage.getItem('theme') || 'light'}" :class="theme" dir="<?= $lang_dir ?>">
+<body x-data="{theme: localStorage.getItem('theme') || 'light'}" :class="theme" dir="rtl">
     <div class="login-container">
         <div class="login-box">
             <div class="login-logo">
                 <img src="assets/images/logo-512.png" alt="درخت سپید تجارت پارس" class="login-brand-logo" width="150" height="157">
                 <h1><?= htmlspecialchars(t('app_name'), ENT_QUOTES, 'UTF-8') ?></h1>
                 <p class="login-tagline"><?= t('log_subtitle') ?></p>
-                <!-- Language Switcher -->
-                <div style="margin-top:10px;display:flex;gap:8px;justify-content:center;align-items:center">
-                    <button type="button" id="tourStartBtn" onclick="startPageTour()" title="راهنمای صفحه" style="font-size:15px;font-weight:800;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;cursor:pointer;color:#ffffff">؟</button>
-                    <a href="?lang=fa" style="font-size:12px;padding:4px 10px;border-radius:6px;text-decoration:none;border:1px solid <?= $lang === 'fa' ? 'var(--primary)' : 'var(--border)' ?>;color:var(--text);background:<?= $lang === 'fa' ? 'rgba(99,102,241,0.1)' : 'transparent' ?>"><?= lang_flag_svg('fa') ?> FA</a>
-                    <a href="?lang=ar" style="font-size:12px;padding:4px 10px;border-radius:6px;text-decoration:none;border:1px solid <?= $lang === 'ar' ? 'var(--primary)' : 'var(--border)' ?>;color:var(--text);background:<?= $lang === 'ar' ? 'rgba(99,102,241,0.1)' : 'transparent' ?>"><?= lang_flag_svg('ar') ?> AR</a>
-                    <a href="?lang=en" style="font-size:12px;padding:4px 10px;border-radius:6px;text-decoration:none;border:1px solid <?= $lang === 'en' ? 'var(--primary)' : 'var(--border)' ?>;color:var(--text);background:<?= $lang === 'en' ? 'rgba(99,102,241,0.1)' : 'transparent' ?>"><?= lang_flag_svg('en') ?> EN</a>
-                </div>
+                <button type="button" id="tourStartBtn" onclick="startPageTour()" title="راهنمای صفحه" style="margin-top:10px;font-size:15px;font-weight:800;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;cursor:pointer;color:#ffffff">؟</button>
             </div>
             
             <?php if ($error): ?>

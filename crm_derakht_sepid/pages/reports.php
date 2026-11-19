@@ -268,7 +268,7 @@ $hours_data = $stmt->fetchAll();
             <?php foreach ($hours_data as $h): ?>
             <tr>
                 <td><?= $h['full_name'] ?>
-                    <?php if ($h['has_mission']): ?><span class="tag" style="font-size:9px;background:#dbeafe;color:#1d4ed8" title="<?= t('wh_hours') ?>‌<?= t('های') ?> <?= t('نیروی کمکی') ?>/<?= t('مأموریت') ?> <?= t('در') ?> <?= t('این') ?> <?= t('کارگاه') ?> <?= t('ثبت') ?> <?= t('شده') ?> (<?= t('lea_from') ?> <?= t('کارگاه') ?> <?= t('اصلی') ?>: <?= $h['mission_sources'] ?>)">🚀 <?= t('مأموریت') ?></span><?php endif; ?>
+                    <?php if ($h['has_mission']): ?><span class="tag" style="font-size:9px;background:#dbeafe;color:#1d4ed8" title="<?= t('wh_hours') ?>‌<?= t('های') ?> <?= t('نیروی کمکی') ?>/<?= t('مأموریت') ?> <?= t('در') ?> <?= t('این') ?> <?= t('واحد') ?> <?= t('ثبت') ?> <?= t('شده') ?> (<?= t('lea_from') ?> <?= t('واحد') ?> <?= t('اصلی') ?>: <?= $h['mission_sources'] ?>)">🚀 <?= t('مأموریت') ?></span><?php endif; ?>
                 </td>
                 <td><span class="tag <?= $h['is_karigar'] ? 'tag-karigar' : 'tag-active' ?>"><?= $h['is_karigar'] ? t('sal_worker') : t('sal_employee') ?></span></td>
                 <td><?= $h['days'] ?></td>

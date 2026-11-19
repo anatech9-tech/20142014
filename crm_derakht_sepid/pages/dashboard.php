@@ -49,7 +49,7 @@ try {
     $chatFilter = db_has_column($pdo,'chat_messages','channel_id') ? " AND (cm.channel_id IS NULL OR cm.channel_id=0) AND (cm.workshop_id IS NULL OR cm.workshop_id=".(int)$ws_id.")" : '';
     $st = $pdo->query("SELECT cm.*, u.full_name, u.avatar FROM chat_messages cm JOIN users u ON u.id=cm.sender_id WHERE cm.receiver_id=0{$chatFilter} ORDER BY cm.created_at DESC LIMIT 6");
     $recent_chat = array_reverse($st->fetchAll());
-    // خلاصهٔ کانال‌های کارگاه و اعضای هر کانال، کنار چت‌روم نمایش داده می‌شود.
+    // خلاصهٔ کانال‌های واحد و اعضای هر کانال، کنار چت‌روم نمایش داده می‌شود.
     try {
         if (db_has_column($pdo,'chat_channels','id') && db_has_column($pdo,'chat_channel_members','id')) {
             $channelStmt = $pdo->prepare("SELECT c.id,c.name,c.icon,c.created_at,COUNT(DISTINCT cm.user_id) AS member_count,GROUP_CONCAT(DISTINCT u.full_name ORDER BY u.full_name SEPARATOR '، ') AS member_names FROM chat_channels c LEFT JOIN chat_channel_members cm ON cm.channel_id=c.id LEFT JOIN users u ON u.id=cm.user_id WHERE c.workshop_id=? AND c.status='active' GROUP BY c.id,c.name,c.icon,c.created_at ORDER BY c.created_at DESC LIMIT 10");
@@ -272,7 +272,7 @@ include 'includes/header.php';
                     <span style="min-width:0;flex:1"><strong style="font-size:12px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><?= htmlspecialchars($channel['name']) ?></strong><small class="dashboard-channel-members"><?= (int)$channel['member_count'] ?> <?= t('عضو') ?><?php if (!empty($channel['member_names'])): ?>: <?= htmlspecialchars($channel['member_names']) ?><?php endif; ?></small></span>
                 </a>
             <?php endforeach; ?>
-            <?php if(empty($dashboard_channels)): ?><p class="text-center text-muted" style="padding:22px 8px;font-size:12px"><?= t('هنوز') ?> <?= t('کانالی') ?> <?= t('برای') ?> <?= t('این') ?> <?= t('کارگاه') ?> <?= t('ثبت نشده') ?> <?= t('است') ?>.</p><?php endif; ?>
+            <?php if(empty($dashboard_channels)): ?><p class="text-center text-muted" style="padding:22px 8px;font-size:12px"><?= t('هنوز') ?> <?= t('کانالی') ?> <?= t('برای') ?> <?= t('این') ?> <?= t('واحد') ?> <?= t('ثبت نشده') ?> <?= t('است') ?>.</p><?php endif; ?>
         </div>
     </aside>
 </div>

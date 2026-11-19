@@ -184,7 +184,7 @@ $personnel_ids = array_map('intval', array_column($personnel, 'id'));
 // عضو تیم فقط می‌تواند روی هم‌تیمی‌ها (یا خودش) فیلتر کند
 if (!$can_view_all && $filter_user && $filter_user !== (int)$current_user_id && !in_array($filter_user, $personnel_ids, true)) $filter_user = 0;
 
-// §fix: همهٔ اعضای یک تیم گزارش‌های همان تیم (همان کارگاه) را می‌بینند تا گزارش تکراری ثبت نکنند.
+// §fix: همهٔ اعضای یک تیم گزارش‌های همان تیم (همان واحد) را می‌بینند تا گزارش تکراری ثبت نکنند.
 $where = "dr.workshop_id = ? AND dr.category = ?";
 $params = [$ws_id, $active_cat];
 if ($filter_user) { $where .= " AND dr.user_id = ?"; $params[] = $filter_user; }

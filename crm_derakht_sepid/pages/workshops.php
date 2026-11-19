@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $pdo->prepare("INSERT INTO audit_log (user_id, action, entity_type, entity_id, new_value) VALUES (?, 'create', 'workshop', ?, ?)");
         $stmt->execute([$_SESSION['user_id'], $new_id, $name]);
         
-        showToast(t('کارگاه با موفقیت ایجاد شد'));
+        showToast(t('واحد با موفقیت ایجاد شد'));
         redirect('index.php?page=workshops');
     }
     
@@ -88,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $pdo->prepare("UPDATE workshops SET name = ?, address = ?, description = ?, employer_name = ? {$extra_sql} WHERE id = ?");
         $stmt->execute($params);
         
-        showToast(t('کارگاه بروزرسانی شد'));
+        showToast(t('واحد بروزرسانی شد'));
         redirect('index.php?page=workshops');
     }
     
@@ -96,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $id = (int)$_POST['id'];
         $stmt = $pdo->prepare("UPDATE workshops SET status = 'inactive' WHERE id = ?");
         $stmt->execute([$id]);
-        showToast(t('کارگاه غیرفعال شد'));
+        showToast(t('واحد غیرفعال شد'));
         redirect('index.php?page=workshops');
     }
 }
@@ -177,7 +177,7 @@ include 'includes/header.php';
                     <textarea name="description" class="form-control" rows="2"></textarea>
                 </div>
                 <div class="form-group">
-                    <label class="form-label"><?= t('wor_logo') ?> (<?= t('لوگوی کارگاه / شرکت') ?>)</label>
+                    <label class="form-label"><?= t('wor_logo') ?> (<?= t('لوگوی واحد / شرکت') ?>)</label>
                     <input type="file" name="logo" class="form-control" accept="image/*">
                 </div>
                 <div class="form-group" style="padding:10px;background:rgba(245,158,11,.06);border-radius:8px;border:1px dashed var(--border)">
@@ -273,7 +273,7 @@ function editWorkshop(ws) {
 }
 
 async function deleteWorkshop(id) {
-    if (await confirmAction('<?= t('آیا') ?> <?= t('lea_from') ?> <?= t('btn_deactivate') ?> <?= t('کردن') ?> <?= t('این') ?> <?= t('کارگاه') ?> <?= t('مطمئنید؟') ?>')) {
+    if (await confirmAction('<?= t('آیا') ?> <?= t('lea_from') ?> <?= t('btn_deactivate') ?> <?= t('کردن') ?> <?= t('این') ?> <?= t('واحد') ?> <?= t('مطمئنید؟') ?>')) {
         const form = document.createElement('form');
         form.method = 'POST';
         form.innerHTML = `<?= get_csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="${id}">`;

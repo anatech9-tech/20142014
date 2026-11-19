@@ -130,7 +130,7 @@ include 'includes/header.php';
 <div class="card mt-4 animate-in">
     <div class="card-header"><h3 class="card-title"><?= t('pro_my_workshops') ?></h3></div>
     <div class="table-container"><table>
-        <thead><tr><th><?= t('کارگاه') ?></th><th><?= t('per_daily_salary') ?></th></tr></thead>
+        <thead><tr><th><?= t('واحد') ?></th><th><?= t('per_daily_salary') ?></th></tr></thead>
         <tbody>
             <?php foreach ($my_workshops as $w): ?>
             <tr><td><?= $w['name'] ?></td><td><?= number_format($w['daily_salary']) ?> <?= t('ت') ?></td></tr>

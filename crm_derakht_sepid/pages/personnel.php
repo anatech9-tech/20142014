@@ -462,20 +462,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $to_workshop = (int)$_POST['to_workshop'];
         $transfer_date = to_gregorian($_POST['transfer_date'] ?? date('Y/m/d'));
 
-        // چک: کارگاه مقصد معتبر و متفاوت باشه
+        // چک: واحد مقصد معتبر و متفاوت باشه
         $ws_chk = $pdo->prepare("SELECT id, name FROM workshops WHERE id = ? AND status = 'active'");
         $ws_chk->execute([$to_workshop]);
         $ws_to = $ws_chk->fetch();
         if (!$ws_to || $to_workshop === (int)$ws_id) {
-            showToast(t('کارگاه مقصد معتبر نیست'), 'error');
+            showToast(t('واحد مقصد معتبر نیست'), 'error');
             redirect("index.php?page=personnel");
         }
 
-        // اگر کاربر مدیر کارگاه است (و ادمین یا مدیر پروژه نیست) → ثبت درخواست برای تایید مدیر پروژه
+        // اگر کاربر مدیر واحد است (و ادمین یا مدیر پروژه نیست) → ثبت درخواست برای تایید مدیر پروژه
         if (!is_strict_admin() && !is_project_manager()) {
             $stmt = $pdo->prepare("INSERT INTO pending_transfers (transfer_type, source_workshop_id, target_workshop_id, entity_id, quantity, transfer_date, notes, requested_by, status) VALUES ('personnel', ?, ?, ?, 1, ?, ?, ?, 'pending')");
             $stmt->execute([$ws_id, $to_workshop, $user_id, $transfer_date, sanitize($_POST['notes'] ?? ''), $_SESSION['user_id']]);
-            showToast(t('درخواست انتقال پرسنل به کارگاه مقصد ثبت شد و پس از تأیید مدیر پروژه اعمال خواهد شد'));
+            showToast(t('درخواست انتقال پرسنل به واحد مقصد ثبت شد و پس از تأیید مدیر پروژه اعمال خواهد شد'));
             redirect("index.php?page=personnel");
             exit;
         }
@@ -500,16 +500,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare("INSERT INTO workshop_personnel (workshop_id, user_id, status) VALUES (?, ?, 'active')")->execute([$to_workshop, $user_id]);
             }
 
-            // حذف قطعی از کارگاه قبلی تا نیرو به هیچ وجه دوکارگاهه نماند
+            // حذف قطعی از واحد قبلی تا نیرو به هیچ وجه دوواحده نماند
             $pdo->prepare("DELETE FROM workshop_personnel WHERE user_id = ? AND workshop_id != ?")->execute([$user_id, $to_workshop]);
 
-            // Copy permissions و پاک‌سازی از کارگاه مبدأ
+            // Copy permissions و پاک‌سازی از واحد مبدأ
             $stmt = $pdo->prepare("INSERT IGNORE INTO user_permissions (user_id, workshop_id, permission) SELECT ?, ?, permission FROM user_permissions WHERE user_id = ? AND workshop_id = ?");
             $stmt->execute([$user_id, $to_workshop, $user_id, $ws_id]);
             $pdo->prepare("DELETE FROM user_permissions WHERE user_id = ? AND workshop_id != ?")->execute([$user_id, $to_workshop]);
 
             $stmt = $pdo->prepare("INSERT INTO audit_log (user_id, action, entity_type, entity_id, new_value) VALUES (?, 'transfer', 'personnel', ?, ?)");
-            $stmt->execute([$_SESSION['user_id'], $user_id, "انتقال به کارگاه {$ws_to['name']}"]);
+            $stmt->execute([$_SESSION['user_id'], $user_id, "انتقال به واحد {$ws_to['name']}"]);
 
             $pdo->commit();
             showToast(strtr(t('انتقال به «{workshop}» با حفظ حقوق انجام شد'), ['{workshop}' => $ws_to['name']]));
@@ -553,7 +553,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pdo->prepare("INSERT INTO workshop_personnel (workshop_id, user_id, status) VALUES (?, ?, 'active')")->execute([$to_ws, $user_id]);
                 }
 
-                // حذف قطعی از کارگاه مبدأ تا نیرو دوکارگاهه نشود
+                // حذف قطعی از واحد مبدأ تا نیرو دوواحده نشود
                 $pdo->prepare("DELETE FROM workshop_personnel WHERE user_id = ? AND workshop_id != ?")->execute([$user_id, $to_ws]);
 
                 $stmt = $pdo->prepare("INSERT IGNORE INTO user_permissions (user_id, workshop_id, permission) SELECT ?, ?, permission FROM user_permissions WHERE user_id = ? AND workshop_id = ?");
@@ -564,7 +564,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ->execute([$_SESSION['user_id'], $trans_id]);
 
                 $stmt = $pdo->prepare("INSERT INTO audit_log (user_id, action, entity_type, entity_id, new_value) VALUES (?, 'transfer', 'personnel', ?, ?)");
-                $stmt->execute([$_SESSION['user_id'], $user_id, "تأیید انتقال به کارگاه {$ws_to['name']}"]);
+                $stmt->execute([$_SESSION['user_id'], $user_id, "تأیید انتقال به واحد {$ws_to['name']}"]);
 
                 $pdo->commit();
                 showToast(strtr(t('انتقال پرسنل به «{workshop}» با موفقیت تأیید و انجام شد'), ['{workshop}' => $ws_to['name']]));
@@ -619,7 +619,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $ins_plain->execute([$user_id, $key, $mode]);
             $cnt++;
         }
-        // سوییچ «مدیر کارگاه» — حفظ/حذف پرچم قدیمیِ دسترسی کامل بر اساس انتخاب مودال
+        // سوییچ «مدیر واحد» — حفظ/حذف پرچم قدیمیِ دسترسی کامل بر اساس انتخاب مودال
         $pdo->prepare("DELETE FROM user_permissions WHERE user_id = ? AND workshop_id = ?")->execute([$user_id, $ws_id]);
         if (!empty($_POST['wm_master'])) {
             $pdo->prepare("INSERT IGNORE INTO user_permissions (user_id, workshop_id, permission) VALUES (?, ?, 'workshop_manager')")->execute([$user_id, $ws_id]);
@@ -976,8 +976,8 @@ function access_row_html($key, $label, $indent = false) {
             <thead>
                 <tr>
                     <th><?= t('نام نیرو') ?></th>
-                    <th><?= t('کارگاه مبدأ') ?></th>
-                    <th><?= t('کارگاه مقصد') ?></th>
+                    <th><?= t('واحد مبدأ') ?></th>
+                    <th><?= t('واحد مقصد') ?></th>
                     <th><?= t('تاریخ انتقال') ?></th>
                     <th><?= t('درخواست‌دهنده') ?></th>
                     <th><?= t('wh_actions') ?></th>
@@ -990,7 +990,7 @@ function access_row_html($key, $label, $indent = false) {
                     <td><?= htmlspecialchars($pt['from_ws_name'] ?? '') ?></td>
                     <td><?= htmlspecialchars($pt['to_ws_name'] ?? '') ?></td>
                     <td><?= to_jalali($pt['transfer_date']) ?></td>
-                    <td><?= htmlspecialchars($pt['requester_name'] ?? 'مدیر کارگاه') ?></td>
+                    <td><?= htmlspecialchars($pt['requester_name'] ?? 'مدیر واحد') ?></td>
                     <td>
                         <div class="d-flex gap-1">
                             <form method="POST" style="display:inline"><?= get_csrf_field() ?>
@@ -1013,7 +1013,7 @@ function access_row_html($key, $label, $indent = false) {
 </div>
 <?php elseif (!is_strict_admin() && !is_project_manager() && !empty($pending_personnel_transfers)): ?>
 <div class="card mb-4 animate-in" style="background:#fef3c7;border:1px solid #f59e0b;color:#92400e;padding:12px 16px;border-radius:10px">
-    ⏳ <strong><?= t('توجه:') ?></strong> <?= count($pending_personnel_transfers) ?> <?= t('درخواست انتقال پرسنل به کارگاه دیگر در انتظار تأیید مدیر پروژه دارید.') ?>
+    ⏳ <strong><?= t('توجه:') ?></strong> <?= count($pending_personnel_transfers) ?> <?= t('درخواست انتقال پرسنل به واحد دیگر در انتظار تأیید مدیر پروژه دارید.') ?>
 </div>
 <?php endif; ?>
 
@@ -1069,7 +1069,7 @@ function access_row_html($key, $label, $indent = false) {
                     <?php elseif (($p['role'] ?? '') === 'karfarma'): ?>
                         <span class="tag" style="background:#f3e8ff;color:#7e22ce" title="<?= t('کارفرما') ?>">🏢 <?= t('کارفرما') ?></span>
                     <?php elseif (($p['role'] ?? '') === 'nazer'): ?>
-                        <span class="tag" style="background:#ecfdf5;color:#065f46" title="<?= t('ناظر کارگاه') ?>">🔍 <?= t('ناظر') ?></span>
+                        <span class="tag" style="background:#ecfdf5;color:#065f46" title="<?= t('ناظر واحد') ?>">🔍 <?= t('ناظر') ?></span>
                     <?php elseif (($p['role'] ?? '') === 'finance'): ?>
                         <span class="tag" style="background:#ecfeff;color:#155e75" title="<?= t('مسئول مالی — CRM کامل') ?>">🧮 <?= t('مسئول مالی') ?></span>
                     <?php endif; ?>
@@ -1407,7 +1407,8 @@ function access_row_html($key, $label, $indent = false) {
                             <label class="form-label"><?= t('sal_type') ?> <?= t('sal_worker') ?></label>
                             <select name="work_role" id="edit_work_role_worker" class="form-control">
                                 <option value="<?= t('sal_worker') ?>"><?= t('sal_worker') ?></option>
-                                <option value="<?= t('سرکارگر') ?>"><?= t('سرکارگر') ?></option>
+                                <option value="<?= t('سرپرست') ?>"><?= t('سرپرست') ?></option>
+                                <option value="<?= t('سرپرست شیفت') ?>"><?= t('سرپرست شیفت') ?></option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -1429,11 +1430,10 @@ function access_row_html($key, $label, $indent = false) {
                             <label class="form-label"><?= t('per_position') ?> / <?= t('شغل') ?></label>
                             <select name="work_role" id="edit_work_role_peymankar" class="form-control">
                                 <option value=""><?= t('انتخاب کنید') ?></option>
-                                <option value="<?= t('راننده بیل') ?>"><?= t('راننده بیل') ?></option>
-                                <option value="<?= t('اسکلت') ?> <?= t('کار') ?>"><?= t('اسکلت') ?> <?= t('کار') ?></option>
-                                <option value="<?= t('راننده بابکت') ?>"><?= t('راننده بابکت') ?></option>
-                                <option value="<?= t('جوشکار') ?>"><?= t('جوشکار') ?></option>
-                                <option value="<?= t('سایر') ?> <?= t('پیمانکار') ?>"><?= t('سایر') ?></option>
+                                <option value="پیمانکار عمومی">پیمانکار عمومی</option>
+                                <option value="خدمات و پشتیبانی">خدمات و پشتیبانی</option>
+                                <option value="تعمیرات و نگهداری">تعمیرات و نگهداری</option>
+                                <option value="سایر"><?= t('سایر') ?> <?= t('پیمانکار') ?></option>
                             </select>
                         </div>
                     </div>
@@ -1493,7 +1493,7 @@ function access_row_html($key, $label, $indent = false) {
                 </div>
                 <label class="form-check" style="display:flex;align-items:center;gap:8px;background:rgba(245,158,11,.08);padding:10px 12px;border-radius:10px;border:1px solid var(--border);margin-bottom:14px;cursor:pointer">
                     <input type="checkbox" name="wm_master" id="perm_wm_master" value="1">
-                    <span><b>🏭 <?= t('مدیر کارگاه') ?></b> — <?= t('btn_permissions') ?> <?= t('کامل') ?> <?= t('به') ?> <?= t('همهٔ') ?> <?= t('صفحات') ?> <?= t('این') ?> <?= t('کارگاه') ?> (<?= t('ماند') ?> <?= t('و') ?> <?= t('قدرت') ?> <?= t('قبلی') ?>)</span>
+                    <span><b>🏭 <?= t('مدیر واحد') ?></b> — <?= t('btn_permissions') ?> <?= t('کامل') ?> <?= t('به') ?> <?= t('همهٔ') ?> <?= t('صفحات') ?> <?= t('این') ?> <?= t('واحد') ?> (<?= t('ماند') ?> <?= t('و') ?> <?= t('قدرت') ?> <?= t('قبلی') ?>)</span>
                 </label>
                 <p class="text-muted" style="font-size:11.5px;line-height:1.9;margin:0 0 12px">
                     ✅ <?= t('تیک') ?> <?= t('هر') ?> <?= t('صفحه') ?> = <?= t('btn_permissions') ?> <?= t('به') ?> <?= t('آن') ?> — <?= t('بعد') ?> <?= t('lea_from') ?> <?= t('تیک') ?>، <b>✏️ <?= t('ویراستار') ?></b> (<?= t('مدیریت کامل') ?>) <?= t('یا') ?> <b>👁️ <?= t('ناظر') ?></b> (<?= t('فقط مشاهده، بدون هیچ تغییری') ?>) <?= t('را') ?> <?= t('انتخاب کنید') ?>.
@@ -1867,13 +1867,13 @@ function fixAddWorkRole() { return true; }
                     <div class="form-group"><label class="form-label" id="raiseValueLabel"><?= t('مبلغ') ?> <?= t('افزایش') ?> (<?= t('sal_toman') ?>) *</label>
                         <input type="number" name="raise_value" id="raiseValue" class="form-control" required min="0" step="1000" oninput="raisePreviewUpdate()">
                     </div>
-                    <div class="form-group"><label class="form-label"><?= t('wh_date') ?> <?= t('اجرا') ?> *</label>
+                    <div class="form-group"><label class="form-label"><?= t('wh_date') ?> اعمال *</label>
                         <input type="text" name="start_date" class="form-control jalali-date" value="<?= jalali_now() ?>" required>
                     </div>
                 </div>
                 <div class="form-group"><label class="form-label"><?= t('raise_reason') ?></label><input type="text" name="reason" class="form-control" placeholder="<?= t('مثلاً') ?>: <?= t('افزایش') ?> <?= t('سالانه') ?>"></div>
                 <div id="raisePreview" style="display:none;padding:10px 14px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);border-radius:10px;font-size:13px"></div>
-                <p class="text-muted" style="font-size:11px;margin-top:8px">💡 <?= t('اگر') ?> <?= t('wh_date') ?> <?= t('اجرا') ?> <?= t('در') ?> <?= t('آینده') ?> <?= t('باشد') ?>، <?= t('nav_salary') ?> <?= t('جدید') ?> <?= t('فقط') ?> <?= t('برای') ?> <?= t('روزهای') ?> «<?= t('lea_from') ?> <?= t('آن') ?> <?= t('wh_date') ?> <?= t('به') ?> <?= t('بعد') ?>» <?= t('در') ?> <?= t('btn_calculate') ?> <?= t('nav_salary') ?> <?= t('اعمال') ?> <?= t('می‌شود') ?> <?= t('و') ?> <?= t('محاسبات') ?> <?= t('rep_month') ?>‌<?= t('های') ?> <?= t('گذشته') ?> <?= t('تغییر') ?> <?= t('نمی‌کند') ?>.</p>
+                <p class="text-muted" style="font-size:11px;margin-top:8px">💡 <?= t('اگر') ?> <?= t('wh_date') ?> اعمال <?= t('در') ?> <?= t('آینده') ?> <?= t('باشد') ?>، <?= t('nav_salary') ?> <?= t('جدید') ?> <?= t('فقط') ?> <?= t('برای') ?> <?= t('روزهای') ?> «<?= t('lea_from') ?> <?= t('آن') ?> <?= t('wh_date') ?> <?= t('به') ?> <?= t('بعد') ?>» <?= t('در') ?> <?= t('btn_calculate') ?> <?= t('nav_salary') ?> <?= t('اعمال') ?> <?= t('می‌شود') ?> <?= t('و') ?> <?= t('محاسبات') ?> <?= t('rep_month') ?>‌<?= t('های') ?> <?= t('گذشته') ?> <?= t('تغییر') ?> <?= t('نمی‌کند') ?>.</p>
             </div>
             <div class="modal-footer"><button type="submit" class="btn btn-primary"><?= t('raise_apply') ?></button><button type="button" onclick="closeModal('raiseModal')" class="btn btn-ghost"><?= t('btn_cancel') ?></button></div>
         </form>
@@ -1905,7 +1905,7 @@ function fixAddWorkRole() { return true; }
                     <div class="form-group"><label class="form-label" id="groupValueLabel"><?= t('درصد') ?> <?= t('افزایش *') ?></label>
                         <input type="number" name="raise_value" id="groupValue" class="form-control" required min="0" step="0.5" oninput="groupPreviewUpdate()">
                     </div>
-                    <div class="form-group"><label class="form-label"><?= t('wh_date') ?> <?= t('اجرا') ?> *</label>
+                    <div class="form-group"><label class="form-label"><?= t('wh_date') ?> اعمال *</label>
                         <input type="text" name="start_date" class="form-control jalali-date" value="<?= jalali_now() ?>" required>
                     </div>
                 </div>
@@ -1931,7 +1931,7 @@ function fixAddWorkRole() { return true; }
             <p class="text-muted text-center" style="padding:20px"><?= t('هنوز') ?> <?= t('افزایشی') ?> <?= t('ثبت نشده') ?></p>
             <?php else: ?>
             <table style="font-size:12px">
-                <thead><tr><th><?= t('lea_from') ?></th><th><?= t('به') ?></th><th><?= t('wh_date') ?> <?= t('اجرا') ?></th><th><?= t('adv_reason') ?></th><th><?= t('ثبت‌کننده') ?></th><th></th></tr></thead>
+                <thead><tr><th><?= t('lea_from') ?></th><th><?= t('به') ?></th><th><?= t('wh_date') ?> اعمال</th><th><?= t('adv_reason') ?></th><th><?= t('ثبت‌کننده') ?></th><th></th></tr></thead>
                 <tbody>
                 <?php foreach ($rows as $h): ?>
                     <tr>

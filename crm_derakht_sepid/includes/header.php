@@ -24,14 +24,14 @@ if (!access_is_special_account()) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="<?= $lang ?>" dir="<?= $lang_dir ?>">
+<html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($pageTitle ?? t('app_name'), ENT_QUOTES, 'UTF-8') ?></title>
     <!-- ═══ §13: PWA ═══ -->
     <link rel="manifest" href="manifest.webmanifest">
-    <meta name="theme-color" content="#16233f">
+    <meta name="theme-color" content="#308e89">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="<?= htmlspecialchars(t('app_name'), ENT_QUOTES, 'UTF-8') ?>">
@@ -127,6 +127,7 @@ if (!access_is_special_account()) {
                 'chat'           => ['chat', 'message-circle', t('nav_chat'), true],
                 'archive'        => ['archive', 'folder', t('nav_archive'), $is_nazer || access_mode('archive') !== null || $is_admin],
                 'forms'          => ['forms', 'file-text', t('nav_forms'), $is_nazer || $is_yaser || $is_javidhse || access_group_mode('forms') !== null || $is_admin],
+                'notifications'  => ['notifications', 'bell', t('nav_notifications'), true],
                 // §phase2 CRM: درخت سپید
                 'crm_customers'  => ['crm_customers', 'building-2', t('nav_crm_customers'), true],
                 'crm_leads'      => ['crm_leads', 'magnet', t('nav_crm_leads'), true],
@@ -135,6 +136,27 @@ if (!access_is_special_account()) {
                 'crm_teams'      => ['crm_teams', 'users-round', t('nav_crm_teams'), $is_admin],
                 'telefonchy_events' => ['telefonchy_events', 'phone-call', t('nav_telefonchy_events'), $is_admin],
                 'calls'             => ['calls', 'phone', t('nav_calls'), $is_admin],
+            ];
+
+            // شمارندهٔ پیام‌های خوانده‌نشده برای نشان کنار منوی پیام‌ها (بی‌خطا؛ اگر جدول/نشست نباشد ۰ می‌ماند)
+            $__unread_notifs = 0;
+            try {
+                if (!empty($_SESSION['user_id']) && isset($pdo)) {
+                    $uns = $pdo->prepare("SELECT COUNT(*) FROM notification_recipients WHERE user_id = ? AND is_read = 0");
+                    $uns->execute([(int)$_SESSION['user_id']]);
+                    $__unread_notifs = (int)$uns->fetchColumn();
+                }
+            } catch (Throwable $e) {}
+            $nav_badges = ['notifications' => $__unread_notifs];
+
+            // ═══ منوی گروهی بازشونده (الگوی مرجع کارکت) ═══
+            $nav_groups = [
+                'finance' => ['label' => t('nav_grp_finance'), 'icon' => 'wallet',         'items' => ['work_hours', 'salary', 'advances', 'petty_cash', 'reports']],
+                'hr'      => ['label' => t('nav_grp_hr'),      'icon' => 'users',          'items' => ['personnel', 'leaves', 'contracts']],
+                'ops'     => ['label' => t('nav_grp_ops'),     'icon' => 'clipboard-list', 'items' => ['work_orders', 'forms', 'inventory', 'workshops']],
+                'crm'     => ['label' => t('nav_grp_crm'),     'icon' => 'trending-up',    'items' => ['crm_customers', 'crm_leads', 'crm_deals', 'crm_tasks', 'crm_teams', 'telefonchy_events', 'calls']],
+                'comms'   => ['label' => t('nav_grp_comms'),   'icon' => 'message-circle', 'items' => ['chat', 'notifications', 'archive']],
+                'mgmt'    => ['label' => t('nav_grp_mgmt'),    'icon' => 'settings',       'items' => ['audit', 'settings', 'profile']],
             ];
 
             // ترتیب دلخواه از تنظیمات (menu_order) + آیتم‌های جدید ته لیست
@@ -176,12 +198,65 @@ if (!access_is_special_account()) {
                 }
             }
 
-            foreach ($ordered_keys as $nav_key):
-                [$np, $nic, $nlabel, $nvisible] = $nav_map[$nav_key];
-                if (!$nvisible) continue;
+            // حساب‌های ویژه (javidhse / کارفرما): همهٔ گروه‌های فعال باز شوند چون منوی بسیار کوتاهی دارند
+            $force_open_all = $is_javidhse || $is_karfarma;
+            $__render_link = function ($nav_key) use ($nav_map, $currentPage, $nav_badges) {
+                [$np, $nic, $nlabel] = $nav_map[$nav_key];
+                $active = $currentPage == $np ? 'active' : '';
+                $badge = '';
+                if (!empty($nav_badges[$nav_key]) && $nav_badges[$nav_key] > 0) {
+                    $badge = '<span class="nav-count">' . min(99, (int)$nav_badges[$nav_key]) . '</span>';
+                }
+                echo '<a href="index.php?page=' . $np . '" class="nav-item ' . $active . '"><i data-lucide="' . $nic . '"></i><span>' . $nlabel . '</span>' . $badge . '</a>';
+            };
             ?>
-            <a href="index.php?page=<?= $np ?>" class="nav-item <?= $currentPage == $np ? 'active' : '' ?>"><i data-lucide="<?= $nic ?>"></i><span><?= $nlabel ?></span></a>
+            <?php if (!$is_javidhse && !$is_karfarma): ?>
+            <a href="index.php?page=dashboard" class="nav-item nav-dashboard <?= $currentPage == 'dashboard' ? 'active' : '' ?>"><i data-lucide="layout-dashboard"></i><span><?= t('nav_dashboard') ?></span></a>
+            <?php endif; ?>
+            <?php
+            $assigned_keys = [];
+            foreach ($nav_groups as $gkey => $grp):
+                $visible_items = [];
+                foreach ($ordered_keys as $k) {
+                    if (in_array($k, $grp['items'], true) && $nav_map[$k][3]) $visible_items[] = $k;
+                }
+                if (!$visible_items) continue;
+                $assigned_keys = array_merge($assigned_keys, $visible_items);
+                $contains_current = in_array($currentPage, $visible_items, true);
+                $open = $contains_current || $force_open_all;
+            ?>
+            <div class="nav-group <?= $open ? 'open' : '' ?>" data-group="<?= $gkey ?>">
+                <button type="button" class="nav-group-title" aria-expanded="<?= $open ? 'true' : 'false' ?>">
+                    <i data-lucide="<?= $grp['icon'] ?>"></i>
+                    <span><?= htmlspecialchars($grp['label'], ENT_QUOTES, 'UTF-8') ?></span>
+                    <i data-lucide="chevron-down" class="nav-chev"></i>
+                </button>
+                <div class="nav-children" role="group">
+                    <?php foreach ($visible_items as $nav_key) $__render_link($nav_key); ?>
+                </div>
+            </div>
             <?php endforeach; ?>
+            <?php
+            // کلیدهایی که در هیچ گروهی تعریف نشده‌اند → گروه «سایر» (برای آینده‌نگری)
+            $leftover = [];
+            foreach ($ordered_keys as $k) {
+                if (!in_array($k, $assigned_keys, true) && $k !== 'dashboard' && $nav_map[$k][3]) $leftover[] = $k;
+            }
+            if ($leftover):
+                $contains_current = in_array($currentPage, $leftover, true);
+                $open = $contains_current || $force_open_all;
+            ?>
+            <div class="nav-group <?= $open ? 'open' : '' ?>" data-group="other">
+                <button type="button" class="nav-group-title" aria-expanded="<?= $open ? 'true' : 'false' ?>">
+                    <i data-lucide="more-horizontal"></i>
+                    <span><?= htmlspecialchars(t('nav_grp_other'), ENT_QUOTES, 'UTF-8') ?></span>
+                    <i data-lucide="chevron-down" class="nav-chev"></i>
+                </button>
+                <div class="nav-children" role="group">
+                    <?php foreach ($leftover as $nav_key) $__render_link($nav_key); ?>
+                </div>
+            </div>
+            <?php endif; ?>
         </nav>
         <div class="sidebar-footer">
             <a href="index.php?page=logout" class="nav-item logout"><i data-lucide="log-out"></i><span><?= t('nav_logout') ?></span></a>
@@ -223,10 +298,6 @@ if (!access_is_special_account()) {
                 .topbar-right>.icon-btn,.topbar-right>.topbar-control{width:38px;height:38px;min-width:38px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:10px;box-sizing:border-box;transition:transform .2s ease,box-shadow .2s ease,background .2s ease}
                 .topbar-right>.icon-btn:hover,.topbar-right>.topbar-control:hover,.topbar-right>.ws-switcher-btn:hover,#srvClock:hover{transform:translateY(-1px) scale(1.04);box-shadow:0 6px 18px rgba(30,58,95,.35)}
                 .topbar-right>div:not(#srvCalendar){height:38px;display:inline-flex;align-items:center}
-                .topbar-right>div:not(#srvCalendar)>#langBtn{border:1px solid var(--border);border-radius:10px;box-sizing:border-box;transition:transform .2s ease,box-shadow .2s ease,background .2s ease}
-                .topbar-right>div:not(#srvCalendar)>#langBtn:hover{transform:translateY(-1px) scale(1.04);box-shadow:0 6px 18px rgba(30,58,95,.35)}
-                .lang-flag-svg{display:inline-flex;width:22px;height:15px;line-height:0;flex:0 0 auto}.lang-flag-svg svg{display:block;width:100%;height:100%;border-radius:2px;box-shadow:0 0 0 1px rgba(15,23,42,.18)}
-                #langDropdown .lang-flag-svg{width:24px;height:16px}
                 .topbar-right>.tour-header-btn{width:38px!important;height:38px!important;min-width:38px!important;border-radius:10px!important}
                 .topbar-right>.ws-switcher-btn{height:38px;min-height:38px;display:inline-flex;align-items:center;white-space:nowrap;border:1px solid var(--border);border-radius:10px;transition:transform .2s ease,box-shadow .2s ease}
                 #srvClock{height:38px;min-width:112px;box-sizing:border-box}
@@ -241,7 +312,7 @@ if (!access_is_special_account()) {
                 .srv-cal-day:hover,.srv-cal-day.is-selected{background:rgba(99,102,241,.12);border-color:var(--primary)}
                 .srv-cal-day.is-holiday{color:#dc2626;font-weight:700;background:rgba(239,68,68,.08)}
                 .srv-cal-detail{min-height:30px;margin-top:9px;padding:7px 9px;border-radius:8px;background:rgba(239,68,68,.08);color:#b91c1c;font-size:11px;line-height:1.6}
-                @media(max-width:640px){#srvClock{min-width:auto;width:38px;padding:2px 4px}#srvClockDate{display:none}.topbar-right{gap:4px}.topbar-right>.icon-btn,.topbar-right>.topbar-control,.topbar-right>.tour-header-btn,.topbar-right>div:not(#srvCalendar)>#langBtn{width:34px!important;height:34px!important;min-width:34px!important}.topbar-right>.ws-switcher-btn{height:34px;min-height:34px;padding:4px 7px;font-size:10px}#srvCalendar{position:fixed;top:58px;inset-inline:10px;width:auto}}
+                @media(max-width:640px){#srvClock{min-width:auto;width:38px;padding:2px 4px}#srvClockDate{display:none}.topbar-right{gap:4px}.topbar-right>.icon-btn,.topbar-right>.topbar-control,.topbar-right>.tour-header-btn,.topbar-right>.ws-switcher-btn{height:34px;min-height:34px;padding:4px 7px;font-size:10px}#srvCalendar{position:fixed;top:58px;inset-inline:10px;width:auto}}
                 </style>
                 <script>
                 (function(){
@@ -284,16 +355,7 @@ if (!access_is_special_account()) {
                 })();
                 </script>
                 <!-- راهنمای صفحه (تور) — دکمه کنار انتخاب زبان -->
-                <button id="tourStartBtn" class="icon-btn tour-header-btn" title="<?= ['fa'=>'راهنمای صفحه (؟)','ar'=>'دليل الصفحة (؟)','en'=>'Page guide (?)'][$lang] ?? 'Page guide' ?>" onclick="startPageTour()">؟</button>
-                <!-- Language Switcher -->
-                <div style="position:relative">
-                    <button id="langBtn" onclick="document.getElementById('langDropdown').classList.toggle('hidden')" class="icon-btn" title="<?= htmlspecialchars(t('ui_language'), ENT_QUOTES, 'UTF-8') ?>"><?= lang_flag_svg($lang) ?></button>
-                    <div id="langDropdown" class="hidden" style="position:absolute;top:100%;<?= $lang_dir === 'rtl' ? 'right' : 'left' ?>:0;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);margin-top:5px;overflow:hidden;z-index:200;min-width:140px">
-                        <a href="?lang=fa" style="display:flex;align-items:center;gap:8px;padding:10px 14px;text-decoration:none;color:var(--text);font-size:13px;transition:background 0.2s <?= $lang === 'fa' ? 'background:rgba(99,102,241,0.1)' : '' ?>" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='<?= $lang === 'fa' ? 'rgba(99,102,241,0.1)' : 'transparent' ?>'"><?= lang_flag_svg('fa') ?> فارسی <?= $lang === 'fa' ? '✓' : '' ?></a>
-                        <a href="?lang=ar" style="display:flex;align-items:center;gap:8px;padding:10px 14px;text-decoration:none;color:var(--text);font-size:13px;transition:background 0.2s <?= $lang === 'ar' ? 'background:rgba(99,102,241,0.1)' : '' ?>" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='<?= $lang === 'ar' ? 'rgba(99,102,241,0.1)' : 'transparent' ?>'"><?= lang_flag_svg('ar') ?> العربية <?= $lang === 'ar' ? '✓' : '' ?></a>
-                        <a href="?lang=en" style="display:flex;align-items:center;gap:8px;padding:10px 14px;text-decoration:none;color:var(--text);font-size:13px;transition:background 0.2s <?= $lang === 'en' ? 'background:rgba(99,102,241,0.1)' : '' ?>" onmouseover="this.style.background='var(--border)'" onmouseout="this.style.background='<?= $lang === 'en' ? 'rgba(99,102,241,0.1)' : 'transparent' ?>'"><?= lang_flag_svg('en') ?> English <?= $lang === 'en' ? '✓' : '' ?></a>
-                    </div>
-                </div>
+                <button id="tourStartBtn" class="icon-btn tour-header-btn" title="راهنمای صفحه (؟)" onclick="startPageTour()">؟</button>
                 <button id="themeBtn" onclick="var t = document.documentElement; if (t.classList.contains('dark')) { t.classList.remove('dark'); localStorage.setItem('theme', 'light'); this.querySelector('i').setAttribute('data-lucide', 'moon'); } else { t.classList.add('dark'); localStorage.setItem('theme', 'dark'); this.querySelector('i').setAttribute('data-lucide', 'sun'); } lucide.createIcons();" class="icon-btn" title="<?= htmlspecialchars(t('ui_theme'), ENT_QUOTES, 'UTF-8') ?>"><i data-lucide="moon"></i></button>
                 <?php if (can_see_all_workshops()): ?>
                 <a href="index.php?page=workshops" class="btn btn-ghost btn-sm ws-switcher-btn"><?= t('nav_switch_workshop') ?></a>
@@ -327,6 +389,38 @@ if (!access_is_special_account()) {
     if (saved) nav.scrollTop = parseInt(saved);
     window.addEventListener('beforeunload', function() {
         sessionStorage.setItem(key, nav.scrollTop);
+    });
+})();
+</script>
+<script>
+// گروه‌های بازشوندهٔ منو — وضعیت هر گروه در localStorage ذخیره می‌شود؛
+// گروهی که صفحهٔ فعلی را دارد همیشه باز می‌ماند.
+(function () {
+    function readStates() {
+        try { return JSON.parse(localStorage.getItem('menuGroupState') || '{}'); } catch (e) { return {}; }
+    }
+    document.querySelectorAll('.nav-group').forEach(function (g) {
+        var key = g.getAttribute('data-group');
+        var states = readStates();
+        if (!g.classList.contains('open') && Object.prototype.hasOwnProperty.call(states, key)) {
+            g.classList.toggle('open', !!states[key]);
+            var btn = g.querySelector('.nav-group-title');
+            if (btn) btn.setAttribute('aria-expanded', g.classList.contains('open') ? 'true' : 'false');
+        }
+    });
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest ? e.target.closest('.nav-group-title') : null;
+        if (!btn) return;
+        var g = btn.closest('.nav-group');
+        if (!g) return;
+        g.classList.toggle('open');
+        var isOpen = g.classList.contains('open');
+        btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        try {
+            var states = readStates();
+            states[g.getAttribute('data-group')] = isOpen;
+            localStorage.setItem('menuGroupState', JSON.stringify(states));
+        } catch (err) {}
     });
 })();
 </script>

@@ -157,7 +157,7 @@ foreach ($sorted as $di => $date) {
 $print = isset($_GET['print']);
 ?>
 <!DOCTYPE html>
-<html lang="<?= htmlspecialchars($lang, ENT_QUOTES, 'UTF-8') ?>" dir="<?= htmlspecialchars($lang_dir, ENT_QUOTES, 'UTF-8') ?>">
+<html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <title><?= t('گزارش') ?> <?= t('nav_work_hours') ?> - <?= htmlspecialchars($user['full_name']) ?></title>
@@ -166,7 +166,7 @@ $print = isset($_GET['print']);
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap');
         * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:'Vazirmatn',Tahoma,sans-serif; direction:<?= $lang_dir ?>; background:#f0f2f5; color:#1a1a2e; }
+        body { font-family:'Vazirmatn',Tahoma,sans-serif; direction:rtl; background:#f0f2f5; color:#1a1a2e; }
         .page { max-width:900px; margin:20px auto; background:white; border-radius:16px; box-shadow:0 4px 20px rgba(0,0,0,0.08); overflow:hidden; }
         .top-bar { display:flex; justify-content:space-between; align-items:center; padding:16px 24px; background:linear-gradient(135deg,#059669,#10b981); color:white; }
         .top-bar h1 { font-size:18px; font-weight:700; }

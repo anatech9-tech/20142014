@@ -832,7 +832,7 @@ function validateEditLeaveForm(form) {
     return true;
 }
 
-// §fix: حذف کامل رکورد — با فرم POST و توکن CSRF (مثل حذف کارگاه)
+// §fix: حذف کامل رکورد — با فرم POST و توکن CSRF (مثل حذف واحد)
 async function deleteLeave(id) {
     if (await confirmAction('<?= t('این') ?> <?= t('رکورد') ?> <?= t('مرخصی') ?> <?= t('برای') ?> <?= t('همیشه') ?> <?= t('حذف شود؟') ?>')) {
         const form = document.createElement('form');

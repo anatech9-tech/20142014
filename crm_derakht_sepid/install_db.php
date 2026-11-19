@@ -105,7 +105,7 @@ function schema_statements(): array {
         UNIQUE KEY `uq_upa` (`user_id`, `page_key`)
     ) $T";
 
-    // ── کارگاه / تیم / سازمان ────────────────────────────────
+    // ── واحد / تیم / سازمان ────────────────────────────────
     $S['workshops'] = "CREATE TABLE IF NOT EXISTS `workshops` (
         `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
         `name` VARCHAR(150) NOT NULL,
@@ -956,7 +956,7 @@ function run_install(PDO $pdo): array {
         }
     }
 
-    // ── دادهٔ اولیه: یک کارگاه/دفتر پیش‌فرض
+    // ── دادهٔ اولیه: یک واحد/دفتر پیش‌فرض
     $wsCount = (int)$pdo->query("SELECT COUNT(*) FROM workshops")->fetchColumn();
     if ($wsCount === 0) {
         $pdo->prepare("INSERT INTO workshops (name, employer_name, status, description) VALUES (?,?,?,?)")

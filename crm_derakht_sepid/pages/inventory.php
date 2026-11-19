@@ -46,7 +46,7 @@ if (!function_exists('inv_out_type')) {
     }
 }
 
-// ═══ پرسنل فعال کارگاه (برای پیشنهاد نام در خروج/امانی/گزارش شخص) ═══
+// ═══ پرسنل فعال واحد (برای پیشنهاد نام در خروج/امانی/گزارش شخص) ═══
 $ws_personnel = [];
 try {
     $stp = $pdo->prepare("SELECT u.id, u.full_name FROM users u JOIN workshop_personnel wp ON wp.user_id = u.id AND wp.status = 'active' WHERE wp.workshop_id = ? AND u.status = 'active' ORDER BY u.full_name");
@@ -366,11 +366,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stock = (float)$stmt->fetchColumn();
         if ($qty > $stock) { showToast(t('موجودی آماده تحویل کافی نیست'), 'error'); redirect("index.php?page=inventory"); exit; }
 
-        // اگر کاربر مدیر کارگاه است و ادمین یا مدیر پروژه نیست → ثبت درخواست برای تأیید
+        // اگر کاربر مدیر واحد است و ادمین یا مدیر پروژه نیست → ثبت درخواست برای تأیید
         if (!is_strict_admin() && !is_project_manager()) {
             $stmt = $pdo->prepare("INSERT INTO pending_transfers (transfer_type, source_workshop_id, target_workshop_id, entity_id, quantity, transfer_date, notes, requested_by, status) VALUES ('inventory', ?, ?, ?, ?, ?, ?, ?, 'pending')");
             $stmt->execute([$ws_id, $to_ws, $item_id, $qty, date('Y-m-d'), sanitize($_POST['notes'] ?? ''), $_SESSION['user_id']]);
-            showToast(t('درخواست انتقال کالا به کارگاه مقصد ثبت شد و پس از تأیید مدیر پروژه اعمال خواهد شد'));
+            showToast(t('درخواست انتقال کالا به واحد مقصد ثبت شد و پس از تأیید مدیر پروژه اعمال خواهد شد'));
             redirect("index.php?page=inventory");
             exit;
         }
@@ -396,7 +396,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare("INSERT INTO inventory_items (workshop_id, name, sku, unit, quantity) VALUES (?, ?, ?, ?, ?)")->execute([$to_ws, $item_info['name'], $item_info['sku'] ?? null, $item_info['unit'], $qty]);
         }
 
-        arash_coin_award_inventory_activity($pdo, (int)$_SESSION['user_id'], (int)$ws_id, 'inventory:transfer:' . $item_id . ':' . uniqid(), strtr(t('انتقال کالا به کارگاه دیگر: {item}'), ['{item}' => $item_info['name']]), date('Y-m-d'));
+        arash_coin_award_inventory_activity($pdo, (int)$_SESSION['user_id'], (int)$ws_id, 'inventory:transfer:' . $item_id . ':' . uniqid(), strtr(t('انتقال کالا به واحد دیگر: {item}'), ['{item}' => $item_info['name']]), date('Y-m-d'));
         showToast(strtr(t('انتقال {qty} {unit} انجام شد'), ['{qty}' => $qty, '{unit}' => $item_info['unit']]));
         redirect("index.php?page=inventory");
     }
@@ -416,7 +416,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$item_id, $from_ws]);
             $item_info = $stmt->fetch();
             if (!$item_info || $qty > (float)$item_info['quantity']) {
-                showToast(t('موجودی آماده تحویل در کارگاه مبدأ کافی نیست'), 'error');
+                showToast(t('موجودی آماده تحویل در واحد مبدأ کافی نیست'), 'error');
             } else {
                 $pdo->prepare("UPDATE inventory_items SET quantity = quantity - ? WHERE id = ?")->execute([$qty, $item_id]);
 
@@ -437,7 +437,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare("UPDATE pending_transfers SET status = 'approved', approved_by = ?, approved_at = NOW() WHERE id = ?")
                     ->execute([$_SESSION['user_id'], $trans_id]);
 
-                arash_coin_award_inventory_activity($pdo, (int)$tr['requested_by'], (int)$from_ws, 'inventory:transfer:' . $item_id . ':' . uniqid(), strtr(t('انتقال کالا به کارگاه دیگر: {item}'), ['{item}' => $item_info['name']]), date('Y-m-d'));
+                arash_coin_award_inventory_activity($pdo, (int)$tr['requested_by'], (int)$from_ws, 'inventory:transfer:' . $item_id . ':' . uniqid(), strtr(t('انتقال کالا به واحد دیگر: {item}'), ['{item}' => $item_info['name']]), date('Y-m-d'));
                 showToast(strtr(t('انتقال {qty} {unit} با موفقیت تأیید و انجام شد'), ['{qty}' => $qty, '{unit}' => $item_info['unit']]));
             }
         }
@@ -637,8 +637,8 @@ include 'includes/header.php';
                 <tr>
                     <th><?= t('نام کالا') ?></th>
                     <th><?= t('تعداد') ?></th>
-                    <th><?= t('کارگاه مبدأ') ?></th>
-                    <th><?= t('کارگاه مقصد') ?></th>
+                    <th><?= t('واحد مبدأ') ?></th>
+                    <th><?= t('واحد مقصد') ?></th>
                     <th><?= t('درخواست‌دهنده') ?></th>
                     <th><?= t('wh_actions') ?></th>
                 </tr>
@@ -650,7 +650,7 @@ include 'includes/header.php';
                     <td><?= $it['quantity'] ?> <?= htmlspecialchars($it['unit'] ?? '') ?></td>
                     <td><?= htmlspecialchars($it['from_ws_name'] ?? '') ?></td>
                     <td><?= htmlspecialchars($it['to_ws_name'] ?? '') ?></td>
-                    <td><?= htmlspecialchars($it['requester_name'] ?? 'مدیر کارگاه') ?></td>
+                    <td><?= htmlspecialchars($it['requester_name'] ?? 'مدیر واحد') ?></td>
                     <td>
                         <div class="d-flex gap-1">
                             <form method="POST" style="display:inline"><?= get_csrf_field() ?>
@@ -673,7 +673,7 @@ include 'includes/header.php';
 </div>
 <?php elseif (!is_strict_admin() && !is_project_manager() && !empty($pending_inventory_transfers)): ?>
 <div class="card mb-4 animate-in" style="background:#fef3c7;border:1px solid #f59e0b;color:#92400e;padding:12px 16px;border-radius:10px">
-    ⏳ <strong><?= t('توجه:') ?></strong> <?= count($pending_inventory_transfers) ?> <?= t('درخواست انتقال کالا به کارگاه دیگر در انتظار تأیید مدیر پروژه دارید.') ?>
+    ⏳ <strong><?= t('توجه:') ?></strong> <?= count($pending_inventory_transfers) ?> <?= t('درخواست انتقال کالا به واحد دیگر در انتظار تأیید مدیر پروژه دارید.') ?>
 </div>
 <?php endif; ?>
 
@@ -1120,7 +1120,7 @@ $render_person_rows = function($rows, $show_status) {
                 <div class="form-group"><label class="form-label"><?= t('inv_checkout') ?> <?= t('گیرنده *') ?></label>
                     <input type="text" name="person_name" class="form-control person-pick" data-target="checkoutPersonId" required list="personList" placeholder="<?= t('دو حرف') ?> <?= t('اول') ?> <?= t('wh_name') ?> <?= t('نیرو') ?> <?= t('را') ?> <?= t('تایپ') ?> <?= t('کنید') ?>..." autocomplete="off">
                     <input type="hidden" name="person_id" id="checkoutPersonId">
-                    <div class="text-muted" style="font-size:10px;margin-top:3px"><?= t('lea_from') ?> <?= t('لیست') ?> <?= t('nav_personnel') ?> <?= t('کارگاه') ?> <?= t('پیشنهاد') ?> <?= t('داده') ?> <?= t('می‌شود') ?> (<?= t('تایپ آزاد') ?> <?= t('هم') ?> <?= t('مجاز است') ?>)</div>
+                    <div class="text-muted" style="font-size:10px;margin-top:3px"><?= t('lea_from') ?> <?= t('لیست') ?> <?= t('nav_personnel') ?> <?= t('واحد') ?> <?= t('پیشنهاد') ?> <?= t('داده') ?> <?= t('می‌شود') ?> (<?= t('تایپ آزاد') ?> <?= t('هم') ?> <?= t('مجاز است') ?>)</div>
                 </div>
                 <div id="earlyApproveBox" style="display:none;padding:12px;background:rgba(234,179,8,0.12);border:1px solid rgba(234,179,8,0.4);border-radius:8px;margin-bottom:10px">
                     <label class="form-check"><input type="checkbox" name="early_approve" value="1"><span>⚠️ <?= t('تأیید') ?> <?= t('مدیر') ?> <?= t('برای') ?> <?= t('inv_early_reissue') ?></span></label>
@@ -1228,7 +1228,7 @@ $render_person_rows = function($rows, $show_status) {
 <!-- Transfer Modal -->
 <div id="transferModal" class="modal-overlay hidden">
     <div class="modal glass-modal">
-        <div class="modal-header"><h3 class="modal-title"><?= t('btn_transfer') ?> <?= t('به') ?> <?= t('کارگاه') ?> <?= t('دیگر') ?></h3><button onclick="closeModal('transferModal')" class="modal-close">✕</button></div>
+        <div class="modal-header"><h3 class="modal-title"><?= t('btn_transfer') ?> <?= t('به') ?> <?= t('واحد') ?> <?= t('دیگر') ?></h3><button onclick="closeModal('transferModal')" class="modal-close">✕</button></div>
         <form method="POST"><?= get_csrf_field() ?><input type="hidden" name="action" value="transfer">
             <input type="hidden" name="item_id" id="transfer_item_id">
             <div class="modal-body">

@@ -329,22 +329,12 @@ function jalali_now() {
 }
 
 function jalali_month_name($m) {
-    global $lang;
-    $names = [
-        'fa' => ['', 'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'],
-        'ar' => ['', 'فروردين', 'أرديبهشت', 'خرداد', 'تير', 'مرداد', 'شهريور', 'مهر', 'آبان', 'آذر', 'دي', 'بهمن', 'إسفند'],
-        'en' => ['', 'Farvardin', 'Ordibehesht', 'Khordad', 'Tir', 'Mordad', 'Shahrivar', 'Mehr', 'Aban', 'Azar', 'Dey', 'Bahman', 'Esfand'],
-    ];
-    return $names[$lang ?? 'fa'][$m] ?? '';
+    $names = ['', 'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
+    return $names[$m] ?? '';
 }
 
 function localized_weekday_names() {
-    global $lang;
-    return [
-        'fa' => ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه'],
-        'ar' => ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'],
-        'en' => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
-    ][$lang ?? 'fa'];
+    return ['یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنجشنبه', 'جمعه', 'شنبه'];
 }
 
 // Permission check helper
@@ -412,7 +402,7 @@ function page_access_registry() {
                 'petty_cash'     => t('تنخواه') . ' (' . t('واریز') . '/' . t('تأیید') . ')',
                 'contracts'      => '📄 ' . t('قراردادها'),
                 'inventory'      => '📦 ' . t('انبار'),
-                'workshops'      => '🏭 ' . t('کارگاه‌ها'),
+                'workshops'      => '🏭 ' . t('واحد‌ها'),
                 'archive'        => '🗃️ ' . t('بایگانی'),
                 'audit'          => '📜 ' . t('لاگ تغییرات'),
                 'settings'       => '⚙️ ' . t('تنظیمات'),
@@ -470,7 +460,7 @@ function user_access_map(PDO $pdo, $user_id) {
             } catch (Throwable $e2) {}
         }
         if (in_array('workshop_manager', $_SESSION['permissions'] ?? [], true) && (int)($_SESSION['user_id'] ?? 0) === $user_id) {
-            // پرچم مدیر کارگاه خودِ کاربر جاری — در access_mode جداگانه مدیریت می‌شود
+            // پرچم مدیر واحد خودِ کاربر جاری — در access_mode جداگانه مدیریت می‌شود
         }
     }
     return $cache[$user_id];
@@ -509,7 +499,7 @@ function access_mode($page_key) {
     global $pdo;
     if (is_strict_admin() || is_project_manager()) return 'editor'; // مدیر سایت و مدیر پروژه: دسترسی کامل
     if (is_nazer_kol()) return 'viewer';                             // ناظر کل: فقط مشاهده
-    if (is_karfarma()) {                                             // کارفرما: فقط فرم‌ها و گزارش‌های روزانه/HSE
+    if (is_karfarma()) {                                             // کارفرما: فقط فرم‌ها و گزارش‌های روزانه/ایمنی
         if ($page_key === 'forms') return 'viewer';
         $personal = in_array($page_key, access_personal_keys(), true);
         return $personal ? 'personal' : null;
@@ -519,7 +509,7 @@ function access_mode($page_key) {
         // yaser / javidhse: دسترسی‌شان فقط با قوانین ویژهٔ خودشان (در index.php) — اینجا دست نمی‌خوریم
         return $personal ? 'personal' : null;
     }
-    if (is_workshop_manager()) return 'editor';            // مدیر کارگاه: کامل در کارگاه خود
+    if (is_workshop_manager()) return 'editor';            // مدیر واحد: کامل در واحد خود
     $map = $pdo ? user_access_map($pdo, (int)($_SESSION['user_id'] ?? 0)) : [];
     if (isset($map[$page_key])) return $map[$page_key];
     // دسترسی‌های قدیمیِ زیرصفحه‌های انبار، بعد از ادغام همچنان دسترسی به ماژول انبار می‌دهند.
@@ -734,34 +724,34 @@ function all_org_roles(PDO $pdo): array {
 }
 
 /**
- * بررسی دسترسی کاربر به مدیریت ساعت کاری یک کارگاه خاص
+ * بررسی دسترسی کاربر به مدیریت ساعت کاری یک واحد خاص
  */
 function can_user_manage_ws_work_hours(PDO $pdo, int $user_id, int $target_ws): bool {
     if ($user_id <= 0 || $target_ws <= 0) return false;
     if (is_strict_admin() || is_project_manager()) return true;
 
-    // ۱. بررسی دسترسی صریح مدیریت ساعت در کارگاه هدف
+    // ۱. بررسی دسترسی صریح مدیریت ساعت در واحد هدف
     $st = $pdo->prepare("SELECT 1 FROM user_permissions WHERE user_id = ? AND workshop_id = ? AND permission IN ('manage_work_hours', 'office_manager', 'workshop_manager')");
     $st->execute([$user_id, $target_ws]);
     if ($st->fetchColumn()) return true;
 
-    // ۲. بررسی عضویت و نقش فعال در کارگاه هدف
+    // ۲. بررسی عضویت و نقش فعال در واحد هدف
     $st_wp = $pdo->prepare("SELECT 1 FROM workshop_personnel WHERE user_id = ? AND workshop_id = ? AND status = 'active'");
     $st_wp->execute([$user_id, $target_ws]);
     if ($st_wp->fetchColumn()) {
         $st_u = $pdo->prepare("SELECT role FROM users WHERE id = ?");
         $st_u->execute([$user_id]);
         $u_role = $st_u->fetchColumn();
-        if (in_array($u_role, ['manager', 'workshop_manager', 'مدیر کارگاه'], true)) return true;
+        if (in_array($u_role, ['manager', 'workshop_manager', 'مدیر کارگاه', 'مدیر واحد'], true)) return true;
     }
 
     return false;
 }
 
 /**
- * بررسی مجوز تغییر یا حذف ساعت نیروی مأمور از کارگاه دیگر (بند ۱)
- * مدیر کارگاه مقصد اجازه تغییر یا حذف ساعت نیروی مأمور را ندارد.
- * فقط مدیر پروژه یا کاربران دارای دسترسی در کارگاه مبدأ مجاز هستند.
+ * بررسی مجوز تغییر یا حذف ساعت نیروی مأمور از واحد دیگر (بند ۱)
+ * مدیر واحد مقصد اجازه تغییر یا حذف ساعت نیروی مأمور را ندارد.
+ * فقط مدیر پروژه یا کاربران دارای دسترسی در واحد مبدأ مجاز هستند.
  */
 function can_user_edit_wh_record(PDO $pdo, int $wh_id): bool {
     if (is_strict_admin() || is_project_manager()) return true;
@@ -774,18 +764,18 @@ function can_user_edit_wh_record(PDO $pdo, int $wh_id): bool {
     if (!$row) return false;
 
     $source_ws = (int)($row['mission_source_ws'] ?: ($row['source_workshop_id'] ?? 0));
-    // اگر این رکورد مأموریت از کارگاه دیگر نیست، دسترسی عادی کاربر به کارگاه مقصد معتبر است
+    // اگر این رکورد مأموریت از واحد دیگر نیست، دسترسی عادی کاربر به واحد مقصد معتبر است
     if ($source_ws <= 0 || $source_ws === (int)$row['workshop_id']) {
         return true;
     }
 
-    // اگر رکورد مأموریت از کارگاه دیگر است: فقط کاربران دارای دسترسی در کارگاه مبدأ مجازند
+    // اگر رکورد مأموریت از واحد دیگر است: فقط کاربران دارای دسترسی در واحد مبدأ مجازند
     $uid = (int)($_SESSION['user_id'] ?? 0);
     return can_user_manage_ws_work_hours($pdo, $uid, $source_ws);
 }
 
 /**
- * دریافت تنظیمات با اولویت تنظیمات اختصاصی کارگاه و فال‌بک به تنظیمات عمومی
+ * دریافت تنظیمات با اولویت تنظیمات اختصاصی واحد و فال‌بک به تنظیمات عمومی
  */
 function get_workshop_settings(PDO $pdo, ?int $ws_id = null): array {
     $settings = [];
@@ -819,7 +809,7 @@ function current_user_team(PDO $pdo, $user_id) {
     return team_from_work_role($st->fetchColumn() ?: '');
 }
 function team_labels() {
-    return ['ejra' => t('واحد اجرا'), 'hse' => t('واحد HSE'), 'anbar' => t('انباردار')];
+    return ['ejra' => t('واحد عملیات'), 'hse' => t('واحد ایمنی'), 'anbar' => t('انباردار')];
 }
 
 // بررسی وجود ستون در جدول (با کش) — برای سازگاری قبل/بعد اجرای migrate.php

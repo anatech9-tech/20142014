@@ -48,7 +48,7 @@ try {
     // ۲) ساخت رویدادهای جدید
     $events = [];
     if ($chat_max > $state['chat_max']) {
-        $events[] = ['title' => '💬 پیام جدید در چت کارگاه', 'body' => 'یک پیام جدید برای شما رسیده است', 'url' => 'index.php?page=chat'];
+        $events[] = ['title' => '💬 پیام جدید در چت واحد', 'body' => 'یک پیام جدید برای شما رسیده است', 'url' => 'index.php?page=chat'];
     }
     if ($reports > $state['reports']) {
         $events[] = ['title' => '📝 گزارش جدید در انتظار تأیید', 'body' => $reports . ' گزارش برای بررسی وجود دارد', 'url' => 'index.php?page=daily_reports'];

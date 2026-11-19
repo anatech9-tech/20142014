@@ -17,7 +17,7 @@ $can_manage = $is_admin || $is_nazer || has_permission('manage_salary');
 // بند ۱۰: هرکس فقط حقوق خودش را می‌بیند؛ «دیدن همه» فقط با دسترسی مدیریت حقوق (ادمین/مدیر) — تیک ناظر/ویراستارِ صفحه دیگر کافی نیست.
 $can_view_all = $can_manage;
 
-// بررسی دسترسی: مدیر کارگاه فقط افراد و حقوق‌های کارگاه خودش را می‌بیند
+// بررسی دسترسی: مدیر واحد فقط افراد و حقوق‌های واحد خودش را می‌بیند
 if (!can_see_all_workshops()) {
     $salary_scope = 'ws';
     $s_ws = (int)$ws_id;
@@ -35,7 +35,7 @@ $W = function ($alias = '') use (&$s_ws) {
 function compute_person_balance(PDO $pdo, array $p, string $calc_upto, int $s_ws, Closure $W, array $settings): array {
     $uid = (int)$p['id'];
 
-    // کارکرد کامل فرد در تمامی کارگاه‌ها (شامل مأموریت‌ها) محاسبه می‌شود (بند ۲ و ۳)
+    // کارکرد کامل فرد در تمامی واحد‌ها (شامل مأموریت‌ها) محاسبه می‌شود (بند ۲ و ۳)
     $stmt2 = $pdo->prepare("SELECT * FROM work_hours WHERE user_id = ? AND work_date <= ? ORDER BY work_date, start_time");
     $stmt2->execute([$uid, $calc_upto]);
     $all_hours = $stmt2->fetchAll();
@@ -118,7 +118,7 @@ function compute_person_balance(PDO $pdo, array $p, string $calc_upto, int $s_ws
     $stmt2->execute([$uid, $calc_upto]);
     $penalty = (float)$stmt2->fetchColumn();
 
-    // Advances (پرداخت‌شده تا پایان همان روز در تمام کارگاه‌ها)
+    // Advances (پرداخت‌شده تا پایان همان روز در تمام واحد‌ها)
     $advance = advance_deduction_upto($pdo, $uid, 0, date('Y-m-d', strtotime($calc_upto . ' +1 day')));
 
     $balance = $total_base_pay + $bonus - $penalty - $advance;
@@ -136,12 +136,12 @@ function compute_person_balance(PDO $pdo, array $p, string $calc_upto, int $s_ws
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'settle_person') {
     if (!$can_manage) { showToast(t('دسترسی ندارید'), 'error'); redirect('index.php?page=salary'); exit; }
     $uid = (int)($_POST['user_id'] ?? 0);
-    // مدیر کارگاه فقط مجاز به تسویه پرسنل فعال کارگاه خود است
+    // مدیر واحد فقط مجاز به تسویه پرسنل فعال واحد خود است
     if (!can_see_all_workshops()) {
         $chk_ws = $pdo->prepare("SELECT 1 FROM workshop_personnel WHERE user_id = ? AND workshop_id = ? AND status = 'active'");
         $chk_ws->execute([$uid, $ws_id]);
         if (!$chk_ws->fetchColumn()) {
-            showToast(t('شما فقط مجاز به تسویه پرسنل کارگاه اختصاصی خود هستید'), 'error'); redirect('index.php?page=salary'); exit;
+            showToast(t('شما فقط مجاز به تسویه پرسنل واحد اختصاصی خود هستید'), 'error'); redirect('index.php?page=salary'); exit;
         }
     }
     $gdate = to_gregorian(sanitize($_POST['settle_date'] ?? ''));
@@ -150,7 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'settl
         showToast(t('تاریخ تسویه نامعتبر است'), 'error'); redirect('index.php?page=salary'); exit;
     }
     if ($gdate > date('Y-m-d')) { showToast(t('تاریخ تسویه نمی‌تواند در آینده باشد'), 'error'); redirect('index.php?page=salary'); exit; }
-    // اطلاعات نفر مطابق نمای فعلی (تجمیعی / این کارگاه) — مبلغ همیشه سمت سرور محاسبه می‌شود
+    // اطلاعات نفر مطابق نمای فعلی (تجمیعی / این واحد) — مبلغ همیشه سمت سرور محاسبه می‌شود
     $stmt2 = $pdo->prepare("SELECT u.full_name, u.is_karigar, MAX(wp.daily_salary) AS daily_salary, MAX(wp.monthly_salary) AS monthly_salary FROM users u JOIN workshop_personnel wp ON u.id = wp.user_id WHERE u.id = ?" . $W('wp') . " GROUP BY u.id, u.full_name, u.is_karigar");
     $stmt2->execute([$uid]);
     $per = $stmt2->fetch();
@@ -203,7 +203,7 @@ $ex_ph = implode(',', array_fill(0, count($excluded_usernames), '?'));
 
 if ($can_view_all) {
     if ($s_ws > 0) {
-        // فقط نیروهای فعال همین کارگاه (نیروهای مأمور از سایر کارگاه‌ها یا منتقل‌شده‌ها نمایش داده نمی‌شوند)
+        // فقط نیروهای فعال همین واحد (نیروهای مأمور از سایر واحد‌ها یا منتقل‌شده‌ها نمایش داده نمی‌شوند)
         $stmt = $pdo->prepare("SELECT u.id, u.full_name, u.is_karigar, wp.daily_salary, wp.monthly_salary, 1 AS has_active_membership
             FROM users u
             JOIN workshop_personnel wp ON u.id = wp.user_id
@@ -211,7 +211,7 @@ if ($can_view_all) {
             ORDER BY $sort_col $sort_dir");
         $stmt->execute(array_merge([$s_ws], array_values($excluded_usernames)));
     } else {
-        // §v8 تجمیعی: هر نفر یک‌بار با بالاترین نرخ غیرصفرش بین همه کارگاه‌هایی که فعاله
+        // §v8 تجمیعی: هر نفر یک‌بار با بالاترین نرخ غیرصفرش بین همه واحد‌هایی که فعاله
         $stmt = $pdo->prepare("SELECT u.id, u.full_name, u.is_karigar, MAX(wp.daily_salary) AS daily_salary, MAX(wp.monthly_salary) AS monthly_salary, 1 AS has_active_membership
             FROM users u
             JOIN workshop_personnel wp ON u.id = wp.user_id
@@ -221,7 +221,7 @@ if ($can_view_all) {
         $stmt->execute(array_values($excluded_usernames));
     }
 } else {
-    // نمای کاربر برای خودش — همیشه تجمیعی (حقوقش مجموع کارش در همه کارگاه‌هاست)
+    // نمای کاربر برای خودش — همیشه تجمیعی (حقوقش مجموع کارش در همه واحد‌هاست)
     $stmt = $pdo->prepare("SELECT u.id, u.full_name, u.is_karigar, MAX(wp.daily_salary) AS daily_salary, MAX(wp.monthly_salary) AS monthly_salary, 1 AS has_active_membership
         FROM users u
         JOIN workshop_personnel wp ON u.id = wp.user_id
@@ -237,8 +237,8 @@ foreach ($personnel_raw as $__i => $__pr) {
     $personnel_raw[$__i]['monthly_salary'] = $__eb['monthly_salary'];
 }
 
-// هر user_id فقط یک ردیف اصلی در صفحه حقوق دارد. عضویت در چند کارگاه نباید
-// باعث تکرار ردیف شود؛ جزئیات کارگاه‌ها در صفحه جزئیات حقوق نمایش داده می‌شود.
+// هر user_id فقط یک ردیف اصلی در صفحه حقوق دارد. عضویت در چند واحد نباید
+// باعث تکرار ردیف شود؛ جزئیات واحد‌ها در صفحه جزئیات حقوق نمایش داده می‌شود.
 $personnel_by_id = [];
 foreach ($personnel_raw as $person_row) {
     $personnel_by_id[(int)$person_row['id']] = $person_row;
@@ -275,7 +275,7 @@ foreach ($personnel as $i => $person_row) {
     $personnel[$i]['_merged_ids'] = [(int)$person_row['id']];
 }
 
-// نام کارگاه‌های هر نفر را برای نمایش خلاصه کنار همان ردیف آماده می‌کنیم.
+// نام واحد‌های هر نفر را برای نمایش خلاصه کنار همان ردیف آماده می‌کنیم.
 $workshop_labels = [];
 if (!empty($personnel)) {
     $person_ids = [];
@@ -362,7 +362,7 @@ if (isset($_GET['detail_user'])) {
     $result = ['user' => null, 'months' => [], 'error' => null, 'debug_ws' => $ws_id, 'debug_uid' => $uid];
 
     try {
-    // §v8 تجمیعی: اطلاعات نفر از بالاترین نرخ بین همه کارگاه‌های فعالش
+    // §v8 تجمیعی: اطلاعات نفر از بالاترین نرخ بین همه واحد‌های فعالش
     $stmt2 = $pdo->prepare("SELECT u.full_name, u.is_karigar, MAX(wp.daily_salary) AS daily_salary, MAX(wp.monthly_salary) AS monthly_salary FROM users u JOIN workshop_personnel wp ON u.id = wp.user_id WHERE u.id = ?" . $W('wp') . " GROUP BY u.id, u.full_name, u.is_karigar");
     $stmt2->execute([$uid]);
     $result['user'] = $stmt2->fetch();
@@ -403,7 +403,7 @@ if (isset($_GET['detail_user'])) {
         $m_start = $jmi['start'];
         $m_end = $jmi['end'];
 
-        // Get all work hours for this jalali month (§v8: همراه نام کارگاه هر روز)
+        // Get all work hours for this jalali month (§v8: همراه نام واحد هر روز)
         $stmt3 = $pdo->prepare("SELECT wh.*, w.name AS ws_name FROM work_hours wh LEFT JOIN workshops w ON w.id = wh.workshop_id WHERE wh.user_id IN ($UIDS)" . $W('wh') . " AND wh.work_date BETWEEN ? AND ? ORDER BY wh.work_date, wh.start_time");
         $stmt3->execute(array_merge($detail_ids, [$m_start, $m_end]));
         $hours = $stmt3->fetchAll();
@@ -636,13 +636,13 @@ include 'includes/header.php';
     <h2><?= t('sal_title') ?></h2>
 </div>
 
-<!-- §v12 §5.2: انتخاب «کارکرد این کارگاه / تجمیعی» به داخل پنجره جزئیات حقوق منتقل شد -->
+<!-- §v12 §5.2: انتخاب «کارکرد این واحد / تجمیعی» به داخل پنجره جزئیات حقوق منتقل شد -->
 <?php if (!can_see_all_workshops()): ?>
-<p class="text-muted animate-in" style="font-size:11.5px;margin:0 0 10px">🏢 <?= t('نمایش پرسنل و مانده حقوق مربوط به همین کارگاه') ?></p>
+<p class="text-muted animate-in" style="font-size:11.5px;margin:0 0 10px">🏢 <?= t('نمایش پرسنل و مانده حقوق مربوط به همین واحد') ?></p>
 <?php elseif ($salary_scope === 'all'): ?>
-<p class="text-muted animate-in" style="font-size:11.5px;margin:0 0 10px">🌐 <?= t('nav_salary') ?> <?= t('هر') ?> <?= t('per_count') ?> <?= t('rep_total') ?> <?= t('کارکردش') ?> <?= t('در') ?> <?= t('همه') ?> <?= t('کارگاه') ?>‌<?= t('هاست') ?> <?= t('— در') ?> «<?= t('sal_details') ?>» <?= t('می‌توانید') ?> <?= t('بین') ?> <?= t('نمای') ?> <?= t('تجمیعی') ?> <?= t('و') ?> <?= t('تک') ?>‌<?= t('کارگاه') ?> <?= t('جابه‌جا شوید') ?>. <a href="index.php?page=salary&scope=ws" class="btn btn-ghost btn-sm" style="margin-right:10px">🏢 <?= t('فیلتر فقط این کارگاه') ?></a></p>
+<p class="text-muted animate-in" style="font-size:11.5px;margin:0 0 10px">🌐 <?= t('nav_salary') ?> <?= t('هر') ?> <?= t('per_count') ?> <?= t('rep_total') ?> <?= t('کارکردش') ?> <?= t('در') ?> <?= t('همه') ?> <?= t('واحد') ?>‌<?= t('هاست') ?> <?= t('— در') ?> «<?= t('sal_details') ?>» <?= t('می‌توانید') ?> <?= t('بین') ?> <?= t('نمای') ?> <?= t('تجمیعی') ?> <?= t('و') ?> <?= t('تک') ?>‌<?= t('واحد') ?> <?= t('جابه‌جا شوید') ?>. <a href="index.php?page=salary&scope=ws" class="btn btn-ghost btn-sm" style="margin-right:10px">🏢 <?= t('فیلتر فقط این واحد') ?></a></p>
 <?php else: ?>
-<p class="text-muted animate-in" style="font-size:11.5px;margin:0 0 10px">🏢 <?= t('فیلتر فعال: فقط این کارگاه') ?>. <a href="index.php?page=salary&scope=all" class="btn btn-ghost btn-sm" style="margin-right:10px">🌐 <?= t('نمایش تجمیعی همه کارگاه‌ها') ?></a></p>
+<p class="text-muted animate-in" style="font-size:11.5px;margin:0 0 10px">🏢 <?= t('فیلتر فعال: فقط این واحد') ?>. <a href="index.php?page=salary&scope=all" class="btn btn-ghost btn-sm" style="margin-right:10px">🌐 <?= t('نمایش تجمیعی همه واحد‌ها') ?></a></p>
 <?php endif; ?>
 
 <?php if (!empty($__commission_rows)): ?>
@@ -824,7 +824,7 @@ function salScopeBar(userId, active) {
     return '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">'
         + '<span style="font-size:12px;color:var(--text-secondary)"><?= t('نمای تفکیکی دقیق:') ?></span>'
         + '<a target="_blank" href="index.php?page=salary_detail&user_id=' + userId + '&scope=all" class="btn btn-ghost btn-sm">🌐 <?= t('تجمیعی') ?> <?= t('همه') ?> <?= t('nav_workshops') ?></a>'
-        + '<a target="_blank" href="index.php?page=salary_detail&user_id=' + userId + '&scope=ws" class="btn btn-ghost btn-sm">🏢 <?= t('فقط این کارگاه') ?></a>'
+        + '<a target="_blank" href="index.php?page=salary_detail&user_id=' + userId + '&scope=ws" class="btn btn-ghost btn-sm">🏢 <?= t('فقط این واحد') ?></a>'
         + '</div>';
 }
 
@@ -893,7 +893,7 @@ async function showDetail(userId, name, scope) {
                     html += '<div style="padding:0 14px 10px">';
                     html += '<table style="width:100%;font-size:11px;border-collapse:collapse">';
                     if (isKarigar) {
-                        html += '<thead><tr style="border-bottom:1px solid var(--border)"><th style="padding:6px;text-align:right"><?= t('wh_date') ?></th><th><?= t('کارگاه') ?></th><th><?= t('btn_checkin') ?></th><th><?= t('nav_logout') ?></th><th><?= t('wh_status') ?></th><th><?= t('کل کار') ?></th><th><?= t('wh_hours') ?> <?= t('پرداخت') ?></th><th><?= t('sal_overtime') ?></th></tr></thead><tbody>';
+                        html += '<thead><tr style="border-bottom:1px solid var(--border)"><th style="padding:6px;text-align:right"><?= t('wh_date') ?></th><th><?= t('واحد') ?></th><th><?= t('btn_checkin') ?></th><th><?= t('nav_logout') ?></th><th><?= t('wh_status') ?></th><th><?= t('کل کار') ?></th><th><?= t('wh_hours') ?> <?= t('پرداخت') ?></th><th><?= t('sal_overtime') ?></th></tr></thead><tbody>';
                         m.daily_detail.forEach(function(d) {
                             let tags = '';
                             if (d.is_friday) tags += '<span class="tag tag-friday" style="font-size:9px">' + T.friday + '</span> ';
@@ -901,7 +901,7 @@ async function showDetail(userId, name, scope) {
                             html += '<tr style="border-bottom:1px solid var(--border)"><td style="padding:5px">' + d.jalali + '</td><td style="font-size:10px">' + (d.workshop ? '<span style="background:rgba(99,102,241,.12);padding:1px 6px;border-radius:5px">' + (d.mission ? '🚀 ' : '🏢 ') + d.workshop + (d.mission ? ' <?= t('(مأموریت)') ?>' : '') + '</span>' : '-') + '</td><td dir="ltr">' + (d.start_time || '-') + '</td><td dir="ltr">' + (d.end_time || '-') + '</td><td>' + (tags || '-') + '</td><td>' + fmtHM(d.total_worked) + '</td><td>' + fmtHM(d.paid_hours) + '</td><td>' + fmtHM(d.overtime_hours) + '</td></tr>';
                         });
                     } else {
-                        html += '<thead><tr style="border-bottom:1px solid var(--border)"><th style="padding:6px;text-align:right"><?= t('wh_date') ?></th><th><?= t('کارگاه') ?></th><th><?= t('btn_checkin') ?></th><th><?= t('nav_logout') ?></th><th><?= t('wh_status') ?></th><th><?= t('sal_regular') ?></th><th><?= t('sal_overtime') ?></th><th><?= t('wh_night') ?></th><th><?= t('wh_friday') ?></th><th><?= t('wh_holiday') ?></th></tr></thead><tbody>';
+                        html += '<thead><tr style="border-bottom:1px solid var(--border)"><th style="padding:6px;text-align:right"><?= t('wh_date') ?></th><th><?= t('واحد') ?></th><th><?= t('btn_checkin') ?></th><th><?= t('nav_logout') ?></th><th><?= t('wh_status') ?></th><th><?= t('sal_regular') ?></th><th><?= t('sal_overtime') ?></th><th><?= t('wh_night') ?></th><th><?= t('wh_friday') ?></th><th><?= t('wh_holiday') ?></th></tr></thead><tbody>';
                         m.daily_detail.forEach(function(d) {
                             let tags = '';
                             if (d.is_friday) tags += '<span class="tag tag-friday" style="font-size:9px">' + T.friday + '</span> ';
