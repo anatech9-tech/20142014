@@ -49,6 +49,19 @@ if (!$call) {
 }
 $cuid = (string)$call['cuid'];
 
+// اگر تحلیل درخواست شده ولی هنوز «کامل/ناموفق» نشده، یک بار خودکار وضعیت را بگیر (GET رایگان)
+$preStatus = (string)($call['analysis_status'] ?? '');
+if (!empty($call['analysis_requested_at']) && !in_array($preStatus, ['completed', 'failed'], true) && $cuid !== '') {
+    tel_poll_analysis($pdo, $cuid, 12);
+    $st = $pdo->prepare("SELECT pc.*, COALESCE(cust.name, lead.name, lead.company) AS matched_name
+        FROM phone_calls pc
+        LEFT JOIN crm_customers cust ON cust.id = pc.customer_id
+        LEFT JOIN crm_leads lead ON lead.id = pc.lead_id
+        WHERE pc.id = ?");
+    $st->execute([$id]);
+    $call = $st->fetch() ?: $call;
+}
+
 $st2 = $pdo->prepare("SELECT * FROM call_analysis WHERE cuid = ?");
 $st2->execute([$cuid]);
 $an = $st2->fetch() ?: null;
@@ -123,7 +136,7 @@ include 'includes/header.php';
     </div>
     <div style="padding:14px;font-size:13px;line-height:2">
         <?php if (!$an): ?>
-            <p class="text-muted">هنوز نتیجه‌ای ثبت نشده. اگر تحلیل را فعال کنید، پس از چند دقیقه با «بررسی وضعیت تحلیل» نتیجه ظاهر می‌شود.</p>
+            <p class="text-muted">هنوز نتیجه‌ای ثبت نشده. پس از درخواست تحلیل، با بارگذاری مجدد همین صفحه نتیجه خودکار به‌روز می‌شود (یا «بررسی وضعیت تحلیل» را بزنید).</p>
             <?php if ($aStatus): ?><p>وضعیت فعلی: <b><?= htmlspecialchars((string)$aStatus) ?></b></p><?php endif; ?>
         <?php else: ?>
             <p>وضعیت:

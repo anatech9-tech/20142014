@@ -428,16 +428,32 @@ function tel_request_analysis(PDO $pdo, string $cuid): array {
     return $rest;
 }
 
-function tel_poll_analysis(PDO $pdo, string $cuid): array {
+/**
+ * یافتن نودِ تحلیل داخل JSON پاسخ (خودترمیم برای شکل‌های مختلف envelope):
+ * اگر ریشه کلیدهای تحلیل را نداشت، تا عمق ۴ به‌صورت بازگشتی دنبال نودی می‌گردد
+ * که حداقل یکی از کلیدهای شناخته‌شدهٔ تحلیل را دارد.
+ */
+function tel__find_analysis_node($node, int $depth = 0): ?array {
+    if (!is_array($node) || $depth > 4) return null;
+    $keys = ['analysis_status', 'summary', 'progress', 'report_text', 'coaching_tip', 'outcome', 'customer_sentiment', 'transcript_by_role'];
+    foreach ($keys as $k) { if (array_key_exists($k, $node)) return $node; }
+    foreach ($node as $v) {
+        if (is_array($v)) { $found = tel__find_analysis_node($v, $depth + 1); if ($found !== null) return $found; }
+    }
+    return null;
+}
+
+function tel_poll_analysis(PDO $pdo, string $cuid, int $timeout = 30): array {
     $url = 'https://panel.telefonchy.com/webservice/v1/calls/analysis/show?service_id=' . rawurlencode(tel_service_id($pdo)) . '&cuid=' . rawurlencode($cuid);
-    $r = tel_http('GET', $url, null, 30);
+    $r = tel_http('GET', $url, null, $timeout);
     if ($r['http'] !== 200 || !is_array($r['json'])) {
         tel_usage_log($pdo, 'analysis_poll', $cuid, 0, (int)$r['http'], (string)($r['error'] ?? ''));
         return ['status' => null, 'applied' => false, 'http' => $r['http'], 'error' => $r['error'] ?? ''];
     }
-    $d = $r['json'];
-    if (isset($d['data']) && is_array($d['data']) && (isset($d['data']['analysis_status']) || isset($d['data']['summary']) || isset($d['data']['progress']))) {
-        $d = $d['data']; // unwrap envelope
+    $d = tel__find_analysis_node($r['json']);
+    if ($d === null) {
+        tel_usage_log($pdo, 'analysis_poll', $cuid, 0, 200, 'شکل پاسخ ناشناخته: ' . mb_substr((string)($r['body'] ?? ''), 0, 300));
+        return ['status' => null, 'applied' => false, 'http' => 200, 'error' => 'شکل پاسخ ناشناخته'];
     }
     $status = isset($d['analysis_status']) ? (string)$d['analysis_status'] : null;
     $progress = isset($d['progress']) ? (int)$d['progress'] : null;
@@ -506,6 +522,35 @@ function tel_apply_analysis(PDO $pdo, string $cuid, array $d): bool {
     } catch (Throwable $e) {
         return false;
     }
+}
+
+/**
+ * بررسی خودکار تحلیل‌های در انتظار (GET رایگان؛ صفحهٔ «تماس‌ها» هر بار بارگذاری صدا می‌زند).
+ * سقف پیش‌فرض ۵ عدد در هر بار تا صفحه معطل نشود.
+ */
+function tel_poll_pending_analyses(PDO $pdo, int $limit = 5, int $timeout = 12): array {
+    $rep = ['polled' => 0, 'completed' => 0, 'failed' => 0, 'still_pending' => 0, 'errors' => []];
+    try {
+        ensure_telefonchy_schema($pdo);
+        $st = $pdo->prepare("SELECT cuid FROM phone_calls
+            WHERE analysis_requested_at IS NOT NULL
+              AND COALESCE(analysis_status,'') NOT IN ('completed','failed')
+              AND cuid IS NOT NULL AND cuid <> ''
+            ORDER BY analysis_requested_at ASC, id ASC
+            LIMIT " . max(1, min(20, $limit)));
+        $st->execute();
+        $rows = $st->fetchAll(PDO::FETCH_COLUMN);
+    } catch (Throwable $e) { $rep['errors'][] = $e->getMessage(); return $rep; }
+    foreach ($rows as $cuid) {
+        $r = tel_poll_analysis($pdo, (string)$cuid, $timeout);
+        $rep['polled']++;
+        $stt = $r['status'] ?? null;
+        if ($stt === 'completed') $rep['completed']++;
+        elseif ($stt === 'failed') $rep['failed']++;
+        else $rep['still_pending']++;
+        if (($r['http'] ?? 200) !== 200 && !empty($r['error'])) $rep['errors'][] = $cuid . ': ' . $r['error'];
+    }
+    return $rep;
 }
 
 // ══ صوت: دانلود/آرشیو ════════════════════════════════════════════════════

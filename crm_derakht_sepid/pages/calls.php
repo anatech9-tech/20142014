@@ -44,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (preg_match('/^[A-Za-z0-9._\-]{1,96}$/', $cuid)) {
             if ($action === 'analyze_one') {
                 $r = tel_request_analysis($pdo, $cuid);
-                if ($r['http'] === 200 || $r['http'] === 202) showToast('درخواست تحلیل ثبت شد (HTTP ' . (int)$r['http'] . '). چند دقیقه بعد دکمهٔ 🔄 را بزنید.');
+                if ($r['http'] === 200 || $r['http'] === 202) showToast('درخواست تحلیل ثبت شد (HTTP ' . (int)$r['http'] . '). با بارگذاری مجدد این صفحه، نتیجه خودکار به‌روزرسانی می‌شود.');
                 else showToast('خطا در ثبت تحلیل (HTTP ' . (int)$r['http'] . ')' . (!empty($r['error']) ? ' — ' . $r['error'] : ''), 'error');
             } else {
                 $r = tel_poll_analysis($pdo, $cuid);
@@ -57,6 +57,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('index.php?page=calls');
     }
 
+    if ($action === 'poll_all') {
+        $rep = tel_poll_pending_analyses($pdo, 20, 20);
+        showToast('بررسی تحلیل‌های در انتظار انجام شد: ' . (int)$rep['polled'] . ' مورد بررسی، ' . (int)$rep['completed'] . ' کامل، ' . (int)$rep['failed'] . ' ناموفق.', empty($rep['errors']) ? 'success' : 'error');
+        redirect('index.php?page=calls');
+    }
+
     if ($action === 'save_ai_settings') {
         $auto = (($_POST['ai_analysis_auto'] ?? '') === '1') ? '1' : '0';
         $cap  = max(0, min(500, (int)($_POST['ai_analysis_daily_cap'] ?? 30)));
@@ -66,6 +72,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('index.php?page=calls');
     }
 }
+
+// به‌روزرسانی خودکار وضعیت تحلیل‌های در انتظار (GET رایگان است؛ صفحهٔ تماس‌ها هر بار صدا می‌زند)
+$autoPollReport = tel_poll_pending_analyses($pdo, 5, 12);
 
 $configured      = tel_configured();
 $auto            = tel_setting($pdo, 'ai_analysis_auto', '1') === '1';
@@ -146,6 +155,10 @@ include 'includes/header.php';
 </div>
 <?php endif; ?>
 
+<?php if (!empty($autoPollReport['polled'])): ?>
+<div class="alert alert-info animate-in" style="font-size:12px">🔄 بررسی خودکار تحلیل‌های در انتظار: <?= (int)$autoPollReport['polled'] ?> مورد بررسی شد<?php if ($autoPollReport['completed'] > 0): ?> — <b><?= (int)$autoPollReport['completed'] ?> تحلیل کامل شد ✅</b><?php endif; ?><?php if ($autoPollReport['still_pending'] > 0): ?> — <?= (int)$autoPollReport['still_pending'] ?> مورد هنوز در حال پردازش<?php endif; ?><?php if (!empty($autoPollReport['errors'])): ?><br>خطا: <?= htmlspecialchars(implode(' | ', array_slice($autoPollReport['errors'], 0, 3))) ?><?php endif; ?></div>
+<?php endif; ?>
+
 <?php if ($syncReport): ?>
 <div class="alert <?= empty($syncReport['errors']) ? 'alert-success' : 'alert-warning' ?> animate-in">
     <b>نتیجهٔ همگام‌سازی:</b> <?= (int)$syncReport['inserted'] ?> تماس جدید وارد شد؛ <?= (int)$syncReport['skipped_existing'] ?> مورد از قبل موجود بود؛ تحلیل‌های درخواست‌شده: <?= (int)$syncReport['analysis_requested'] ?><?= !empty($syncReport['analysis_capped']) ? ' (به سقف روزانه رسید)' : '' ?>.<?php if (!empty($syncReport['errors'])): ?><br>خطاها:<br><?php foreach ($syncReport['errors'] as $err): ?>— <?= htmlspecialchars($err) ?><br><?php endforeach; ?><?php endif; ?>
@@ -178,6 +191,11 @@ include 'includes/header.php';
         </label>
         <button type="submit" class="btn btn-ghost btn-sm"><i data-lucide="save"></i> ذخیرهٔ تنظیمات</button>
         <span class="text-muted" style="font-size:11px">هر درخواست تحلیل ۱ واحد از سهمیهٔ وب‌سرویس تلفنچی کم می‌کند (تحلیل تکراری دوباره شارژ نمی‌کند).</span>
+    </form>
+    <form method="post" style="padding:0 14px 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <?= get_csrf_field() ?><input type="hidden" name="action" value="poll_all">
+        <button type="submit" class="btn btn-outline-primary btn-sm" title="بررسی وضعیت همهٔ تحلیل‌های در انتظار (بدون مصرف سهمیه)"><i data-lucide="radar"></i> بررسی همهٔ در انتظارها (<?= (int)$pendingAnalysis ?>)</button>
+        <span class="text-muted" style="font-size:11px">هر بار بارگذاری این صفحه، ۵ مورد از در‌انتظارها هم خودکار بررسی می‌شوند.</span>
     </form>
     <div style="padding:0 14px 10px">
         <form method="post" onsubmit="return confirm('درخواست تحلیل برای همهٔ تماس‌های صوت‌دارِ درخواست‌نشده تا سقف روزانه ارسال شود؟')">
