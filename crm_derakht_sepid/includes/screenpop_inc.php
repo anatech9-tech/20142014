@@ -20,29 +20,33 @@ if (!isset($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = generate_token(
         <span id="spDirection">تماس ورودی</span>
         <button type="button" class="sp-close" onclick="screenPopDismiss(this)" aria-label="بستن">✕</button>
     </div>
-    <div class="sp-body">
-        <div class="sp-number" id="spNumber">—</div>
+    <div class="sp-body" id="spBody" role="link" tabindex="-1" aria-label="باز کردن پروندهٔ مشتری">
+        <div class="sp-number" id="spNumber" dir="ltr">—</div>
         <div class="sp-match" id="spMatch">شناسایی نشد</div>
         <div class="sp-meta" id="spMeta"></div>
     </div>
     <div class="sp-actions">
-        <a id="spOpen" class="btn btn-primary btn-sm" href="#"><i data-lucide="user"></i> باز کردن پرونده</a>
+        <button type="button" id="spOpen" class="btn btn-primary sp-open-btn" style="display:none"><i data-lucide="folder-open"></i> باز کردن پرونده</button>
         <button type="button" class="btn btn-ghost btn-sm" id="spCallBack"><i data-lucide="phone-call"></i> بازگشت تماس</button>
     </div>
 </div>
 <style>
-.screenpop{position:fixed;bottom:18px;left:18px;z-index:4000;width:330px;max-width:calc(100vw - 36px);background:var(--surface,#fff);border:1px solid var(--primary,#308e89);border-radius:14px;box-shadow:0 18px 50px rgba(2,44,40,.28);overflow:hidden;animation:spIn .35s cubic-bezier(.2,1.4,.4,1)}
+.screenpop{position:fixed;bottom:22px;left:22px;z-index:4000;width:400px;max-width:calc(100vw - 36px);background:var(--surface,#fff);border:2px solid var(--primary,#308e89);border-radius:18px;box-shadow:0 24px 60px rgba(2,44,40,.35);overflow:hidden;animation:spIn .35s cubic-bezier(.2,1.4,.4,1)}
 @keyframes spIn{from{opacity:0;transform:translateY(26px) scale(.92)}to{opacity:1;transform:none}}
 .screenpop-head{display:flex;align-items:center;gap:9px;background:linear-gradient(135deg,var(--primary,#308e89),#1e6f6a);color:#fff;padding:10px 14px;font-weight:800;font-size:13px}
 .sp-pulse{width:10px;height:10px;border-radius:50%;background:#4ade80;box-shadow:0 0 0 0 rgba(74,222,128,.6);animation:spPulse 1.2s infinite}
 @keyframes spPulse{70%{box-shadow:0 0 0 9px rgba(74,222,128,0)}100%{box-shadow:0 0 0 0 rgba(74,222,128,0)}}
-.sp-close{margin-inline-start:auto;background:rgba(255,255,255,.18);color:#fff;border:0;border-radius:8px;width:26px;height:26px;cursor:pointer;font-size:14px}
+.sp-close{margin-inline-start:auto;background:rgba(255,255,255,.18);color:#fff;border:0;border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:15px}
 .sp-close:hover{background:rgba(255,255,255,.32)}
-.sp-body{padding:12px 14px 6px}
-.sp-number{font-size:22px;font-weight:900;letter-spacing:.5px;direction:ltr;text-align:right}
-.sp-match{font-size:13px;color:var(--text-secondary,#444);margin-top:4px;font-weight:700}
-.sp-meta{font-size:11px;color:var(--muted,#888);margin-top:2px;min-height:15px}
-.sp-actions{display:flex;gap:8px;padding:10px 14px 14px}
+.sp-body{padding:16px 18px 8px}
+.sp-body.sp-clickable{cursor:pointer;transition:background .15s}
+.sp-body.sp-clickable:hover{background:rgba(48,142,137,.07)}
+.sp-number{font-size:28px;font-weight:900;letter-spacing:.5px;direction:ltr;text-align:right;line-height:1.15}
+.sp-match{font-size:15px;color:var(--text-secondary,#444);margin-top:6px;font-weight:800}
+.sp-meta{font-size:11.5px;color:var(--muted,#888);margin-top:3px;min-height:16px}
+.sp-actions{display:flex;gap:10px;padding:12px 18px 18px}
+.sp-actions .btn{flex:1;justify-content:center;min-height:44px;font-size:14px;font-weight:800;border-radius:10px}
+.sp-open-btn{flex:1.6}
 @media (max-width:600px){.screenpop{bottom:12px;left:12px;right:12px;width:auto}}
 </style>
 <script>
@@ -85,16 +89,25 @@ if (!isset($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = generate_token(
         var metaEl = document.getElementById('spMeta');
         var openEl = document.getElementById('spOpen');
         var match = ev.customer || ev.lead || null;
+        var bodyEl = document.getElementById('spBody');
         if (match) {
             matchEl.innerHTML = (ev.customer ? '👤 ' : '🧲 ') + esc(match.name);
             metaEl.textContent = (ev.customer_calls ? ('تعداد دفعات تماس: ' + ev.customer_calls + (ev.customer_last_call ? ' • آخرین: ' + ev.customer_last_call : '')) : (ev.customer ? 'مشتری ثبت‌شده' : 'سرنخ ثبت‌شده'));
-            openEl.href = match.url;
+            openEl.setAttribute('data-url', match.url || '');
             openEl.style.display = '';
+            bodyEl.setAttribute('data-url', match.url || '');
+            bodyEl.setAttribute('tabindex', '0');
+            bodyEl.classList.add('sp-clickable');
+            bodyEl.title = 'باز کردن پروندهٔ مشتری (در تب جدید)';
         } else {
             matchEl.innerHTML = '<span style="color:#b45309">مشتری/سرنخ ناشناخته — ثبت‌نام نشده</span>';
             metaEl.textContent = 'این شماره در CRM، مشتری یا سرنخ ندارد.';
-            openEl.removeAttribute('href');
+            openEl.removeAttribute('data-url');
             openEl.style.display = 'none';
+            bodyEl.removeAttribute('data-url');
+            bodyEl.setAttribute('tabindex', '-1');
+            bodyEl.classList.remove('sp-clickable');
+            bodyEl.removeAttribute('title');
         }
         window.__spCurrent = ev;
         box.hidden = false;
@@ -112,6 +125,25 @@ if (!isset($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = generate_token(
     }
     setInterval(poll, 4000);
     poll();
+
+    /* باز کردن پرونده: تب جدید (در صورت مسدود بودن window.open، همان تب) */
+    function openMatchUrl(url) {
+        if (!url) return;
+        var w = null;
+        try { w = window.open(url, '_blank', 'noopener'); } catch (err) { w = null; }
+        if (!w) { window.location.href = url; }
+    }
+    document.getElementById('spOpen').addEventListener('click', function (e) {
+        e.preventDefault();
+        openMatchUrl(this.getAttribute('data-url') || '');
+    });
+    (function () {
+        var bodyEl = document.getElementById('spBody');
+        bodyEl.addEventListener('click', function () { openMatchUrl(this.getAttribute('data-url') || ''); });
+        bodyEl.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMatchUrl(this.getAttribute('data-url') || ''); }
+        });
+    })();
 
     /* دکمهٔ بازگشت تماس از داخل پاپ‌آپ */
     document.getElementById('spCallBack').addEventListener('click', function () {
