@@ -1,45 +1,43 @@
 <?php
 /**
- * وب‌هوک ورودی تلفنچی (CDR / ایونت تماس) — فاز «CRM فروش تلفنی + هوش مصنوعی»
+ * وب‌هوک ورودی تلفنچی (CDR / ایونت تماس) — فاز «CRM فروش تلفنی + هوش مصنوعی» / Screen Pop
  *
  * کارکرد:
  *   • GET  → پاسخ زنده‌بودن سرویس (برای تست پنل تلفنچی)
- *   • POST → خواندن بدنهٔ خام، ذخیرهٔ ایونت در جدول telefonchy_events (ساخت خودکار)
+ *   • POST → ذخیرهٔ خام ایونت در جدول telefonchy_events (تشخیص سرتاسری — دیباگ)
+ *          + ذخیرهٔ ایونت ringing/hangup در live_call_events برای پاپ‌آپ شناسایی (Screen Pop)
  *
- * امنیت:
- *   • اگر در config.local.php ثابت TELEFONCHY_WEBHOOK_KEY تعریف شود، فقط درخواست‌هایی
- *     که ?key=<همان کلید> داشته باشند پذیرفته می‌شوند (هر چیز دیگر = 403).
- *   • اگر تعریف نشده باشد، درخواست‌ها با برچسب source=nokey ذخیره می‌شوند
- *     (فقط برای تست اولیه؛ بعد از تنظیم کلید، سایت را امن کنید).
- *   • هیچ نشست/لاگینی وجود ندارد؛ فایل هیچ خروجی جز JSON ندارد.
+ * امنیت (دو راه پشتیبانی می‌شود؛ یکی کافی است):
+ *   الف) توکن وب‌سرویس: ثابت TELEFONCHY_WEBSERVICE_TOKEN در config.local.php.
+ *        تلفنچی طبق مستندات رسمی («دریافت ایونت تماس») توکن را در ریشهٔ بدنه با کلید
+ *        webservice_token می‌فرستد. در این حالت، توکن با hash_equals مقایسه می‌شود.
+ *   ب) کلید وب‌هوک (Legacy / سازگاری): ثابت TELEFONCHY_WEBHOOK_KEY و ?key=<key> در آدرس ثبت‌شده.
+ *   • اگر هیچ‌کدام تعریف نشده باشد، درخواست‌ها با برچسب source=nokey ذخیره می‌شوند
+ *     (فقط برای تست اولیه؛ پس از تنظیم یکی، سایت را امن کنید).
  *
- * یادآوری راه‌اندازی:
- *   ۱) یک خط به config.local.php اضافه کنید:
- *        define('TELEFONCHY_WEBHOOK_KEY', '<کلید تصادفی قوی>');
- *   ۲) آدرس "https://<دامنهٔ-شما>/<مسیر-پنل>/api/telefonchy_webhook.php?key=<همان کلید>"
- *      را در پنل تلفنچی به‌عنوان «آدرس فراخوانی» ثبت کنید.
+ * راه‌اندازی (روی هاست جدید):
+ *   ۱) config.local.php:  define('TELEFONCHY_WEBSERVICE_TOKEN', '<همان توکنی که در پنل نمایش داده می‌شود>');
+ *   ۲) آدرس «تنظیمات وب‌سرویس → آدرس فراخوانی / Events Hook» در پنل تلفنچی را برابر
+ *      https://wttp.ir/CRM/api/telefonchy_webhook.php بگذارید.
+ *   ۳) پنل را ذخیره و با یک تماس داخلی↔داخلی تست کنید؛ جوابی غیر از 200 را قبول نکنید.
  */
 require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../services/screenpop.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
 // ── زنده‌بودن سرویس (GET) ─────────────────────────────────────────────
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
-    echo json_encode(['ok' => true, 'service' => 'telefonchy-webhook', 'time' => time()], JSON_UNESCAPED_UNICODE);
+    echo json_encode([
+        'ok' => true,
+        'service' => 'telefonchy-webhook',
+        'time' => time(),
+        'config' => [
+            'webservice_token_configured' => tel_configured(),
+            'webhook_key_configured' => defined('TELEFONCHY_WEBHOOK_KEY') && trim((string)TELEFONCHY_WEBHOOK_KEY) !== '',
+        ],
+    ], JSON_UNESCAPED_UNICODE);
     exit;
-}
-
-// ── دروازهٔ کلید ───────────────────────────────────────────────────────
-$expectedKey = defined('TELEFONCHY_WEBHOOK_KEY') ? (string)TELEFONCHY_WEBHOOK_KEY : '';
-$source = 'nokey';
-if ($expectedKey !== '') {
-    $given = (string)($_GET['key'] ?? $_SERVER['HTTP_X_WEBHOOK_KEY'] ?? '');
-    if (!hash_equals($expectedKey, $given)) {
-        http_response_code(403);
-        echo json_encode(['ok' => false, 'error' => 'invalid_key'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-    $source = 'webhook';
 }
 
 if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
@@ -59,7 +57,30 @@ if (strlen($raw) > 1024 * 1024) {
 $json = json_decode($raw, true);
 $data = is_array($json) ? $json : [];
 
-// ── استخراج حدس-محورِ فیلدهای پرتکرار CDR (هر چی نبود NULL می‌شود) ──────
+// ── احراز هویت ─────────────────────────────────────────────────────────
+$expectedToken = trim((string)(defined('TELEFONCHY_WEBSERVICE_TOKEN') ? TELEFONCHY_WEBSERVICE_TOKEN : ''));
+$expectedKey   = trim((string)(defined('TELEFONCHY_WEBHOOK_KEY') ? TELEFONCHY_WEBHOOK_KEY : ''));
+$source = 'nokey';
+$authorized = false;
+
+if ($expectedToken !== '') {
+    $given = is_string($data['webservice_token'] ?? null) ? (string)$data['webservice_token'] : '';
+    if ($given !== '' && hash_equals($expectedToken, $given)) { $authorized = true; $source = 'webservice'; }
+}
+if (!$authorized && $expectedKey !== '') {
+    $given = (string)($_GET['key'] ?? $_SERVER['HTTP_X_WEBHOOK_KEY'] ?? '');
+    if ($given !== '' && hash_equals($expectedKey, $given)) { $authorized = true; $source = 'webhook'; }
+}
+if (!$authorized && $expectedToken === '' && $expectedKey === '') {
+    $authorized = true; // هیچ احراز هویت پیکربندی نشده — ذخیره با برچسب nokey (فقط تست اولیه)
+}
+if (!$authorized) {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'error' => 'invalid_token'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// ── ذخیرهٔ خام ایونت در telefonchy_events (دیباگ / تاریخچه) ─────────────
 $pick = function (array $d, array $keys) {
     foreach ($keys as $k) {
         if (array_key_exists($k, $d) && $d[$k] !== null && $d[$k] !== '') return $d[$k];
@@ -67,7 +88,6 @@ $pick = function (array $d, array $keys) {
     return null;
 };
 $findKey = function (array $d, array $candidates) use (&$findKey) {
-    // جستجوی عمیق یک‌سطحی/دو‌سطحی برای کلیدهای متداول
     foreach ($candidates as $c) {
         if (array_key_exists($c, $d)) return $d[$c];
     }
@@ -80,21 +100,17 @@ $findKey = function (array $d, array $candidates) use (&$findKey) {
     return null;
 };
 
-$entity = $data['data'] ?? $data['event'] ?? $data['cdr'] ?? $data;
-if (!is_array($entity)) $entity = $data;
+$entity = $data; // طبق مستندات رسمی، فیلدها در ریشه‌اند؛ با این حال برای CDR عمومی هم حدس می‌زنیم
+$cuid       = $findKey($entity, ['cuid', 'unique_id', 'cu_id', 'uid']);
+$eventType  = $pick($entity, ['event', 'type', 'event_type', 'status']);
+$direction  = ($eventType === 'incoming' || $eventType === 'outgoing') ? $eventType
+              : $findKey($entity, ['direction', 'call_type', 'calltype']);
+$fromNumber = $pick($entity, ['src', 'from', 'caller', 'caller_number', 'callerid', 'source']);
+$toNumber   = $pick($entity, ['dest', 'to', 'callee', 'callee_number', 'destination', 'dst', 'call_to']);
+$extension  = $findKey($entity, ['extension', 'ext', 'internal', 'interna']);
+$duration   = $findKey($entity, ['duration', 'billsec', 'bill_sec', 'call_duration', 'seconds']);
+$callStatus = $findKey($entity, ['hangup_cause', 'disposition', 'call_status', 'state']);
 
-$cuid        = $findKey($entity, ['cuid', 'cu_id', 'unique_id', 'uid']);
-$eventType   = $findKey($entity, ['event', 'event_type', 'type', 'status']);
-$direction   = $findKey($entity, ['direction', 'call_type', 'calltype']);
-$fromNumber  = $findKey($entity, ['from', 'caller', 'caller_number', 'callerid', 'src', 'source']);
-$toNumber    = $findKey($entity, ['to', 'callee', 'callee_number', 'destination', 'dst', 'call_to']);
-$extension   = $findKey($entity, ['extension', 'ext', 'internal', 'interna']);
-$duration    = $findKey($entity, ['duration', 'billsec', 'bill_sec', 'call_duration', 'seconds']);
-$callStatus  = $findKey($entity, ['disposition', 'call_status', 'state', 'hangup_cause']);
-
-// ── ذخیره در دیتابیس ──────────────────────────────────────────────────
-$storedId = null;
-$dbError  = null;
 try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS telefonchy_events (
         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -130,25 +146,17 @@ try {
         $source,
         $_SERVER['REMOTE_ADDR'] ?? null,
     ]);
-    $storedId = (int)$pdo->lastInsertId();
 } catch (Throwable $e) {
-    $dbError = $e->getMessage();
+    // هر خطا در لاگ خام مانع پاسخ ۲۰۰ نشود (طبق مستندات پاسخ سریع الزامی است)
 }
 
-// ── فالبک: ذخیرهٔ فایل در پوشهٔ backups (که به‌صورت عمومی بسته است) ──────
-if ($storedId === null) {
-    try {
-        if (!is_dir(BACKUP_DIR)) @mkdir(BACKUP_DIR, 0755, true);
-        @file_put_contents(BACKUP_DIR . 'telefonchy_webhook.log',
-            date('Y-m-d H:i:s') . "\t" . ($_SERVER['REMOTE_ADDR'] ?? '?') . "\t" . str_replace("\n", ' ', $raw) . "\n",
-            FILE_APPEND | LOCK_EX);
-    } catch (Throwable $e) {}
-}
+// ── پردازش ایونت برای Screen Pop / Live Calls ───────────────────────────
+$liveResult = ['stored' => false, 'event' => null];
+try {
+    if (is_array($data)) {
+        $liveResult = screenpop_store_event($pdo, $data, $raw, $_SERVER['REMOTE_ADDR'] ?? null);
+    }
+} catch (Throwable $e) { /* لاگ خام بالا کافی است */ }
 
-if ($dbError !== null) {
-    http_response_code(500);
-    echo json_encode(['ok' => false, 'stored' => false, 'error' => $dbError], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-echo json_encode(['ok' => true, 'stored' => true, 'id' => $storedId], JSON_UNESCAPED_UNICODE);
+http_response_code(200);
+echo json_encode(['ok' => true, 'stored' => true, 'screenpop' => $liveResult], JSON_UNESCAPED_UNICODE);

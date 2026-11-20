@@ -32,6 +32,7 @@
             });
         })();
         </script>
+        <?php if (is_logged_in()) include __DIR__ . '/screenpop_inc.php'; ?>
         <script>lucide.createIcons();</script>
     </main>
 </body>

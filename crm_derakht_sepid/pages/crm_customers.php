@@ -240,6 +240,9 @@ include 'includes/header.php';
                     <button class="btn btn-danger"><i data-lucide="trash-2"></i> حذف</button>
                 </form>
             <?php endif; ?>
+            <?php $__call_num = trim((string)($customer['mobile'] ?: $customer['phone'])); if ($__call_num !== ''): ?>
+                <button type="button" class="btn btn-success" onclick="wttpCall(<?= js_arg($__call_num) ?>, <?= (int)$customer['id'] ?>, 0)"><i data-lucide="phone"></i> <?= t('تماس') ?></button>
+            <?php endif; ?>
             <a href="index.php?page=crm_customers" class="btn btn-ghost"><i data-lucide="arrow-right"></i> بازگشت</a>
         </div>
     </div>
@@ -275,7 +278,7 @@ include 'includes/header.php';
                 <td><?= htmlspecialchars($ct['name']) ?></td>
                 <td><?= htmlspecialchars($ct['position'] ?: '—') ?></td>
                 <td dir="ltr"><?= htmlspecialchars($ct['phone'] ?: '—') ?></td>
-                <td dir="ltr"><?= htmlspecialchars($ct['mobile'] ?: '—') ?></td>
+                <td dir="ltr"><?= htmlspecialchars($ct['mobile'] ?: '—') ?> <?php if (!empty($ct['mobile']) || !empty($ct['phone'])): ?><button type="button" class="icon-btn" style="vertical-align:middle" title="تماس" onclick="wttpCall(<?= js_arg($ct['mobile'] ?: $ct['phone']) ?>, <?= (int)$customer['id'] ?>, 0)"><i data-lucide="phone"></i></button><?php endif; ?></td>
                 <td><?= htmlspecialchars($ct['email'] ?: '—') ?></td>
                 <td><?= $ct['is_primary'] ? '⭐' : '' ?></td>
                 <td><?php if ($canEdit): ?>

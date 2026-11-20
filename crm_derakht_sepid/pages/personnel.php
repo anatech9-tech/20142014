@@ -3,7 +3,9 @@ $pageTitle = t('nav_personnel');
 $ws_id = $_SESSION['workshop_id'] ?? 0;
 
 require_once __DIR__ . '/../includes/org_commission.php';
+require_once __DIR__ . '/../services/screenpop.php';
 ensure_org_commission_schema($pdo);
+ensure_screenpop_schema($pdo);
 
 // فهرست سِمت‌های سازمانی فعال (چک‌باکس سِمت‌های مدیر)
 $__org_roles = [];
@@ -253,6 +255,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $stmt = $pdo->prepare("UPDATE users SET full_name = ?, national_code = ?, phone = ?, is_karigar = ?, position = ?, work_role = ?, description = ?, address = ?, iban = ?, card_number = ?, account_number = ?, account_name = ?, specialty = ?, staff_category = ?, salary_effective_from = ? WHERE id = ?");
         $stmt->execute([$full_name, $national_code, $phone, $is_karigar, $position, $work_role, $description, $address, $iban, $card_number, $account_number, $account_name, $specialty, $keep_cat, $keep_eff, $user_id]);
+
+        // تلفنچی: داخلی PortSIP (فقط ارقام و حروف مجاز)
+        $ext_val = trim((string)($_POST['telefonchy_ext'] ?? ''));
+        if ($ext_val !== '' && !preg_match('/^[0-9A-Za-z_\-\.]{1,32}$/', $ext_val)) { $ext_val = null; }
+        if (db_has_column($pdo, 'users', 'telefonchy_ext')) {
+            $pdo->prepare("UPDATE users SET telefonchy_ext = ? WHERE id = ?")->execute([$ext_val !== '' ? $ext_val : null, $user_id]);
+        }
 
         // سِمت‌های سازمانی فقط وقتی فرم ساختار جدید در بازی است جایگزین می‌شوند
         if ($staff_category !== '') {
@@ -1311,6 +1320,13 @@ function access_row_html($key, $label, $indent = false) {
                     </div>
                 </div>
                 <div class="form-row">
+                    <div class="form-group" style="grid-column:1/-1">
+                        <label class="form-label">📞 <?= t('داخلی تلفنچی / PortSIP') ?></label>
+                        <input type="text" name="telefonchy_ext" id="edit_telefonchy_ext" class="form-control" dir="ltr" placeholder="مثلاً 101" autocomplete="off">
+                        <small class="text-muted" style="font-size:10px">داخلی کارشناس در پنل تلفنچی (PortSIP به همین داخلی وصل می‌شود)؛ پیش‌نیاز «شناسایی خودکار مشتری هنگام زنگ» و دکمهٔ «📞 تماس» در پرونده مشتری.</small>
+                    </div>
+                </div>
+                <div class="form-row">
                     <div class="form-group">
                         <label class="form-label"><?= t('per_specialty') ?></label>
                         <input type="text" name="specialty" id="edit_specialty" class="form-control">
@@ -1631,6 +1647,7 @@ function editPerson(p) {
         el = document.getElementById('edit_username'); if(el) el.value = p.username || '';
         el = document.getElementById('edit_national_code'); if(el) el.value = p.national_code || '';
         el = document.getElementById('edit_phone'); if(el) el.value = p.phone || '';
+        el = document.getElementById('edit_telefonchy_ext'); if(el) el.value = p.telefonchy_ext || '';
         el = document.getElementById('edit_specialty'); if(el) el.value = p.specialty || '';
         el = document.getElementById('edit_address'); if(el) el.value = p.address || '';
         el = document.getElementById('edit_contract_type'); if(el) el.value = p.contract_type || '';

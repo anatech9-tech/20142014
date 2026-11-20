@@ -226,7 +226,7 @@ include 'includes/header.php';
         <tr>
             <td><?= (int)$row['id'] ?></td>
             <td><strong><?= htmlspecialchars($row['name']) ?></strong><?php if ($row['company']): ?><br><span class="text-muted" style="font-size:11px"><?= htmlspecialchars($row['company']) ?></span><?php endif; ?></td>
-            <td dir="ltr"><?= htmlspecialchars($row['mobile'] ?: $row['phone'] ?: '—') ?></td>
+            <td dir="ltr"><?= htmlspecialchars($row['mobile'] ?: $row['phone'] ?: '—') ?><?php if (!empty($row['mobile']) || !empty($row['phone'])): ?><button type="button" class="icon-btn" style="vertical-align:middle" title="تماس" onclick="wttpCall(<?= js_arg($row['mobile'] ?: $row['phone']) ?>, 0, <?= (int)$row['id'] ?>)"><i data-lucide="phone"></i></button><?php endif; ?></td>
             <td><?= htmlspecialchars($row['source'] ?: '—') ?></td>
             <td style="max-width:180px"><?= htmlspecialchars($row['product_interest'] ?: '—') ?></td>
             <td><?= htmlspecialchars($row['owner_name'] ?? '—') ?></td>

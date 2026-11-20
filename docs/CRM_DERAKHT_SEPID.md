@@ -118,6 +118,7 @@ includes/ ───────────┘  lang.php/legacy_i18n* (fa/ar/en)
 
 | نقش فعلی در کد | نقش جدید | دسترسی |
 |---|---|---|
+| ۲۰۲۶-۱۱-۱۰ | فاز تلفنچی ۱ (Screen Pop) | پیاده‌سازی پایلوت «شناسایی مشتری هنگام زنگ»: سرویس `services/screenpop.php` • `api/telefonchy_webhook.php` طبق مستندات رسمی تلفنچی (JSON ریشه‌ای؛ احراز هویت `webservice_token` + `hash_equals` با نگه‌داری سازگاری `TELEFONCHY_WEBHOOK_KEY`؛ پاسخ فوری ۲۰۰؛ `incoming+ringing` = پاپ‌آپ) • API لاگین‌دار `api/live_calls.php` (پولینگ صفحه‌ای، فقط داخلیِ همان کاربر؛ جدول `live_call_events` خودترمیم، فقط آخرین رویداد هر `cuid`) • پاپ‌آپ در `includes/screenpop_inc.php` (برای کاربران دارای داخلی؛ نام/شماره/«باز کردن پرونده»/«بازگشت تماس») • ستون `users.telefonchy_ext` (داخلی PortSIP کارشناس) + فرم ویرایش پرسنل + کنترل مقدار • Click-to-Call: `api/click_to_call.php` (smartcall: `/webservice/v1/smartcall?service_id=&exten=&to=` با `webservice-token`، CSRF + ممیزی) • دکمهٔ 📞 تماس در پروندهٔ مشتری (سرِ ویو + ردیف مخاطبین) و ردیف سرنخ‌ها • وب‌هوک روی هاست جدید `https://wttp.ir/CRM` هنوز تست واقعی نشده — «سبز بودن پنل» مدرک نیست مگر هنگام زنگ واقعی پاپ‌آپ دیده شود. برای پاپ‌آپ پهن، فیلد داخلی هر کارشناس باید در صفحهٔ پرسنل ثبت شود؛ تا آن زمان Live Calls فعال نمی‌شود (عمدی) |
 | `admin` | **مدیر کل** | همه‌چیز + تنظیمات + گزارش‌های مدیریتی AI |
 | `project_manager` | **رئیس هیئت‌مدیره / ناظر ارشد پروژه‌ها** (اختیاری) | مثل قبل؛ بعداً بازتعریف |
 | `workshop_manager` + permission `workshop_manager` | **مدیر تیم** (تلفنی/دیجیتال/حضوری) | مدیریت و گزارش همان تیم، تأیید مرخصی/مساعدهٔ تیم |
