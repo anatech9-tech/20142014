@@ -421,12 +421,13 @@ function salary_at_date(array $history, $date, $default_salary) {
     return $result;
 }
 
-// نرخ ساعتی مؤثر: کارگر → روزانه/۸ | کارمند → ماهانه/۲۶/۸
-function hourly_rate_at(array $history, $date, $is_karigar, $daily_default, $monthly_default) {
+// نرخ ساعتی مؤثر: کارگر → روزانه/۸ | کارمند → ماهانه/روزهای‌مبنا/۸
+function hourly_rate_at(array $history, $date, $is_karigar, $daily_default, $monthly_default, float $monthly_days = 26) {
     if ($is_karigar) {
         return salary_at_date($history, $date, $daily_default) / 8;
     }
-    return salary_at_date($history, $date, $monthly_default) / 26 / 8;
+    $monthly_days = $monthly_days > 0 ? $monthly_days : 26;
+    return salary_at_date($history, $date, $monthly_default) / $monthly_days / 8;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -604,7 +605,7 @@ function workday_clock_labels(array $shifts): array {
     ];
 }
 
-// دریافت ماهانه کارمند: جمع ضرایب ساعتی × نرخ ساعتی همان روز (ماهانه/۲۶/۸)
+// دریافت ماهانه کارمند: جمع ضرایب ساعتی × نرخ ساعتی همان روز (ماهانه/روزهای‌مبنا/۸)
 function employee_month_pay(PDO $pdo, $user_id, $ws_id, $g_start, $g_end, $monthly_default, $settings = []) {
     $daily = _daily_hours($pdo, $user_id, $ws_id, $g_start, $g_end);
     if (empty($daily)) return 0;
@@ -634,9 +635,10 @@ function employee_month_pay(PDO $pdo, $user_id, $ws_id, $g_start, $g_end, $month
         $calc = calc_employee_day($daily[$date], $date, in_array($date, $holidays, true), $settings, $prev_s, $prev_d);
         $salary_for_date = salary_at_date($history, $date, (float)$monthly_default);
         // طبق سند حقوق: فقط «کار عادی» نرخ پویا دارد. اضافه‌کاری، شب، جمعه و
-        // تعطیل همیشه با نرخ ثابت ماهانه÷۲۶÷۸ و ضرایب قبلی محاسبه می‌شوند.
+        // تعطیل همیشه با نرخ ثابت ماهانه÷روزهای‌مبنا÷۸ و ضرایب قبلی محاسبه می‌شوند.
         $regular_hourly = employee_hourly_rate_for_required_hours($salary_for_date, $required_by_month[jalali_month_key($date)]);
-        $special_hourly = $salary_for_date / 26 / 8;
+        $mnd = max(1, (float)($settings['monthly_salary_days'] ?? 26));
+        $special_hourly = $salary_for_date / $mnd / 8;
         $pay += $calc['regular'] * $regular_hourly
               + $calc['overtime'] * $special_hourly * $ot
               + $calc['night'] * $special_hourly * $ni

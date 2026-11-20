@@ -68,9 +68,9 @@ include 'includes/header.php';
 </div>
 
 <div class="stats-grid animate-in">
-    <div class="stat-card glass-gradient-2"><div class="stat-icon success"><i data-lucide="arrow-down-left"></i></div><div class="stat-info"><h3><?= number_format($income) ?></h3><p><?= t('pet_income') ?></p></div></div>
-    <div class="stat-card glass-gradient-4"><div class="stat-icon danger"><i data-lucide="arrow-up-right"></i></div><div class="stat-info"><h3><?= number_format($expense) ?></h3><p><?= t('pet_expense') ?> <?= t('شده') ?></p></div></div>
-    <div class="stat-card glass-gradient-1"><div class="stat-icon primary"><i data-lucide="wallet"></i></div><div class="stat-info"><h3 class="<?= ($income - $expense) < 0 ? 'text-danger' : '' ?>"><?= number_format($income - $expense) ?></h3><p><?= t('pet_balance') ?></p></div></div>
+    <div class="stat-card glass-gradient-2"><div class="stat-icon success"><i data-lucide="arrow-down-left"></i></div><div class="stat-info"><h3><?= number_format($income, 0, '.', '،') ?></h3><p><?= t('pet_income') ?></p></div></div>
+    <div class="stat-card glass-gradient-4"><div class="stat-icon danger"><i data-lucide="arrow-up-right"></i></div><div class="stat-info"><h3><?= number_format($expense, 0, '.', '،') ?></h3><p><?= t('pet_expense') ?> <?= t('شده') ?></p></div></div>
+    <div class="stat-card glass-gradient-1"><div class="stat-icon primary"><i data-lucide="wallet"></i></div><div class="stat-info"><h3 class="<?= ($income - $expense) < 0 ? 'text-danger' : '' ?>"><?= number_format($income - $expense, 0, '.', '،') ?></h3><p><?= t('pet_balance') ?></p></div></div>
 </div>
 
 <!-- §v12 §8: انتخاب سال/ماه شمسی -->
@@ -102,7 +102,7 @@ include 'includes/header.php';
                 <?php foreach ($records as $r): ?>
                 <tr>
                     <td><span class="tag <?= $r['type'] == 'income' ? 'tag-active' : 'tag-rejected' ?>"><?= $r['type'] == 'income' ? t('دریافت') : t('pet_expense') ?></span></td>
-                    <td><?= number_format($r['amount']) ?> <?= t('ت') ?></td>
+                    <td><?= number_format($r['amount'], 0, '.', '،') ?> <?= t('ت') ?></td>
                     <td><?= $r['description'] ?></td>
                     <td><?= to_jalali($r['date']) ?></td>
                     <td><?= $r['full_name'] ?></td>

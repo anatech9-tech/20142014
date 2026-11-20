@@ -54,7 +54,7 @@ include 'includes/header.php';
 
 <div class="d-flex justify-between align-center mb-4 animate-in">
     <h2><?= t('nav_audit') ?></h2>
-    <span class="text-muted"><?= number_format($total) ?> <?= t('رکورد') ?></span>
+    <span class="text-muted"><?= number_format($total, 0, '.', '،') ?> <?= t('رکورد') ?></span>
 </div>
 
 <div class="card mb-4 animate-in">

@@ -391,8 +391,16 @@ function page_access_registry() {
                 'salary'        => '💰 ' . t('حقوق'),
                 'advances'      => '💵 ' . t('مساعده'),
                 'leaves'        => '📅 ' . t('مرخصی'),
-                'daily_reports' => '📝 ' . t('گزارش کار روزانه'),
-                'work_orders'   => '📋 ' . t('دستور کار'),
+            ],
+        ],
+        'crm' => [
+            // صفحات فروش/CRM: مثل همیشه برای همهٔ کاربران بازند؛ تیک «ناظر» = فقط مشاهده (POST بسته می‌شود)
+            'title' => t('فروش و CRM') . ' — ' . t('بدون تیک هم برای همه باز است؛ تیک «ناظر» = فقط مشاهده'),
+            'items' => [
+                'crm_customers'  => '🏢 ' . t('مشتریان CRM'),
+                'crm_leads'      => '🧲 ' . t('سرنخ‌های فروش'),
+                'crm_deals'      => '💰 ' . t('معاملات و فرصت‌ها'),
+                'crm_tasks'      => '✅ ' . t('وظایف من'),
             ],
         ],
         'manage' => [
@@ -419,7 +427,6 @@ function page_access_registry() {
             ],
             'forms' => [
                 'form_anbar'      => t('فرم گزارش کار انباردار'),
-                'form_emp_pay'    => t('لیست واریزی کارمندان'),
                 'form_petty_month'=> t('فرم تنخواه ماهانه'),
                 'form_inv_count'  => t('فرم موجودی انبار / انبارگردانی'),
             ],
@@ -430,9 +437,15 @@ function access_personal_keys() { return array_keys(page_access_registry()['pers
 function access_group_children($group) { $r = page_access_registry(); return array_keys($r['children'][$group] ?? []); }
 function access_all_valid_keys() {
     $r = page_access_registry();
-    $keys = array_merge(array_keys($r['personal']['items']), array_keys($r['manage']['items']));
+    $keys = array_merge(array_keys($r['personal']['items']), array_keys($r['manage']['items']), array_keys($r['crm']['items']));
     foreach ($r['children'] as $ch) $keys = array_merge($keys, array_keys($ch));
     return $keys;
+}
+
+// کلیدهایی که نبود رکورد user_page_access برایشان یعنی «دسترسی هست» (مثل امروزِ CRM) — تیک فقط برای محدودکردن به مشاهده است
+function access_default_allow_keys() {
+    $r = page_access_registry();
+    return array_keys($r['crm']['items'] ?? []);
 }
 
 // نقشهٔ دسترسی کاربر از دیتابیس (با کش درخواستی)
@@ -549,11 +562,14 @@ function access_gate_page_map() {
         'purchases'       => 'inventory',
         'attendance_alerts'=> 'work_hours',
         'personnel_profile'=> 'personnel',
+        'crm_customers'   => 'crm_customers',
+        'crm_leads'       => 'crm_leads',
+        'crm_deals'       => 'crm_deals',
+        'crm_tasks'       => 'crm_tasks',
         'archive'        => 'archive',
         'audit'          => 'audit',
         'settings'       => 'settings',
         'anbar_report'          => 'form_anbar',
-        'employee_payment_print'=> 'form_emp_pay',
         'petty_cash_print'      => 'form_petty_month',
         'inventory_count_print' => 'form_inv_count',
     ];
@@ -849,32 +865,49 @@ function detect_report_shift(PDO $pdo, $ws_id, $user_id, $date) {
 }
 
 // Menu item keys with Persian labels — used for the menu-order setting (config + settings page)
+// §v20: پالت رنگی کاربر — ذخیره روی پروفایل (ستون users.palette)؛ هر بار ورود اعمال می‌شود
+function ensure_palette_schema(PDO $pdo = null) {
+    global $pdo;
+    static $done = false;
+    if ($done) return;
+    $done = true;
+    try {
+        if (!function_exists('db_has_column') || !db_has_column($pdo, 'users', 'palette')) {
+            $pdo->exec("ALTER TABLE `users` ADD COLUMN `palette` VARCHAR(20) NULL");
+        }
+    } catch (Throwable $e) {
+        // اگر ستون اضافه نشد، ذخیرهٔ سروری غیرفعال است ولی چیزی نمی‌شکند
+        error_log('ensure_palette_schema: ' . $e->getMessage());
+    }
+}
+
 function nav_menu_labels() {
+    // دقیقاً همان کلیدهایی که در includes/header.php (nav_map) و منوی گروهی تعریف شده‌اند
     return [
         'dashboard'      => t('nav_dashboard'),
         'work_hours'     => t('nav_work_hours'),
-        'personnel'      => t('nav_personnel'),
         'salary'         => t('nav_salary'),
         'advances'       => t('nav_advances'),
-        'leaves'         => t('nav_leaves'),
-        'work_orders'    => t('nav_work_log'),
-        'reports'        => t('nav_reports'),
-        'workshops'      => t('nav_workshops'),
         'petty_cash'     => t('nav_petty_cash'),
+        'reports'        => t('nav_reports'),
+        'personnel'      => t('nav_personnel'),
+        'leaves'         => t('nav_leaves'),
         'contracts'      => t('nav_contracts'),
-        'audit'          => t('nav_audit'),
-        'settings'       => t('nav_settings'),
-        'inventory'      => t('nav_inventory'),
-        'profile'        => t('nav_profile'),
-        'chat'           => t('nav_chat'),
-        'archive'        => t('nav_archive'),
         'forms'          => t('nav_forms'),
-        // §phase2: ماژول CRM فروش
+        'inventory'      => t('nav_inventory'),
+        'workshops'      => t('nav_workshops'),
         'crm_customers'  => t('nav_crm_customers'),
         'crm_leads'      => t('nav_crm_leads'),
         'crm_deals'      => t('nav_crm_deals'),
         'crm_tasks'      => t('nav_crm_tasks'),
         'crm_teams'      => t('nav_crm_teams'),
+        'calls'          => t('nav_calls'),
+        'chat'           => t('nav_chat'),
+        'notifications'  => t('nav_notifications'),
+        'archive'        => t('nav_archive'),
+        'audit'          => t('nav_audit'),
+        'settings'       => t('nav_settings'),
+        'profile'        => t('nav_profile'),
     ];
 }
 

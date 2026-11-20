@@ -112,7 +112,7 @@
              .replace(/[٠-٩]/g, function (d) { return ar.indexOf(d); });
         // پسوند واحد پول را بردار: «۱٬۲۳۴٬۵۶۷ ت» → عدد
         s = s.replace(/(تومان|ریال|ت)\s*$/u, '').trim();
-        s = s.replace(/[,٬\s]/g, '');
+        s = s.replace(/[,٬،\s]/g, '');
         if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
         var n = parseFloat(s);
         return isFinite(n) ? n : null;

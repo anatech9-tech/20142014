@@ -71,22 +71,31 @@ function uiText(key) {
     var lang = uiLanguage();
     return (texts[key] && texts[key][lang]) || (texts[key] && texts[key].fa) || key;
 }
-function uiNumberLocale() {
-    var lang = uiLanguage();
-    return lang === 'en' ? 'en-US' : (lang === 'ar' ? 'ar' : 'fa-IR');
-}
 function uiCurrencyLabel() {
     return {fa: 'تومان', ar: 'تومان', en: 'Toman'}[uiLanguage()] || 'تومان';
 }
+function uiFaGroup(n) {
+    n = Number(n || 0);
+    if (isNaN(n)) return '0';
+    var neg = n < 0;
+    var parts = Math.abs(n).toFixed(0).split('.');
+    var int = parts[0], out = '';
+    for (var i = 0; i < int.length; i++) {
+        var remaining = int.length - i;
+        out += int.charAt(i);
+        if (remaining > 1 && remaining % 3 === 1) out += '،';
+    }
+    return (neg ? '-' : '') + out;
+}
 function formatNumber(num) {
     if (!num) return '0';
-    return Number(num).toLocaleString(uiNumberLocale());
+    return uiFaGroup(num);
 }
 
 // Format Currency
 function formatCurrency(amount) {
     if (!amount) return '0 ' + uiCurrencyLabel();
-    return Number(amount).toLocaleString(uiNumberLocale()) + ' ' + uiCurrencyLabel();
+    return uiFaGroup(amount) + ' ' + uiCurrencyLabel();
 }
 
 // Format Hours
@@ -388,9 +397,12 @@ document.addEventListener('DOMContentLoaded', () => {
     'use strict';
 
     var PALETTES = ['teal', 'ocean', 'orchid', 'ruby', 'amber', 'emerald'];
+    function validPalette(n) { return PALETTES.indexOf(n) >= 0 ? n : ''; }
+    var SAVED_PALETTE = validPalette(window.__PALETTE || '') || validPalette((function(){ try { return localStorage.getItem('palette') || ''; } catch (e) { return ''; } })()) || 'teal';
+    var currentPalette = SAVED_PALETTE;
 
     function applyPalette(name, save) {
-        if (PALETTES.indexOf(name) < 0) name = 'teal';
+        name = validPalette(name) || 'teal';
         document.documentElement.setAttribute('data-palette', name);
         if (save !== false) { try { localStorage.setItem('palette', name); } catch (e) {} }
         document.querySelectorAll('.palette-swatch').forEach(function (el) {
@@ -400,12 +412,70 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function savePaletteOnServer(name) {
+        try {
+            var body = 'csrf_token=' + encodeURIComponent(window.__CSRF || '') + '&palette=' + encodeURIComponent(name);
+            fetch('index.php?action=save_palette', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' },
+                body: body,
+                credentials: 'same-origin'
+            }).catch(function () {});
+        } catch (e) {}
+    }
+
+    function markPalette(name) {
+        currentPalette = validPalette(name) || 'teal';
+        applyPalette(currentPalette, true);
+        savePaletteOnServer(currentPalette);
+    }
+
+    // کلیک روی هر نمونه‌رنگ = اعمال + ذخیره روی پروفایل (هر بار ورود اعمال می‌شود)
     document.addEventListener('click', function (e) {
         var sw = e.target && e.target.closest ? e.target.closest('.palette-swatch') : null;
-        if (sw) { applyPalette(sw.getAttribute('data-palette')); }
+        if (sw) {
+            markPalette(sw.getAttribute('data-palette'));
+            closePalettePop();
+        }
+    });
+    // هاور/فوکوس = پیش‌نمایش زنده؛ خروج از کانتینر = بازگشت به پالت ذخیره‌شده
+    document.addEventListener('mouseover', function (e) {
+        var sw = e.target && e.target.closest ? e.target.closest('.palette-swatch') : null;
+        if (sw && sw.closest('[data-palette-preview]')) applyPalette(sw.getAttribute('data-palette'), false);
+    });
+    document.addEventListener('focusin', function (e) {
+        var sw = e.target && e.target.closest ? e.target.closest('.palette-swatch') : null;
+        if (sw && sw.closest('[data-palette-preview]')) applyPalette(sw.getAttribute('data-palette'), false);
+    });
+    document.querySelectorAll('[data-palette-preview]').forEach(function (box) {
+        box.addEventListener('mouseleave', function () { applyPalette(currentPalette, false); });
+        box.addEventListener('focusout', function () { if (!box.contains(document.activeElement)) applyPalette(currentPalette, false); });
     });
 
-    try { applyPalette(localStorage.getItem('palette') || 'teal', false); } catch (e) { applyPalette('teal', false); }
+    function closePalettePop() {
+        var pop = document.getElementById('palettePop');
+        var btn = document.getElementById('paletteBtn');
+        if (pop) pop.classList.add('hidden');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+    function togglePalettePop() {
+        var pop = document.getElementById('palettePop');
+        var btn = document.getElementById('paletteBtn');
+        if (!pop) return;
+        var willOpen = pop.classList.contains('hidden');
+        pop.classList.toggle('hidden', !willOpen);
+        if (btn) btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+        if (willOpen && window.lucide) { try { lucide.createIcons(); } catch (e) {} }
+    }
+    var paletteBtn = document.getElementById('paletteBtn');
+    if (paletteBtn) paletteBtn.addEventListener('click', function (e) { e.stopPropagation(); togglePalettePop(); });
+    document.addEventListener('click', function (e) {
+        var pop = document.getElementById('palettePop');
+        if (pop && !pop.classList.contains('hidden') && !pop.contains(e.target)) closePalettePop();
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePalettePop(); });
+
+    applyPalette(SAVED_PALETTE, false);
 
     /* زنگ اعلان: باز/بسته شدن پاپ‌اوور */
     try {
@@ -431,55 +501,65 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     } catch (e) { console.warn('bell popover init error', e); }
 
-    /* جستجوی سراسری بخش‌ها */
+    /* جستجوی inline سربرگ (بدون پاپ‌آپ) */
     try {
-        var overlay = document.getElementById('cmdkOverlay');
-        var input = document.getElementById('cmdkInput');
-        var list = document.getElementById('cmdkList');
+        var input = document.getElementById('topbarSearchInput');
+        var results = document.getElementById('topbarSearchResults');
         var items = Array.isArray(window.__NAV_SEARCH) ? window.__NAV_SEARCH : [];
 
-        function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
-        function render(filter) {
+        function esc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+        function hitHtml(it, i) {
+            return '<a class="search-hit' + (i === 0 ? ' active' : '') + '" role="option" href="index.php?page=' + encodeURIComponent(it.key) + '"><i data-lucide="arrow-left"></i><span>' + esc(it.label) + '</span></a>';
+        }
+        function renderSearch(filter) {
+            if (!results) return;
             var q = (filter || '').trim();
-            var hits = items.filter(function (it) { return !q || String(it.label).indexOf(q) !== -1; });
+            var hits = items.filter(function (it) { return !q || String(it.label).indexOf(q) !== -1 || String(it.key).toLowerCase().indexOf(q.toLowerCase()) !== -1; });
+            results.hidden = false;
             if (!hits.length) {
-                list.innerHTML = '<div class="cmdk-empty">نتیجه‌ای برای «' + esc(q) + '» پیدا نشد.</div>';
+                results.innerHTML = '<div class="search-empty">نتیجه‌ای برای «' + esc(q) + '» پیدا نشد.</div>';
                 return;
             }
-            list.innerHTML = hits.map(function (it, i) {
-                return '<a class="cmdk-item' + (i === 0 ? ' active' : '') + '" role="option" href="index.php?page=' + encodeURIComponent(it.key) + '"><i data-lucide="arrow-left"></i><span>' + esc(it.label) + '</span><small>رفتن به صفحه</small></a>';
-            }).join('');
+            results.innerHTML = hits.slice(0, 12).map(hitHtml).join('');
             if (window.lucide) { try { lucide.createIcons(); } catch (err) {} }
         }
-        function openCmdk() {
-            if (!overlay || !input) return;
-            overlay.classList.remove('hidden');
-            input.value = '';
-            render('');
-            setTimeout(function () { try { input.focus(); } catch (e) {} }, 30);
-        }
-        function closeCmdk() { if (overlay) overlay.classList.add('hidden'); }
+        function closeSearch() { if (results) results.hidden = true; }
+        function clearSearch() { if (input) { input.value = ''; } closeSearch(); }
 
-        var openBtn = document.getElementById('cmdkOpenBtn');
-        if (openBtn) openBtn.addEventListener('click', openCmdk);
-        if (overlay) overlay.addEventListener('click', function (e) { if (e.target === overlay) closeCmdk(); });
-        if (input) input.addEventListener('input', function () { render(input.value); });
-        if (input) input.addEventListener('keydown', function (e) {
-            var first = list ? list.querySelector('.cmdk-item') : null;
-            if (e.key === 'Enter' && first) { e.preventDefault(); window.location.href = first.getAttribute('href'); }
-            else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                e.preventDefault();
-                var nodes = Array.prototype.slice.call(list.querySelectorAll('.cmdk-item'));
-                if (!nodes.length) return;
-                var idx = nodes.findIndex(function (n) { return n.classList.contains('active'); });
-                idx = e.key === 'ArrowDown' ? Math.min(nodes.length - 1, idx + 1) : Math.max(0, idx - 1);
-                nodes.forEach(function (n, i) { n.classList.toggle('active', i === idx); });
-            }
+        if (input) {
+            input.addEventListener('input', function () { renderSearch(input.value); });
+            input.addEventListener('focus', function () { renderSearch(input.value); });
+            input.addEventListener('keydown', function (e) {
+                var open = results && !results.hidden;
+                if (e.key === 'Enter') {
+                    var first = open ? results.querySelector('.search-hit') : null;
+                    if (first) { e.preventDefault(); window.location.href = first.getAttribute('href'); }
+                } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    if (!open) return;
+                    e.preventDefault();
+                    var nodes = Array.prototype.slice.call(results.querySelectorAll('.search-hit'));
+                    if (!nodes.length) return;
+                    var idx = nodes.findIndex(function (n) { return n.classList.contains('active'); });
+                    idx = e.key === 'ArrowDown' ? Math.min(nodes.length - 1, idx + 1) : Math.max(0, idx - 1);
+                    nodes.forEach(function (n, i) { n.classList.toggle('active', i === idx); });
+                    if (nodes[idx].scrollIntoView) nodes[idx].scrollIntoView({ block: 'nearest' });
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    clearSearch();
+                    input.blur();
+                }
+            });
+        }
+        document.addEventListener('click', function (e) {
+            var box = document.getElementById('topbarSearch');
+            if (box && !box.contains(e.target)) closeSearch();
         });
         document.addEventListener('keydown', function (e) {
             var k = (e.key || '').toLowerCase();
-            if ((e.ctrlKey || e.metaKey) && (k === 'q' || k === 'k' || e.key === 'ق')) { e.preventDefault(); openCmdk(); }
-            else if (e.key === 'Escape') { closeCmdk(); }
+            if ((e.ctrlKey || e.metaKey) && (k === 'q' || k === 'k' || e.key === 'ق')) {
+                e.preventDefault();
+                if (input) { input.focus(); input.select(); }
+            }
         });
-    } catch (e) { console.warn('cmdk init error', e); }
+    } catch (e) { console.warn('inline search init error', e); }
 })();

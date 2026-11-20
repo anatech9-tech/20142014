@@ -94,7 +94,7 @@ include 'includes/header.php';
         <div><div class="text-muted" style="font-size:11px">مسیر</div><b dir="ltr"><?= htmlspecialchars((string)$call['call_source']) ?> → <?= htmlspecialchars((string)$call['call_dest']) ?></b></div>
         <div><div class="text-muted" style="font-size:11px">داخلی</div><b><?= htmlspecialchars((string)($call['exten'] ?? '—')) ?><?= !empty($call['trunk']) ? ' <span class="text-muted">/ ' . htmlspecialchars((string)$call['trunk']) . '</span>' : '' ?></b></div>
         <div><div class="text-muted" style="font-size:11px">انتظار / صحبت</div><b><?= (int)($call['time_wait'] ?? 0) ?> / <?= (int)($call['time_talk'] ?? 0) ?> ثانیه</b></div>
-        <div><div class="text-muted" style="font-size:11px">هزینه</div><b><?= $call['price'] !== null ? number_format((int)$call['price']) : '—' ?></b></div>
+        <div><div class="text-muted" style="font-size:11px">هزینه</div><b><?= $call['price'] !== null ? number_format((int)$call['price'], 0, '.', '،') : '—' ?></b></div>
         <div><div class="text-muted" style="font-size:11px">مخاطب CRM</div><b><?= !empty($call['matched_name']) ? '👤 ' . htmlspecialchars((string)$call['matched_name']) : '—' ?></b></div>
     </div>
     <?php if (!empty($call['file_id'])): ?>

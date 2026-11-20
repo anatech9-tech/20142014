@@ -94,8 +94,6 @@ try {
     foreach($low->fetchAll() as $row)$smart_alerts[]=['type'=>'warning','icon'=>'package-minus','title'=>t('موجودی کم'),'text'=>strtr(t('{name} — موجودی {stock} از حداقل {min}'), ['{name}' => $row['name'], '{stock}' => $row['quantity'], '{min}' => $row['min_quantity']]),'link'=>'index.php?page=inventory&tab=stock'];
     $over=$pdo->prepare("SELECT i.name,t.id,t.person_name,t.checkout_date FROM inventory_transactions t JOIN inventory_items i ON i.id=t.item_id WHERE t.workshop_id=? AND t.deleted_at IS NULL AND t.return_date IS NULL AND t.is_consumable=0 AND COALESCE(t.out_type,'normal') NOT IN ('custody','consumable') AND t.checkout_date < DATE_SUB(CURDATE(),INTERVAL 7 DAY) LIMIT 6");$over->execute([$ws_id]);
     foreach($over->fetchAll() as $row)$smart_alerts[]=['type'=>'warning','icon'=>'wrench','title'=>t('ابزار برگشت‌نخورده'),'text'=>strtr(t('{name} نزد {person} از {date}'), ['{name}' => $row['name'], '{person}' => $row['person_name'], '{date}' => to_jalali($row['checkout_date'])]),'link'=>'index.php?page=inventory&tab=active&highlight_tx='.(int)$row['id'].'#tx-'.(int)$row['id']];
-    $rep=$pdo->prepare("SELECT COUNT(*) FROM daily_reports WHERE workshop_id=? AND status='pending'");$rep->execute([$ws_id]);$pendingReports=(int)$rep->fetchColumn();
-    if($pendingReports)$smart_alerts[]=['type'=>'info','icon'=>'clipboard-check','title'=>t('گزارش در انتظار تأیید'),'text'=>strtr(t('{count} گزارش کار هنوز تأیید نشده است.'), ['{count}' => $pendingReports]),'link'=>'index.php?page=daily_reports'];
     if(function_exists('db_has_column')&&db_has_column($pdo,'purchase_requests','id')){
         $p=$pdo->prepare("SELECT COUNT(*) FROM purchase_requests WHERE workshop_id=? AND status='pending'");$p->execute([$ws_id]);$n=(int)$p->fetchColumn();if($n)$smart_alerts[]=['type'=>'info','icon'=>'shopping-cart','title'=>t('page_purchases'),'text'=>strtr(t('{count} درخواست خرید در انتظار تأیید است.'), ['{count}' => $n]),'link'=>'index.php?page=inventory&tab=purchases'];
     }
@@ -186,7 +184,7 @@ include 'includes/header.php';
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;font-size:12px">
         <div><div class="text-muted">معاملات باز</div><div style="font-size:22px;font-weight:800"><?= (int)$crm_pipe_count ?></div></div>
-        <div><div class="text-muted">ارزش تخمینی معاملات باز</div><div dir="ltr" style="font-size:17px;font-weight:800"><?= number_format($crm_pipe_value) ?> <?= htmlspecialchars($crm_default_currency) ?></div></div>
+        <div><div class="text-muted">ارزش تخمینی معاملات باز</div><div dir="ltr" style="font-size:17px;font-weight:800"><?= number_format($crm_pipe_value, 0, '.', '،') ?> <?= htmlspecialchars($crm_default_currency) ?></div></div>
         <div><div class="text-muted">کارهای عقب‌افتادهٔ من</div><div style="font-size:22px;font-weight:800;color:#dc2626"><?= (int)$crm_overdue_tasks ?></div></div>
         <div><div class="text-muted">سرنخ‌های ۷ روز اخیر</div><div style="font-size:22px;font-weight:800"><?= (int)$crm_new_leads ?></div></div>
     </div>
@@ -207,7 +205,7 @@ include 'includes/header.php';
 <div id="advancePanel" class="dash-expand-panel card mb-4 animate-in" style="border-right-color:#f59e0b">
     <div class="dash-panel-head card-header"><h3 class="card-title">💵 <?= t('sal_advance') ?>‌<?= t('های') ?> <?= t('در انتظار') ?> (<?= $pending_advances ?> <?= t('مورد') ?>)</h3><div><a href="index.php?page=advances" class="btn btn-ghost btn-sm"><?= t('مدیریت') ?> <?= t('sal_advance') ?></a><button class="btn btn-ghost btn-sm" onclick="toggleDashboardPanel('advancePanel')"><?= t('jdp_close') ?></button></div></div>
     <div class="table-container"><table><thead><tr><th><?= t('نیرو') ?></th><th><?= t('مبلغ') ?></th><th><?= t('adv_reason') ?></th><th><?= t('wh_date') ?> <?= t('درخواست') ?></th></tr></thead><tbody>
-    <?php foreach($pending_advance_rows as $row): ?><tr><td><?= htmlspecialchars($row['full_name']) ?></td><td><?= number_format($row['amount']) ?> <?= t('ت') ?></td><td><?= htmlspecialchars($row['reason'] ?: '—') ?></td><td><?= to_jalali($row['created_at']) ?></td></tr><?php endforeach; ?>
+    <?php foreach($pending_advance_rows as $row): ?><tr><td><?= htmlspecialchars($row['full_name']) ?></td><td><?= number_format($row['amount'], 0, '.', '،') ?> <?= t('ت') ?></td><td><?= htmlspecialchars($row['reason'] ?: '—') ?></td><td><?= to_jalali($row['created_at']) ?></td></tr><?php endforeach; ?>
     <?php if(empty($pending_advance_rows)): ?><tr><td colspan="4" class="text-center text-muted" style="padding:24px"><?= t('مساعدهٔ در انتظاری نیست.') ?></td></tr><?php endif; ?>
     </tbody></table></div>
 </div>

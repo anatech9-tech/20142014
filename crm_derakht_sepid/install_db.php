@@ -229,20 +229,6 @@ function schema_statements(): array {
         KEY `idx_rt` (`user_id`, `workshop_id`, `break_date`)
     ) $T";
 
-    $S['temp_entry_grants'] = "CREATE TABLE IF NOT EXISTS `temp_entry_grants` (
-        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        `user_id` INT(11) NOT NULL,
-        `workshop_id` INT(11) NOT NULL,
-        `grant_date` DATE NOT NULL,
-        `shift_type` ENUM('day','night') NOT NULL DEFAULT 'day',
-        `created_by` INT(11) NOT NULL,
-        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        `revoked_at` DATETIME NULL,
-        KEY `idx_tg_user` (`user_id`, `revoked_at`),
-        KEY `idx_tg_scope` (`workshop_id`, `grant_date`, `shift_type`),
-        UNIQUE KEY `uq_grant_shift` (`user_id`, `workshop_id`, `grant_date`, `shift_type`)
-    ) $T";
-
     $S['holidays'] = "CREATE TABLE IF NOT EXISTS `holidays` (
         `holiday_date` DATE NOT NULL PRIMARY KEY,
         `title` VARCHAR(200) NULL
@@ -336,21 +322,6 @@ function schema_statements(): array {
     ) $T";
 
     // ── دستور کار و گزارش‌ها ─────────────────────────────────
-    $S['work_orders'] = "CREATE TABLE IF NOT EXISTS `work_orders` (
-        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        `workshop_id` INT(11) NULL,
-        `created_by` INT(11) NULL,
-        `target_team` VARCHAR(50) NULL,
-        `shift_type` VARCHAR(10) NULL,
-        `order_date` DATE NULL,
-        `items` MEDIUMTEXT NULL,
-        `status` VARCHAR(20) NOT NULL DEFAULT 'pending',
-        `completed_by` INT(11) NULL,
-        `completed_at` DATETIME NULL,
-        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        KEY `idx_wo_ws` (`workshop_id`, `order_date`)
-    ) $T";
-
     $S['work_order_items'] = "CREATE TABLE IF NOT EXISTS `work_order_items` (
         `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
         `work_order_id` INT(11) NOT NULL,

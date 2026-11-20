@@ -224,7 +224,7 @@ include 'includes/header.php';
                     <td style="text-align:center;white-space:nowrap"><?= htmlspecialchars((string)($c['exten'] ?? '—')) ?><?= !empty($c['trunk']) ? ' / ' . htmlspecialchars((string)$c['trunk']) : '' ?></td>
                     <td style="text-align:center"><?= (int)($c['time_wait'] ?? 0) ?> / <?= (int)($c['time_talk'] ?? 0) ?></td>
                     <td style="text-align:center"><span class="tag" style="background:<?= $stInfo[1] ?>;color:<?= $stInfo[2] ?>;padding:2px 8px;border-radius:8px"><?= htmlspecialchars($stInfo[0]) ?></span></td>
-                    <td style="text-align:center"><?= $c['price'] !== null ? number_format((int)$c['price']) : '—' ?></td>
+                    <td style="text-align:center"><?= $c['price'] !== null ? number_format((int)$c['price'], 0, '.', '،') : '—' ?></td>
                     <td style="white-space:nowrap"><?php if (!empty($c['matched_name'])): ?>👤 <?= htmlspecialchars((string)$c['matched_name']) ?><?php elseif ($c['customer_id']): ?>مشتری #<?= (int)$c['customer_id'] ?><?php elseif ($c['lead_id']): ?>سرنخ #<?= (int)$c['lead_id'] ?><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
                     <td style="text-align:center;white-space:nowrap">
                         <?php if ($aInfo): ?>

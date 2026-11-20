@@ -44,6 +44,18 @@ if (!access_is_special_account()) {
     }
     if ($__vk && access_mode($__vk) === 'viewer') $__is_viewer_page = true;
 }
+// §v20: پالت رنگیِ ذخیره‌شده روی پروفایل کاربر (هر بار ورود اعمال می‌شود)
+$__user_palette = '';
+try {
+    ensure_palette_schema($pdo);
+    if (!empty($_SESSION['user_id'])) {
+        $stp = $pdo->prepare("SELECT palette FROM users WHERE id = ?");
+        $stp->execute([(int)$_SESSION['user_id']]);
+        $tmp = (string)($stp->fetchColumn() ?: '');
+        if (in_array($tmp, ['teal','ocean','orchid','ruby','amber','emerald'], true)) $__user_palette = $tmp;
+    }
+} catch (Throwable $e) {}
+if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = generate_token(); }
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
@@ -142,7 +154,6 @@ if (!access_is_special_account()) {
                 'salary'         => ['salary', 'wallet', t('nav_salary'), true],
                 'advances'       => ['advances', 'banknote', t('nav_advances'), true],
                 'leaves'         => ['leaves', 'calendar-off', t('nav_leaves'), true],
-                'work_orders'    => ['work_orders', 'clipboard-list', t('nav_work_log'), true],
                 'reports'        => ['reports', 'bar-chart-3', t('nav_reports'), $is_nazer || access_group_mode('reports') !== null || has_permission('view_reports') || has_permission('office_manager')],
                 'workshops'      => ['workshops', 'building-2', t('nav_workshops'), ($is_nazer || access_mode('workshops') !== null || has_permission('manage_workshops')) && !is_workshop_manager()],
                 'petty_cash'     => ['petty_cash', 'coins', t('nav_petty_cash'), true],
@@ -161,7 +172,6 @@ if (!access_is_special_account()) {
                 'crm_deals'      => ['crm_deals', 'trending-up', t('nav_crm_deals'), true],
                 'crm_tasks'      => ['crm_tasks', 'list-todo', t('nav_crm_tasks'), true],
                 'crm_teams'      => ['crm_teams', 'users-round', t('nav_crm_teams'), $is_admin],
-                'telefonchy_events' => ['telefonchy_events', 'phone-call', t('nav_telefonchy_events'), $is_admin],
                 'calls'             => ['calls', 'phone', t('nav_calls'), $is_admin],
             ];
 
@@ -184,8 +194,8 @@ if (!access_is_special_account()) {
             $nav_groups = [
                 'finance' => ['label' => t('nav_grp_finance'), 'icon' => 'wallet',         'items' => ['work_hours', 'salary', 'advances', 'petty_cash', 'reports']],
                 'hr'      => ['label' => t('nav_grp_hr'),      'icon' => 'users',          'items' => ['personnel', 'leaves', 'contracts']],
-                'ops'     => ['label' => t('nav_grp_ops'),     'icon' => 'clipboard-list', 'items' => ['work_orders', 'forms', 'inventory', 'workshops']],
-                'crm'     => ['label' => t('nav_grp_crm'),     'icon' => 'trending-up',    'items' => ['crm_customers', 'crm_leads', 'crm_deals', 'crm_tasks', 'crm_teams', 'telefonchy_events', 'calls']],
+                'ops'     => ['label' => t('nav_grp_ops'),     'icon' => 'package',        'items' => ['forms', 'inventory', 'workshops']],
+                'crm'     => ['label' => t('nav_grp_crm'),     'icon' => 'trending-up',    'items' => ['crm_customers', 'crm_leads', 'crm_deals', 'crm_tasks', 'crm_teams', 'calls']],
                 'comms'   => ['label' => t('nav_grp_comms'),   'icon' => 'message-circle', 'items' => ['chat', 'notifications', 'archive']],
                 'mgmt'    => ['label' => t('nav_grp_mgmt'),    'icon' => 'settings',       'items' => ['audit', 'settings', 'profile']],
             ];
@@ -310,7 +320,12 @@ if (!access_is_special_account()) {
                 <h1 class="page-title"><?= htmlspecialchars($pageTitle ?? t('nav_dashboard'), ENT_QUOTES, 'UTF-8') ?></h1>
             </div>
             <div class="topbar-right">
-                <button id="cmdkOpenBtn" class="icon-btn topbar-search-btn" type="button" title="جستجوی بخش‌ها (Ctrl+Q)" aria-label="جستجوی بخش‌ها"><i data-lucide="search"></i><span>جستجوی بخش‌ها…</span><kbd>Ctrl Q</kbd></button>
+                <div class="topbar-search" id="topbarSearch">
+                    <i data-lucide="search" class="topbar-search-icon"></i>
+                    <input id="topbarSearchInput" type="text" placeholder="جستجوی بخش‌ها…" autocomplete="off" spellcheck="false" aria-label="جستجوی بخش‌ها">
+                    <kbd>Ctrl Q</kbd>
+                    <div id="topbarSearchResults" class="topbar-search-results" role="listbox" hidden></div>
+                </div>
                 <?php
                 // ساعت سرور، نه ساعت دستگاه. اختلاف سه دقیقه‌ای یا بیشتر با ساعت دستگاه هشدار می‌دهد.
                 $__fa_days = localized_weekday_names();
@@ -413,7 +428,14 @@ if (!access_is_special_account()) {
                 <!-- راهنمای صفحه (تور) -->
                 <button id="tourStartBtn" class="icon-btn tour-header-btn" title="راهنمای صفحه (؟)" onclick="startPageTour()">؟</button>
                 <button id="themeBtn" onclick="var t = document.documentElement; if (t.classList.contains('dark')) { t.classList.remove('dark'); localStorage.setItem('theme', 'light'); this.querySelector('i').setAttribute('data-lucide', 'moon'); } else { t.classList.add('dark'); localStorage.setItem('theme', 'dark'); this.querySelector('i').setAttribute('data-lucide', 'sun'); } lucide.createIcons();" class="icon-btn" title="<?= htmlspecialchars(t('ui_theme'), ENT_QUOTES, 'UTF-8') ?>"><i data-lucide="moon"></i></button>
-                <button id="paletteBtn" class="icon-btn" type="button" title="انتخاب پالت رنگی (۶ رنگ × روشن/تیره)" aria-label="انتخاب پالت رنگی" onclick="openModal('paletteModal')"><i data-lucide="palette"></i></button>
+                <div class="topbar-palette" id="topbarPalette">
+                    <button id="paletteBtn" class="icon-btn" type="button" title="پالت رنگی" aria-label="پالت رنگی" aria-haspopup="dialog" aria-expanded="false"><i data-lucide="palette"></i></button>
+                    <div id="palettePop" class="palette-pop hidden" role="dialog" aria-label="پالت رنگی" data-palette-preview>
+                        <div class="palette-pop-list">
+<?php include __DIR__ . '/palette_swatches.php'; ?>
+                        </div>
+                    </div>
+                </div>
                 <?php if (can_see_all_workshops()): ?>
                 <a href="index.php?page=workshops" class="btn btn-ghost btn-sm ws-switcher-btn"><?= t('nav_switch_workshop') ?></a>
                 <?php endif; ?>
@@ -436,27 +458,27 @@ if (!access_is_special_account()) {
 <?php endif; ?>
 <?php $_SESSION['toast_message'] = null; $_SESSION['toast_type'] = null; ?>
 
-<!-- مودال انتخاب پالت رنگی (۶×۲) -->
-<div id="paletteModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="انتخاب پالت رنگی">
-    <div class="modal" role="document">
-        <div class="modal-header"><h3 class="modal-title">🎨 انتخاب پالت رنگی</h3><button class="modal-close" type="button" onclick="closeModal('paletteModal')" aria-label="بستن">✕</button></div>
-        <div class="modal-body">
-            <p class="text-muted" style="font-size:11px;margin-bottom:12px">۶ رنگ برند مرجع کارکت. حالت روشن/تاریک را با دکمهٔ ماه/خورشید عوض کن؛ این انتخاب فقط همین مرورگر را رنگ می‌کند.</p>
-            <div class="palette-grid">
-<?php include __DIR__ . '/palette_swatches.php'; ?>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- جستجوی سراسری بخش‌ها (Ctrl+Q) -->
-<div id="cmdkOverlay" class="cmdk-overlay hidden" role="dialog" aria-modal="true" aria-label="جستجوی بخش‌ها">
-    <div class="cmdk-panel">
-        <div class="cmdk-input-row"><i data-lucide="search"></i><input id="cmdkInput" class="cmdk-input" type="text" autocomplete="off" spellcheck="false" placeholder="نام بخش را بنویسید… (مثلاً حقوق، CRM، گزارش)" aria-label="جستجوی بخش‌ها"></div>
-        <div id="cmdkList" class="cmdk-list" role="listbox"></div>
-    </div>
-</div>
-<script>window.__NAV_SEARCH = <?= json_encode($__search_items, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;</script>
+<script>
+window.__NAV_SEARCH = <?= json_encode($__search_items, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+window.__PALETTE = <?= json_encode($__user_palette) ?>;
+window.__CSRF = <?= json_encode($_SESSION['csrf_token']) ?>;
+// ‏§v20: اعداد با ممیز هزارگان «،» سه‌رقم سه‌رقم‏
+window.fmtNum = function (n, decimals) {
+    n = Number(n || 0);
+    if (isNaN(n)) return '0';
+    if (decimals === undefined) decimals = 0;
+    var negative = n < 0;
+    var parts = Math.abs(n).toFixed(decimals).split('.');
+    var int = parts[0], out = '';
+    for (var i = 0; i < int.length; i++) {
+        var remaining = int.length - i;
+        out += int.charAt(i);
+        if (remaining > 1 && remaining % 3 === 1) out += '،';
+    }
+    if (decimals > 0) out += '.' + (parts[1] || '');
+    return (negative ? '-' : '') + out;
+};
+</script>
 
 <script>
 // Save sidebar scroll position

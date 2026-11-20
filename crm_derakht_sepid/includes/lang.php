@@ -232,8 +232,8 @@ $translations = [
         // Settings
         'set_title' => 'تنظیمات',
         'set_general' => 'تنظیمات عمومی',
-        'set_salary_rules' => 'ضرایب حقوق (کارمند)',
-        'set_worker_rules' => 'تنظیمات کارگر',
+        'set_salary_rules' => 'ضرایب حقوق و ساعت کار',
+        'set_worker_rules' => 'قواعد نیروی قدیمی (کارگاه/پیمانکار)',
         'set_night_rules' => 'قوانین شب‌کاری',
         'set_backup' => 'بکاپ و ریکاوری',
         'set_save' => 'ذخیره تنظیمات',

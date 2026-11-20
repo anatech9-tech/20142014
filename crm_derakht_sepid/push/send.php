@@ -51,7 +51,7 @@ try {
         $events[] = ['title' => '💬 پیام جدید در چت واحد', 'body' => 'یک پیام جدید برای شما رسیده است', 'url' => 'index.php?page=chat'];
     }
     if ($reports > $state['reports']) {
-        $events[] = ['title' => '📝 گزارش جدید در انتظار تأیید', 'body' => $reports . ' گزارش برای بررسی وجود دارد', 'url' => 'index.php?page=daily_reports'];
+        $events[] = ['title' => '📝 گزارش جدید در انتظار تأیید', 'body' => $reports . ' گزارش برای بررسی وجود دارد', 'url' => 'index.php?page=work_hours'];
     }
     if ($overdue > 0 && $overdue !== $state['overdue']) {
         $events[] = ['title' => '📦 هشدار انبار', 'body' => $overdue . ' کالا بیشتر از بازه مجاز تحویل است', 'url' => 'index.php?page=inventory'];

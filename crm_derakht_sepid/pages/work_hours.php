@@ -16,58 +16,6 @@ if (($_GET['tab'] ?? '') === 'alerts') {
     exit;
 }
 
-// ═══ §v17: دسترسی موقت شیفت — کاربر عادی با مجوز فعال، فقط در همین صفحه و فقط برای همان تاریخ/شیفت مثل مدیر عمل می‌کند ═══
-// بقیهٔ سایت برایش مثل همیشه است. بدون مجوز فعال، فقط ساعت خودش را می‌بیند.
-$temp_grant = null; $tg_date = ''; $tg_shift = 'day';
-if (!$can_manage && !is_strict_admin() && is_logged_in()) {
-    $temp_grant = temp_grant_active($pdo, (int)$_SESSION['user_id'], 0);
-    if ($temp_grant) {
-        $ws_id = (int)$temp_grant['workshop_id'];
-        $tg_date = (string)$temp_grant['grant_date'];
-        $tg_shift = (string)($temp_grant['shift_type'] ?? 'day');
-        $can_manage = true;
-        $_GET['date'] = to_jalali($tg_date); // فقط همان روز
-    }
-}
-$tg_deny = function (string $msg) {
-    showToast($msg, 'error');
-    redirect('index.php?page=work_hours');
-};
-if ($temp_grant && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $tg_action = $_POST['action'] ?? '';
-    if (!in_array($tg_action, ['checkin', 'checkin_single', 'checkout', 'edit', 'bulk_checkout', 'bulk_edit', 'protest'], true)) {
-        $tg_deny('این عملیات با دسترسی موقت مجاز نیست');
-    }
-    // مأموریت با دسترسی موقت ممکن نیست
-    unset($_POST['mission_user'], $_POST['is_mission']); $_POST['mission_ws'] = 0;
-    // تاریخ ثبت فقط همان روز
-    if (in_array($tg_action, ['checkin', 'checkin_single'], true)) {
-        if (to_gregorian($_POST['work_date'] ?? '') !== $tg_date) $tg_deny('با این دسترسی فقط برای تاریخ همان شیفت می‌توانید ثبت کنید');
-        $tg_st = trim((string)($_POST['start_time'] ?? '')) ?: date('H:i');
-        if (!temp_grant_row_in_shift(['start_time' => $tg_st . ':00', 'end_time' => '00:00:00', 'is_night' => 0], $tg_shift)) {
-            $tg_deny('ساعت ورود خارج از ' . ($tg_shift === 'night' ? 'شیفت شب' : 'شیفت روز') . ' است');
-        }
-        // فقط نیروهای همین واحد
-        $tg_ids = $tg_action === 'checkin' ? (array)($_POST['selected_users'] ?? []) : [(int)($_POST['user_id'] ?? 0)];
-        $tg_chk = $pdo->prepare("SELECT 1 FROM workshop_personnel WHERE user_id=? AND workshop_id=? AND status='active'");
-        foreach ($tg_ids as $tg_u) { $tg_chk->execute([(int)$tg_u, $ws_id]); if (!$tg_chk->fetchColumn()) $tg_deny('نیروی انتخاب‌شده عضو این واحد نیست'); }
-    }
-    // ویرایش/خروج: فقط رکوردهای همان واحد + همان روز + همان شیفت
-    if (in_array($tg_action, ['checkout', 'edit', 'bulk_checkout', 'bulk_edit'], true)) {
-        $tg_rec = in_array($tg_action, ['checkout', 'edit'], true) ? [(int)($_POST['id'] ?? 0)] : array_map('intval', (array)($_POST['ids'] ?? []));
-        $tg_q = $pdo->prepare("SELECT start_time, end_time, is_night FROM work_hours WHERE id=? AND workshop_id=? AND work_date=?");
-        foreach ($tg_rec as $tg_i) {
-            $tg_q->execute([$tg_i, $ws_id, $tg_date]);
-            $tg_r = $tg_q->fetch();
-            if (!$tg_r || !temp_grant_row_in_shift($tg_r, $tg_shift)) $tg_deny('این رکورد خارج از محدودهٔ شیفت شماست');
-        }
-        if (in_array($tg_action, ['edit', 'bulk_edit'], true)) {
-            $tg_new = ['start_time' => (string)($_POST['start_time'] ?? ''), 'end_time' => (string)($_POST['end_time'] ?? '') ?: '00:00:00', 'is_night' => 0];
-            if (!preg_match('/^\d{2}:\d{2}/', $tg_new['start_time']) || !temp_grant_row_in_shift($tg_new, $tg_shift)) $tg_deny('ساعت جدید خارج از محدودهٔ شیفت است');
-        }
-    }
-}
-
 // §v11: تیک «ناظر/ویراستار» روی ساعت کاری = دیدن ساعت همه (ویراستار علاوه بر آن مدیریت هم دارد)
 $can_see_others = $can_manage || can_see_others_hours() || in_array($work_hours_mode, ['viewer', 'editor'], true);
 $is_own_view = !$can_see_others;
@@ -152,32 +100,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $fqs = '';
     if (!empty($_GET['type'])) $fqs .= '&type=' . urlencode($_GET['type']);
     if (!empty($_GET['shift'])) $fqs .= '&shift=' . urlencode($_GET['shift']);
-
-    // ── §v16: دسترسی موقت ثبت ساعت (کیوسک شیفت) — فقط ادمین ──
-    if (in_array($action, ['grant_create', 'grant_revoke'], true) && is_strict_admin()) {
-        temp_grants_ensure_table($pdo);
-        if ($action === 'grant_create') {
-            $gu = (int)($_POST['grant_user'] ?? 0);
-            $gd = to_gregorian($_POST['grant_date'] ?? '');
-            $gs = (($_POST['grant_shift'] ?? 'day') === 'night') ? 'night' : 'day';
-            // دریافت‌کننده حتماً باید نیروی فعال همین واحد باشد.
-            $validUser = $pdo->prepare("SELECT 1 FROM users u JOIN workshop_personnel wp ON wp.user_id=u.id WHERE u.id=? AND u.status='active' AND wp.workshop_id=? AND wp.status='active'");
-            $validUser->execute([$gu, $ws_id]);
-            if ($gu > 0 && $gd && $validUser->fetchColumn()) {
-                $pdo->prepare("INSERT INTO temp_entry_grants (user_id, workshop_id, grant_date, shift_type, created_by) VALUES (?, ?, ?, ?, ?)
-                               ON DUPLICATE KEY UPDATE revoked_at=NULL, created_by=VALUES(created_by), created_at=CURRENT_TIMESTAMP")
-                     ->execute([$gu, $ws_id, $gd, $gs, $_SESSION['user_id']]);
-                showToast('دسترسی موقت «' . ($gs === 'night' ? 'شیفت شب' : 'شیفت روز') . '» داده شد؛ دسترسی فقط به همان تاریخ و همان شیفت محدود است.');
-            } else {
-                showToast('یک نفر فعال و تاریخ معتبر انتخاب کنید', 'error');
-            }
-        } else {
-            $pdo->prepare("UPDATE temp_entry_grants SET revoked_at=NOW() WHERE id=? AND workshop_id=?")->execute([(int)$_POST['grant_id'], $ws_id]);
-            showToast('دسترسی لغو شد');
-        }
-        $back = $action === 'grant_create' ? ($gd ? to_jalali($gd) : '') : (string)($_POST['back_date'] ?? '');
-        redirect("index.php?page=work_hours" . ($back !== '' ? '&date=' . urlencode($back) : '') . $fqs);
-    }
 
     // ── Check-in: admin picks a start time, all active personnel get an open entry ──
     if ($action === 'checkin' && $can_manage) {
@@ -755,10 +677,6 @@ if ($is_own_view && !$can_see_others) {
     $stmt->execute([$ws_id, $greg_date]);
 }
 $work_hours = $stmt->fetchAll();
-if ($temp_grant) {
-    // فقط ردیف‌های همین شیفت
-    $work_hours = array_values(array_filter($work_hours, fn($r) => temp_grant_row_in_shift($r, $tg_shift)));
-}
 
 // مأموریت‌های مربوط به همین تاریخ برای این واحد (مبدأ)
 // بند ۲: در واحد مقصد، نیروها فقط در جدول ساعت کاری بالا نمایش داده می‌شوند و نباید در مأموریت‌های پایین تکرار شوند.
@@ -807,8 +725,7 @@ foreach ($ws_name_map as $wid => $wname) { if ($wid !== (int)$ws_id) $mission_ta
 
 // Pending protests for admin
 $pending_protests = [];
-if ($temp_grant) { $day_missions = []; $mission_targets = []; }
-if ($can_manage && !$temp_grant) {
+if ($can_manage) {
     $stmt = $pdo->prepare("SELECT wh.*, u.full_name FROM work_hours wh JOIN users u ON wh.user_id = u.id WHERE wh.workshop_id = ? AND wh.protest_status = 'pending' ORDER BY wh.work_date DESC");
     $stmt->execute([$ws_id]);
     $pending_protests = $stmt->fetchAll();
@@ -823,7 +740,7 @@ $is_friday = ($day_of_week == 5);
 include 'includes/header.php';
 
 // Filter type for tabs
-$filter_type = $_GET['type'] ?? 'all';
+$filter_type = 'all'; // تب‌های نوع نیرو/شیفت حذف شد (یک نوع نیرو، بدون شیفت)
 ?>
 
 <style>
@@ -832,105 +749,18 @@ $filter_type = $_GET['type'] ?? 'all';
 .type-tab.active { background:var(--primary); color:white; border-color:var(--primary); }
 </style>
 
-<?php if (is_strict_admin()):
-    // ═══ §v16: مدیریت دسترسی موقت ثبت ساعت ═══
-    temp_grants_ensure_table($pdo);
-    $gp = $pdo->prepare("SELECT u.id, u.full_name FROM users u JOIN workshop_personnel wp ON wp.user_id = u.id AND wp.workshop_id = ? AND wp.status = 'active' WHERE u.status = 'active' ORDER BY u.full_name");
-    $gp->execute([$ws_id]);
-    $grant_personnel = $gp->fetchAll();
-    $gg = $pdo->prepare("SELECT g.*, u.full_name FROM temp_entry_grants g JOIN users u ON u.id = g.user_id WHERE g.workshop_id = ? AND g.grant_date = ? ORDER BY g.id DESC");
-    $gg->execute([$ws_id, $greg_date]);
-    $recent_grants = $gg->fetchAll();
-?>
-<div class="card mb-4 animate-in" style="border:1px solid #e7d9ae;background:#fdfaf1">
-    <div style="font-weight:700;font-size:14px;margin-bottom:10px">🔑 دسترسی موقت ثبت ساعت <span class="text-muted" style="font-weight:400;font-size:12px">(کیوسک شیفت — برای وقتی که خودتان واحد نیستید)</span></div>
-    <form method="POST" class="d-flex gap-2" style="flex-wrap:wrap;align-items:center">
-        <?= get_csrf_field() ?>
-        <input type="hidden" name="action" value="grant_create">
-        <select name="grant_user" class="form-control" style="width:230px" required>
-            <option value="">— انتخاب نفر —</option>
-            <?php foreach ($grant_personnel as $p): ?><option value="<?= $p['id'] ?>"><?= htmlspecialchars($p['full_name']) ?></option><?php endforeach; ?>
-        </select>
-        <input type="text" name="grant_date" class="form-control jalali-date" style="width:130px" value="<?= $selected_date ?>" required>
-        <select name="grant_shift" class="form-control" style="width:130px" required>
-            <option value="day">☀️ شیفت روز</option><option value="night">🌙 شیفت شب</option>
-        </select>
-        <button class="btn btn-primary btn-sm" type="submit">اعطای دسترسی</button>
-        <span class="text-muted" style="font-size:11px">روز: ۰۶ تا ۲۲ همان تاریخ — شب: ۱۸ همان تاریخ تا ۱۰ صبح فردا. کاربر در پنل خودش همه‌چیز را مثل قبل می‌بیند؛ فقط در «ساعت کاری» برای همان تاریخ و شیفت، ساعت همه را می‌بیند و ورود/خروج/ویرایش می‌زند.</span>
-    </form>
-    <div class="text-muted" style="font-size:12px;margin-top:10px">دسترسی‌های ثبت‌شده برای <b><?= $selected_date ?></b> (با جابه‌جایی روز در پایین صفحه، دسترسی‌های همان روز نمایش داده می‌شود)</div>
-    <?php if (!$recent_grants): ?><div class="text-muted" style="font-size:12px;margin-top:6px">برای این روز دسترسی‌ای داده نشده است.</div><?php endif; ?>
-    <?php if ($recent_grants): ?>
-    <table style="margin-top:12px;font-size:12px;width:100%;border-collapse:collapse">
-        <thead><tr style="text-align:right;color:var(--text-muted)"><th style="padding:6px 4px">نفر</th><th style="padding:6px 4px">شیفت (تاریخ)</th><th style="padding:6px 4px">وضعیت</th><th style="padding:6px 4px">زمان اعطا</th><th style="padding:6px 4px"></th></tr></thead>
-        <tbody>
-        <?php foreach ($recent_grants as $rg): $stg = temp_grant_status($rg); ?>
-        <tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:6px 4px"><?= htmlspecialchars($rg['full_name']) ?></td>
-            <td style="padding:6px 4px"><?= to_jalali($rg['grant_date']) ?> — <?= (($rg['shift_type'] ?? 'day') === 'night') ? '🌙 شب' : '☀️ روز' ?></td>
-            <td style="padding:6px 4px">
-                <?php if ($stg === 'active'): ?><span class="tag tag-active">فعال</span>
-                <?php elseif ($stg === 'scheduled'): ?><span class="tag">شروع نشده</span>
-                <?php elseif ($stg === 'revoked'): ?><span class="tag tag-rejected">لغوشده</span>
-                <?php else: ?><span class="tag">پایان‌یافته</span><?php endif; ?>
-            </td>
-            <td style="padding:6px 4px" class="text-muted"><?= date('m/d H:i', strtotime((string)$rg['created_at'])) ?></td>
-            <td style="padding:6px 4px">
-                <?php if ($stg !== 'revoked'): ?>
-                <form method="POST" style="display:inline" onsubmit="return confirm('دسترسی این نفر لغو شود؟')"><?= get_csrf_field() ?><input type="hidden" name="action" value="grant_revoke"><input type="hidden" name="back_date" value="<?= $selected_date ?>"><input type="hidden" name="grant_id" value="<?= $rg['id'] ?>"><button class="btn btn-ghost btn-sm" type="submit">لغو دسترسی</button></form>
-                <?php endif; ?>
-            </td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
-    <?php endif; ?>
-</div>
-<?php endif; ?>
-
 <div class="d-flex justify-between align-center mb-4 animate-in">
     <h2><?= t('wh_title') ?> - <?= $selected_date ?></h2>
     <?php if ($can_manage): ?>
     <div class="btn-group">
-        <button onclick="openModal('reportModal')" class="btn btn-info"><i data-lucide="file-text"></i> <?= t('گزارش نیروها') ?></button>
+        <a href="index.php?page=reports&type=work_hours" class="btn btn-info"><i data-lucide="file-text"></i> <?= t('گزارش نیروها') ?></a>
         <button onclick="openModal('checkinGroupModal')" class="btn btn-primary"><i data-lucide="users"></i> <?= t('btn_group_checkin') ?></button>
         <button onclick="openModal('checkinSingleModal')" class="btn btn-success"><i data-lucide="user-plus"></i> <?= t('btn_single_checkin') ?></button>
-        <?php if (!$temp_grant): ?><button onclick="openBatchEntryModal()" class="btn btn-warning"><i data-lucide="calendar-range"></i> <?= t('ثبت') ?> <?= t('چندروزه') ?></button><?php endif; ?>
+        <button onclick="openBatchEntryModal()" class="btn btn-warning"><i data-lucide="calendar-range"></i> <?= t('ثبت') ?> <?= t('چندروزه') ?></button>
     </div>
     <?php endif; ?>
 </div>
-<div class="tabs mb-4 animate-in work-hours-tabs"><a href="index.php?page=work_hours&date=<?= $selected_date ?>" class="tab active">⏱ <?= t('nav_work_hours') ?></a><?php if ($can_manage && !$temp_grant): ?><a href="index.php?page=work_hours&tab=alerts&date=<?= $selected_date ?>" class="tab">🚨 <?= t('page_attendance_alerts') ?></a><?php endif; ?></div>
-
-<!-- Type filter tabs -->
-<div class="type-tabs animate-in">
-    <a href="index.php?page=work_hours&date=<?= $selected_date ?>&type=all" class="type-tab <?= $filter_type === 'all' ? 'active' : '' ?>"><?= t('همه نیروها') ?></a>
-    <a href="index.php?page=work_hours&date=<?= $selected_date ?>&type=employee" class="type-tab <?= $filter_type === 'employee' ? 'active' : '' ?>"><?= t('scope_employees') ?></a>
-    <a href="index.php?page=work_hours&date=<?= $selected_date ?>&type=worker" class="type-tab <?= $filter_type === 'worker' ? 'active' : '' ?>"><?= t('scope_workers') ?></a>
-    <a href="index.php?page=work_hours&date=<?= $selected_date ?>&type=peymankar" class="type-tab <?= $filter_type === 'peymankar' ? 'active' : '' ?>"><?= t('nav_subcontractors') ?></a>
-</div>
-
-<!-- Shift filter tabs -->
-<?php
-// شمارش شیفت روز و شب (بر اساس یوزر یکتا)
-$day_users = []; $night_users = [];
-foreach ($work_hours as $wh) {
-    $sh = (int)date('H', strtotime($wh['start_time']));
-    $is_open = ($wh['end_time'] === '00:00:00');
-    $uid = $wh['user_id'];
-    // شیفت روز: شروع 07:00-21:00
-    if ($sh >= 7 && $sh < 21) $day_users[$uid] = true;
-    // شیفت شب: شروع بعد 21:00 یا قبل 07:00 + ورودهای باز
-    if ($sh >= 21 || $sh < 7 || $is_open) $night_users[$uid] = true;
-}
-$day_count = count($day_users);
-$night_count = count($night_users);
-$shift_filter = $_GET['shift'] ?? 'all';
-?>
-<div class="type-tabs animate-in" style="margin-bottom:12px">
-    <a href="index.php?page=work_hours&date=<?= $selected_date ?>&type=<?= $filter_type ?>&shift=all" class="type-tab <?= $shift_filter === 'all' ? 'active' : '' ?>" style="<?= $shift_filter === 'all' ? 'border-color:var(--primary);background:rgba(99,102,241,0.1)' : '' ?>"><?= t('همه') ?> <?= t('wh_shift') ?>‌<?= t('ها') ?></a>
-    <a href="index.php?page=work_hours&date=<?= $selected_date ?>&type=<?= $filter_type ?>&shift=day" class="type-tab <?= $shift_filter === 'day' ? 'active' : '' ?>" style="<?= $shift_filter === 'day' ? 'border-color:#f59e0b;background:#fef3c7;color:#92400e' : '' ?>">☀️ <?= t('شیفت روز') ?> (<?= $day_count ?>) — 7 <?= t('صبح') ?> <?= t('الی') ?> 9 <?= t('wh_night') ?></a>
-    <a href="index.php?page=work_hours&date=<?= $selected_date ?>&type=<?= $filter_type ?>&shift=night" class="type-tab <?= $shift_filter === 'night' ? 'active' : '' ?>" style="<?= $shift_filter === 'night' ? 'border-color:#1e293b;background:#1e293b;color:white' : '' ?>">🌙 <?= t('شیفت شب') ?> (<?= $night_count ?>) — 9 <?= t('wh_night') ?> <?= t('الی') ?> 7 <?= t('صبح') ?></a>
-</div>
+<div class="tabs mb-4 animate-in work-hours-tabs"><a href="index.php?page=work_hours&date=<?= $selected_date ?>" class="tab active">⏱ <?= t('nav_work_hours') ?></a><?php if ($can_manage): ?><a href="index.php?page=work_hours&tab=alerts&date=<?= $selected_date ?>" class="tab">🚨 <?= t('page_attendance_alerts') ?></a><?php endif; ?></div>
 
 <!-- Pending Protests -->
 <?php if ($can_manage && !empty($pending_protests)): ?>
@@ -968,23 +798,16 @@ $shift_filter = $_GET['shift'] ?? 'all';
 <?php endif; ?>
 
 <!-- Date Nav -->
-<?php if ($temp_grant): ?>
-<div class="card mb-4 animate-in" style="border:1px solid #e7d9ae;background:#fdfaf1;font-size:13px">
-    🔑 دسترسی موقت فعال: شما فقط برای <b><?= $selected_date ?></b> — <b><?= temp_grant_shift_label($temp_grant) ?></b> می‌توانید ساعت کاری همه را ببینید و ورود/خروج/ویرایش کنید.
-</div>
-<?php else: ?>
 <div class="card mb-4 animate-in">
     <div class="d-flex align-center gap-3 flex-wrap">
-        <a href="index.php?page=work_hours&date=<?= to_jalali(date('Y-m-d', strtotime($greg_date.' -1 day'))) ?>&type=<?= $filter_type ?>&shift=<?= $shift_filter ?>" class="btn btn-ghost btn-sm">◀ <?= t('wh_prev_day') ?></a>
+        <a href="index.php?page=work_hours&date=<?= to_jalali(date('Y-m-d', strtotime($greg_date.' -1 day'))) ?>" class="btn btn-ghost btn-sm">▶ <?= t('wh_prev_day') ?></a>
         <form method="GET" class="d-flex gap-2">
             <input type="hidden" name="page" value="work_hours">
-            <input type="hidden" name="type" value="<?= $filter_type ?>">
-            <input type="hidden" name="shift" value="<?= $shift_filter ?>">
             <input type="text" name="date" class="form-control jalali-date" value="<?= $selected_date ?>" style="width:130px" placeholder="1404/04/27">
             <button type="submit" class="btn btn-ghost btn-sm"><i data-lucide="search"></i></button>
         </form>
-        <a href="index.php?page=work_hours&date=<?= to_jalali(date('Y-m-d', strtotime($greg_date.' +1 day'))) ?>&type=<?= $filter_type ?>&shift=<?= $shift_filter ?>" class="btn btn-ghost btn-sm"><?= t('wh_next_day') ?> ▶</a>
-        <a href="index.php?page=work_hours&date=<?= jalali_now() ?>&type=<?= $filter_type ?>&shift=<?= $shift_filter ?>" class="btn btn-ghost btn-sm"><?= t('wh_today') ?></a>
+        <a href="index.php?page=work_hours&date=<?= to_jalali(date('Y-m-d', strtotime($greg_date.' +1 day'))) ?>" class="btn btn-ghost btn-sm"><?= t('wh_next_day') ?> ◀</a>
+        <a href="index.php?page=work_hours&date=<?= jalali_now() ?>" class="btn btn-ghost btn-sm"><?= t('wh_today') ?></a>
         <?php if ($is_holiday): ?>
             <span class="tag tag-holiday">🔴 <?= t('wh_holiday') ?>: <?= $is_holiday['title'] ?></span>
         <?php elseif ($is_friday): ?>
@@ -992,7 +815,6 @@ $shift_filter = $_GET['shift'] ?? 'all';
         <?php endif; ?>
     </div>
 </div>
-<?php endif; ?>
 
 <?php if ($can_manage): ?>
 <!-- نوار عملیات دسته‌جمعی -->
@@ -1006,7 +828,7 @@ $shift_filter = $_GET['shift'] ?? 'all';
         <div class="me-auto"></div>
         <button onclick="openBulkModal('checkout')" class="btn btn-success btn-sm" disabled id="btnBulkCheckout"><i data-lucide="log-out"></i> <?= t('nav_logout') ?> <?= t('دسته') ?><?= t('‌جمعی') ?></button>
         <button onclick="openBulkModal('edit')" class="btn btn-primary btn-sm" disabled id="btnBulkEdit"><i data-lucide="edit"></i> <?= t('btn_edit') ?> <?= t('دسته') ?><?= t('‌جمعی') ?></button>
-        <?php if (!$temp_grant): ?><button onclick="bulkDelete()" class="btn btn-danger btn-sm" disabled id="btnBulkDelete"><i data-lucide="trash-2"></i> <?= t('btn_delete') ?> <?= t('دسته') ?><?= t('‌جمعی') ?></button><?php endif; ?>
+        <button onclick="bulkDelete()" class="btn btn-danger btn-sm" disabled id="btnBulkDelete"><i data-lucide="trash-2"></i> <?= t('btn_delete') ?> <?= t('دسته') ?><?= t('‌جمعی') ?></button>
     </div>
 </div>
 <?php endif; ?>
@@ -1015,31 +837,8 @@ $shift_filter = $_GET['shift'] ?? 'all';
 <div class="card animate-in">
     <div class="wh-list">
         <?php
-        // Filter by type
+        // بدون فیلتر نوع/شیفت — همهٔ نیروها
         $filtered_hours = $work_hours;
-        if ($filter_type === 'employee') {
-            $filtered_hours = array_filter($work_hours, function($w) { return $w['is_karigar'] == 0; });
-        } elseif ($filter_type === 'worker') {
-            $filtered_hours = array_filter($work_hours, function($w) { return $w['is_karigar'] == 1; });
-        } elseif ($filter_type === 'peymankar') {
-            $filtered_hours = array_filter($work_hours, function($w) { return $w['is_karigar'] == 2; });
-        }
-
-        // Filter by shift
-        if ($shift_filter === 'day') {
-            $filtered_hours = array_filter($filtered_hours, function($w) {
-                $sh = (int)date('H', strtotime($w['start_time']));
-                return $sh >= 7 && $sh < 21;
-            });
-        } elseif ($shift_filter === 'night') {
-            $filtered_hours = array_filter($filtered_hours, function($w) {
-                $sh = (int)date('H', strtotime($w['start_time']));
-                $is_open = ($w['end_time'] === '00:00:00');
-                if ($sh >= 21 || $sh < 7) return true;
-                if ($is_open) return true; // ورود باز = توی شیفت شب
-                return false;
-            });
-        }
 
         foreach ($filtered_hours as $wh):
             $start_sec = strtotime($wh['start_time']);
@@ -1083,7 +882,7 @@ $shift_filter = $_GET['shift'] ?? 'all';
                     <span style="font-size:13px;font-weight:600"><?= substr($wh['end_time'],0,5) ?></span>
                 <?php endif; ?>
                 <span class="tag" style="margin:0 4px;<?= $shift_style ?>"><?= $shift_label ?></span>
-                <span style="font-size:12px;color:var(--text-secondary)"><?= number_format($duration,1) ?> <?= t('wh_hours') ?></span>
+                <span style="font-size:12px;color:var(--text-secondary)"><?= number_format($duration,1, '.', '،') ?> <?= t('wh_hours') ?></span>
             </div>
             <?php if ($wh['protest_status'] == 'pending'): ?>
                 <span class="tag tag-pending">⏳ <?= t('در انتظار') ?> <?= t('بررسی') ?></span>
@@ -1103,7 +902,7 @@ $shift_filter = $_GET['shift'] ?? 'all';
                 <?php if ($can_manage && !$is_open): ?>
                     <?php if ($can_edit_this_wh): ?>
                     <button onclick="openEditWH(<?= $wh['id'] ?>, '<?= substr($wh['start_time'],0,5) ?>', '<?= substr($wh['end_time'],0,5) ?>')" class="btn btn-ghost btn-sm" title="<?= t('btn_edit') ?>"><i data-lucide="edit"></i></button>
-                    <?php if (!$temp_grant): ?>
+                    <?php if (true): ?>
                     <form method="POST" style="display:inline" onsubmit="return confirm('<?= t('chat_delete') ?>')"><?= get_csrf_field() ?>
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="id" value="<?= $wh['id'] ?>">
@@ -1137,7 +936,7 @@ $shift_filter = $_GET['shift'] ?? 'all';
             <span class="text-muted" id="msSelCount" style="font-size:11px"></span>
             <button type="button" onclick="openBulkMissionModal('checkout')" class="btn btn-success btn-sm" disabled id="btnBulkMissionCheckout"><i data-lucide="log-out"></i> <?= t('خروج دسته‌جمعی مأموریت‌ها') ?></button>
             <button type="button" onclick="openBulkMissionModal('edit')" class="btn btn-primary btn-sm" disabled id="btnBulkMissionEdit"><i data-lucide="edit"></i> <?= t('ویرایش دسته‌جمعی ساعت') ?></button>
-            <?php if (!$temp_grant): ?>
+            <?php if (true): ?>
             <button type="button" onclick="bulkMissionDelete()" class="btn btn-danger btn-sm" disabled id="btnBulkMissionDelete"><i data-lucide="trash-2"></i> <?= t('حذف دسته‌جمعی') ?></button>
             <?php endif; ?>
         </div>
@@ -1198,7 +997,7 @@ $shift_filter = $_GET['shift'] ?? 'all';
                     <button type="button" onclick="endMission(<?= (int)$m['id'] ?>, <?= htmlspecialchars(json_encode($m['full_name'], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>)" class="btn btn-success btn-sm" title="<?= t('ثبت') ?> <?= t('wh_end') ?>"><i data-lucide="flag"></i></button>
                     <?php endif; ?>
                     <button type="button" onclick="editMissionHours(<?= (int)$m['id'] ?>, <?= htmlspecialchars(json_encode($m['full_name'], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>, '<?= $m_start ?>', '<?= $m_end ?>', <?= htmlspecialchars(json_encode($m['description'] ?: ($m['wh_note'] ?: ''), JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>)" class="btn btn-primary btn-sm" title="<?= t('ویرایش ساعت مأموریت') ?>"><i data-lucide="edit"></i></button>
-                    <?php if (!$temp_grant): ?>
+                    <?php if (true): ?>
                     <button type="button" onclick="deleteMission(<?= (int)$m['id'] ?>, <?= htmlspecialchars(json_encode($m['full_name'], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') ?>)" class="btn btn-danger btn-sm" title="<?= t('حذف مأموریت') ?>"><i data-lucide="trash-2"></i></button>
                     <?php endif; ?>
                 </div>
@@ -1488,36 +1287,6 @@ $shift_filter = $_GET['shift'] ?? 'all';
     </div>
 </div>
 
-<!-- Report Modal (select type + person) -->
-<div id="reportModal" class="modal-overlay hidden">
-    <div class="modal glass-modal" style="max-width:420px">
-        <div class="modal-header"><h3 class="modal-title"><?= t('گزارش نیروها') ?></h3><button onclick="closeModal('reportModal')" class="modal-close">✕</button></div>
-        <div class="modal-body">
-            <div class="form-group">
-                <label class="form-label"><?= t('sal_type') ?> <?= t('نیرو') ?></label>
-                <select id="reportType" class="form-control" onchange="filterReportList()">
-                    <option value="all"><?= t('همه') ?></option>
-                    <option value="0"><?= t('sal_employee') ?></option>
-                    <option value="1"><?= t('sal_worker') ?></option>
-                    <option value="2"><?= t('پیمانکار') ?></option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label class="form-label"><?= t('انتخاب نیرو') ?></label>
-                <select id="reportPerson" class="form-control">
-                    <option value=""><?= t('انتخاب کنید') ?></option>
-                    <?php foreach ($personnel as $p):
-                        $ptype = $p['is_karigar'] == 2 ? 'peymankar' : ($p['is_karigar'] == 1 ? 'worker' : 'employee');
-                    ?>
-                    <option value="<?= $p['id'] ?>" data-type="<?= $p['is_karigar'] ?>"><?= $p['full_name'] ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <button class="btn btn-primary btn-block" onclick="goToReport()"><?= t('دریافت') ?> <?= t('گزارش') ?></button>
-        </div>
-    </div>
-</div>
-
 <!-- Edit Work Hours Modal -->
 <div id="editWHModal" class="modal-overlay hidden">
     <div class="modal glass-modal" style="max-width:400px">
@@ -1767,25 +1536,6 @@ function filterSingleList(cb, type) {
             sel.options[i].style.display = show ? '' : 'none';
         }
     }
-}
-
-function filterReportList() {
-    var type = document.getElementById('reportType').value;
-    var sel = document.getElementById('reportPerson');
-    for (var i = 0; i < sel.options.length; i++) {
-        if (sel.options[i].value === '') continue;
-        if (type === 'all' || sel.options[i].dataset.type === type) {
-            sel.options[i].style.display = '';
-        } else {
-            sel.options[i].style.display = 'none';
-        }
-    }
-}
-
-function goToReport() {
-    var uid = document.getElementById('reportPerson').value;
-    if (!uid) { alert('<?= t('یک نیرو انتخاب کنید') ?>'); return; }
-    window.open('index.php?page=work_report&user_id=' + uid, '_blank');
 }
 
 // ── <?= t('عملیات دسته‌جمعی') ?> ──

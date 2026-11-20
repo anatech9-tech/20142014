@@ -112,10 +112,10 @@ $final_balance = $prev_balance + $income_total - $expense_total;
         <?php letterhead_header(t('فرم') . ' ' . t('nav_petty_cash') . ' ' . t('sal_monthly'), '<div style="font-size:14px;font-weight:700">' . to_jalali(date('Y-m-d')) . '</div><div style="font-size:11px;margin-top:4px">' . date('H:i') . '</div><div style="font-size:12px;margin-top:4px">' . $month_label . '</div>') ?>
 
         <div class="summary-cards">
-            <div class="sc"><div class="l"><?= t('pet_balance') ?> <?= t('اول دوره') ?> (<?= t('lea_to') ?> <?= to_jalali($day_before) ?>)</div><div class="v"><?= number_format($prev_balance) ?></div></div>
-            <div class="sc"><div class="l"><?= t('rep_total') ?> <?= t('واریزی') ?>‌<?= t('های') ?> <?= t('rep_month') ?></div><div class="v" style="color:#16a34a">+<?= number_format($income_total) ?></div></div>
-            <div class="sc"><div class="l"><?= t('rep_total') ?> <?= t('pet_expense') ?>‌<?= t('های') ?> <?= t('rep_month') ?></div><div class="v" style="color:#dc2626">−<?= number_format($expense_total) ?></div></div>
-            <div class="sc"><div class="l"><?= t('pet_balance') ?> <?= t('wh_end') ?> <?= t('دوره') ?></div><div class="v" style="color:<?= $final_balance >= 0 ? '#16a34a' : '#dc2626' ?>"><?= number_format($final_balance) ?></div></div>
+            <div class="sc"><div class="l"><?= t('pet_balance') ?> <?= t('اول دوره') ?> (<?= t('lea_to') ?> <?= to_jalali($day_before) ?>)</div><div class="v"><?= number_format($prev_balance, 0, '.', '،') ?></div></div>
+            <div class="sc"><div class="l"><?= t('rep_total') ?> <?= t('واریزی') ?>‌<?= t('های') ?> <?= t('rep_month') ?></div><div class="v" style="color:#16a34a">+<?= number_format($income_total, 0, '.', '،') ?></div></div>
+            <div class="sc"><div class="l"><?= t('rep_total') ?> <?= t('pet_expense') ?>‌<?= t('های') ?> <?= t('rep_month') ?></div><div class="v" style="color:#dc2626">−<?= number_format($expense_total, 0, '.', '،') ?></div></div>
+            <div class="sc"><div class="l"><?= t('pet_balance') ?> <?= t('wh_end') ?> <?= t('دوره') ?></div><div class="v" style="color:<?= $final_balance >= 0 ? '#16a34a' : '#dc2626' ?>"><?= number_format($final_balance, 0, '.', '،') ?></div></div>
         </div>
 
         <?php if (empty($rows)): ?>
@@ -140,20 +140,20 @@ $final_balance = $prev_balance + $income_total - $expense_total;
                     <td><?= $r['creator_name'] ?: '—' ?></td>
                     <td><?= $r['type'] === 'income' ? '<span style="color:#16a34a;font-weight:600">' . t('واریزی') . '</span>' : '<span style="color:#dc2626;font-weight:600">' . t('هزینه') . '</span>' ?></td>
                     <td style="text-align:right"><?= $r['description'] ?></td>
-                    <td style="font-weight:600;color:<?= $r['type'] === 'income' ? '#16a34a' : '#dc2626' ?>"><?= $r['type'] === 'income' ? '+' : '−' ?><?= number_format((float)$r['amount']) ?></td>
+                    <td style="font-weight:600;color:<?= $r['type'] === 'income' ? '#16a34a' : '#dc2626' ?>"><?= $r['type'] === 'income' ? '+' : '−' ?><?= number_format((float)$r['amount'], 0, '.', '،') ?></td>
                 </tr>
                 <?php endforeach; ?>
                 <tr class="total-row">
                     <td colspan="5"><?= t('rep_total') ?> <?= t('واریزی') ?></td>
-                    <td style="color:#16a34a">+<?= number_format($income_total) ?></td>
+                    <td style="color:#16a34a">+<?= number_format($income_total, 0, '.', '،') ?></td>
                 </tr>
                 <tr class="total-row">
                     <td colspan="5"><?= t('rep_total') ?> <?= t('pet_expense') ?></td>
-                    <td style="color:#dc2626">−<?= number_format($expense_total) ?></td>
+                    <td style="color:#dc2626">−<?= number_format($expense_total, 0, '.', '،') ?></td>
                 </tr>
                 <tr class="total-row" style="background:#d1fae5">
                     <td colspan="5"><?= t('rep_total') ?> <?= t('کل') ?> (<?= t('sal_net') ?> <?= t('rep_month') ?>)</td>
-                    <td style="font-weight:800"><?= ($income_total - $expense_total) >= 0 ? '+' : '−' ?><?= number_format(abs($income_total - $expense_total)) ?></td>
+                    <td style="font-weight:800"><?= ($income_total - $expense_total) >= 0 ? '+' : '−' ?><?= number_format(abs($income_total - $expense_total), 0, '.', '،') ?></td>
                 </tr>
             </tbody>
         </table>

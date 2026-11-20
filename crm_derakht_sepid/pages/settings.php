@@ -18,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     
     if ($action === 'save_settings') {
-        $keys = ['regular_hours','employee_daily_required_hours','employee_monthly_leave_quota_days','overtime_coefficient','night_coefficient','night_start','morning_start','morning_end','overtime_start','night_end','late_extended','late_threshold','late_extended_threshold','karigar_work_day','karigar_extra_day_hours','karigar_night_min','karigar_friday_start','karigar_friday_end','friday_coefficient','holiday_coefficient','backup_daily_retention','backup_weekly_retention','backup_monthly_retention','payroll_excluded_usernames'];
+        $keys = ['regular_hours','employee_daily_required_hours','employee_monthly_leave_quota_days','overtime_coefficient','night_coefficient','night_start','morning_start','morning_end','overtime_start','night_end','late_extended','late_threshold','late_extended_threshold','karigar_work_day','karigar_extra_day_hours','karigar_night_min','karigar_friday_start','karigar_friday_end','friday_coefficient','holiday_coefficient','monthly_salary_days','backup_daily_retention','backup_weekly_retention','backup_monthly_retention','payroll_excluded_usernames'];
         
         $ws_target = (int)($_POST['target_workshop_id'] ?? $ws_id);
         if ($ws_target <= 0) $ws_target = $ws_id;
@@ -162,43 +162,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([implode(',', $order)]);
         showToast(t('ترتیب منو ذخیره شد'));
         redirect("index.php?page=settings");
-    }
-
-    if ($action === 'save_workshop_employers') {
-        if (!is_strict_admin() && !is_project_manager()) {
-            showToast(t('دسترسی ندارید'), 'error');
-            redirect("index.php?page=settings");
-            exit;
-        }
-        $emp_names = $_POST['ws_employer_name'] ?? [];
-        $del_logos = $_POST['ws_delete_logo'] ?? [];
-
-        foreach ($emp_names as $wid => $ename) {
-            $wid = (int)$wid;
-            $ename = sanitize($ename);
-            $extra_sql = '';
-            $params = [$ename];
-
-            if (!empty($del_logos[$wid])) {
-                $extra_sql .= ", employer_logo = NULL";
-            } elseif (!empty($_FILES['ws_employer_logo']['name'][$wid])) {
-                if (!is_dir(LOGO_DIR)) mkdir(LOGO_DIR, 0777, true);
-                $filename = 'emp_' . uniqid() . '_' . basename($_FILES['ws_employer_logo']['name'][$wid]);
-                $path = 'uploads/logos/' . $filename;
-                if (move_uploaded_file($_FILES['ws_employer_logo']['tmp_name'][$wid], LOGO_DIR . $filename)) {
-                    compress_image(LOGO_DIR . $filename, 800, 85);
-                    $extra_sql .= ", employer_logo = ?";
-                    $params[] = $path;
-                }
-            }
-
-            $params[] = $wid;
-            $stmt = $pdo->prepare("UPDATE workshops SET employer_name = ? {$extra_sql} WHERE id = ?");
-            $stmt->execute($params);
-        }
-        showToast(t('تنظیمات کارفرمای واحد‌ها با موفقیت ذخیره شد'));
-        redirect("index.php?page=settings");
-        exit;
     }
 
     if ($action === 'backup') {
@@ -390,7 +353,7 @@ include 'includes/header.php';
     <div class="grid-2 animate-in">
         <div class="card">
             <div class="card-header"><h3 class="card-title">⏱️ <?= t('set_salary_rules') ?></h3></div>
-            <p class="text-muted mb-3" style="font-size:12px"><?= t('ساعات کار عادی: ۸ تا ۱۷ — ضریب ۱.۰۰') ?></p>
+            <p class="text-muted mb-3" style="font-size:12px">مرجع سازمان فروش: ساعت کار عادی ۸ تا ۱۷ با ضریب ۱.۰۰. همهٔ مقادیر این‌جا در دیتابیس ذخیره می‌شوند و در کل سیستم (حقوق، گزارش‌ها، مرخصی) اعمال می‌شوند.</p>
             <div class="form-row">
                 <div class="form-group"><label class="form-label"><?= t('ساعات کار روزانه (پایه)') ?></label><input type="number" name="regular_hours" class="form-control" value="<?= $settings['regular_hours'] ?? 9 ?>"></div>
                 <div class="form-group"><label class="form-label"><?= t('ضریب اضافه‌کاری (۱۷ تا ۲۱)') ?></label><input type="number" name="overtime_coefficient" class="form-control" value="<?= $settings['overtime_coefficient'] ?? 1.33 ?>" step="0.01"></div>
@@ -405,6 +368,10 @@ include 'includes/header.php';
             </div>
             <div class="form-row">
                 <div class="form-group"><label class="form-label"><?= t('سهمیه مرخصی ماهانه کارکنان (روز)') ?></label><input type="number" name="employee_monthly_leave_quota_days" class="form-control" value="<?= $settings['employee_monthly_leave_quota_days'] ?? 2 ?>" min="0" max="31" step="0.5"><small class="text-muted" style="font-size:10px"><?= t('سهمیه استفاده‌نشده از ساعت الزامی کم می‌شود (تبدیل به اضافه‌کار). غیبتِ بدون ثبت مرخصی، سهمیه را مصرف می‌کند و این تخفیف را از بین می‌برد.') ?></small></div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label class="form-label"><?= t('روزهای مبنای تبدیل حقوق ماهانه به روزانه/ساعتی') ?></label><input type="number" name="monthly_salary_days" class="form-control" min="1" max="31" step="0.5" value="<?= (float)($settings['monthly_salary_days'] ?? 26) ?>"><small class="text-muted" style="font-size:10px">حقوق روزانه = ماهانه ÷ این عدد (پیش‌فرض ۲۶)</small></div>
+                <div class="form-group"></div>
             </div>
             <div class="form-row">
                 <div class="form-group"><label class="form-label"><?= t('ساعت شروع کار روزانه') ?></label><input type="text" name="morning_start" class="form-control" value="<?= $settings['morning_start'] ?? '08:00' ?>"></div>
@@ -442,7 +409,7 @@ include 'includes/header.php';
     
     <div class="card mt-4 animate-in">
         <div class="card-header"><h3 class="card-title">👷 <?= t('set_worker_rules') ?></h3></div>
-        <p class="text-muted mb-3" style="font-size:12px"><?= t('قواعد کارگران: هر روز ۸ ساعت کار (با ۱ ساعت استراحت). هر ۸ ساعت اضافه‌کاری = ۱ روز کاری. شب‌کاری زیر ۴ ساعت = ۴ ساعت حساب می‌شود.') ?></p>
+        <p class="text-muted mb-3" style="font-size:12px">سازگاری با داده‌های قدیمی (کارگاه/پیمانکار): هر روز ۸ ساعت کار (با ۱ ساعت استراحت). هر ۸ ساعت اضافه‌کاری = ۱ روز کاری. شب‌کاری زیر ۴ ساعت = ۴ ساعت حساب می‌شود. این تنظیمات روی نیروهای قدیمی (is_karigar) اعمال می‌شود؛ سازمان فروش فعلی از «ضرایب حقوق» بالا استفاده می‌کند.</p>
         <div class="grid-2">
             <div class="form-group"><label class="form-label"><?= t('ساعات کار عادی (بدون اضافه‌کاری)') ?></label><input type="number" name="karigar_work_day" class="form-control" value="<?= $settings['karigar_work_day'] ?? 8 ?>"></div>
             <div class="form-group"><label class="form-label"><?= t('ساعات اضافه‌کاری = ۱ روز کاری') ?></label><input type="number" name="karigar_extra_day_hours" class="form-control" value="<?= $settings['karigar_extra_day_hours'] ?? 8 ?>"></div>
@@ -542,6 +509,9 @@ $__roleNames = ['sales_expert' => 'کارشناس فروش', 'sales_manager' => 
         <div class="form-group"><label class="form-label">تارگت تیم فروش (مدیر فروش)</label><input type="number" name="commission_target_team_toman" class="form-control" min="0" step="1000000" value="<?= (int)$__comm['team_toman'] ?>"></div>
         <div class="form-group"><label class="form-label">تارگت توسعه بازار</label><input type="number" name="commission_target_bd_toman" class="form-control" min="0" step="1000000" value="<?= (int)$__comm['bd_toman'] ?>"></div>
     </div>
+    <div style="background:rgba(37,99,235,.06);border:1px dashed var(--border);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:11px;color:var(--text-secondary)">
+        <b>📄 مرجع سند — حقوق ثابت پیشنهادی (بودجه‌ریزی، نه قرارداد):</b> کارشناس فروش ۲۳ تا ۲۸ م | مدیر فروش ۳۵ تا ۴۵ م | توسعهٔ بازار ۳۰ تا ۳۵ م | هماهنگ‌کنندهٔ سفارشات ۲۸ تا ۳۵ م تومان/ماه (به‌علاوهٔ کمیسیون و مزایای قانونی). مبالغ واقعیِ هر نفر را در «پرسنل» ثبت کنید؛ این‌جا صرفاً برای یادآوری سند نهایی نمایش داده می‌شود و قابل ویرایش نیست.
+    </div>
     <p class="text-muted" style="font-size:11.5px;margin:2px 0 8px">💱 نرخ هر ارز به «تومان» (۰ = نامشخص — فروش با آن ارز در محاسبهٔ کمیسیون صفر می‌شود و هشدار می‌گیرید):</p>
     <div class="grid-2">
         <?php foreach (['USD' => 'دلار', 'EUR' => 'یورو', 'CNY' => 'یوآن چین', 'AED' => 'درهم', 'IRR' => 'ریال (۱ ریال = ۰٫۱ تومان)'] as $cur => $lbl): ?>
@@ -568,84 +538,5 @@ $__roleNames = ['sales_expert' => 'کارشناس فروش', 'sales_manager' => 
 </form>
 <?php endif; ?>
 
-<?php
-$ws_list_for_emp = $pdo->query("SELECT id, name, employer_name, employer_logo FROM workshops WHERE status = 'active' ORDER BY id")->fetchAll();
-?>
-<!-- تنظیمات لوگو و نام کارفرمای واحد‌ها -->
-<div class="card mt-4 animate-in">
-    <div class="card-header"><h3 class="card-title">🏢 <?= t('تنظیمات کارفرما و لوگو برای واحد‌ها (سربرگ فرم‌های گزارش)') ?></h3></div>
-    <p class="text-muted mb-3" style="font-size:12px"><?= t('می‌توانید برای هر واحد لوگو و نام کارفرما تعیین کنید تا در سربرگ گزارش روزانه و فرم ایمنی نمایش داده شود. در صورت خالی بودن، فیلد خالی می‌ماند؛ در صورت بارگذاری لوگو، لوگو نمایش داده می‌شود و در صورت درج نام، نام کارفرما درج خواهد شد.') ?></p>
-    <form method="POST" enctype="multipart/form-data"><?= get_csrf_field() ?>
-        <input type="hidden" name="action" value="save_workshop_employers">
-        <div style="overflow-x:auto">
-            <table class="table" style="font-size:13px">
-                <thead>
-                    <tr>
-                        <th style="width:25%"><?= t('نام واحد') ?></th>
-                        <th style="width:35%"><?= t('نام کارفرما') ?></th>
-                        <th style="width:40%"><?= t('لوگوی کارفرما') ?></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($ws_list_for_emp as $w): ?>
-                    <tr>
-                        <td><strong><?= htmlspecialchars($w['name']) ?></strong></td>
-                        <td>
-                            <input type="text" name="ws_employer_name[<?= $w['id'] ?>]" class="form-control" value="<?= htmlspecialchars($w['employer_name'] ?? '') ?>" placeholder="<?= t('مثلاً: گروه جاوید...') ?>">
-                        </td>
-                        <td>
-                            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                                <?php if (!empty($w['employer_logo']) && file_exists(__DIR__ . '/../' . $w['employer_logo'])): ?>
-                                    <img src="<?= htmlspecialchars($w['employer_logo']) ?>" style="height:34px;border-radius:4px;border:1px solid var(--border)">
-                                    <label class="text-danger" style="font-size:11px;cursor:pointer">
-                                        <input type="checkbox" name="ws_delete_logo[<?= $w['id'] ?>]" value="1"> <?= t('حذف') ?>
-                                    </label>
-                                <?php endif; ?>
-                                <input type="file" name="ws_employer_logo[<?= $w['id'] ?>]" class="form-control" accept="image/*" style="max-width:200px;font-size:11px">
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-        <div class="mt-3">
-            <button type="submit" class="btn btn-primary"><i data-lucide="save"></i> <?= t('ذخیره کارفرمای واحد‌ها') ?></button>
-        </div>
-    </form>
-</div>
-
-<form method="POST"><?= get_csrf_field() ?><input type="hidden" name="action" value="save_settings"><div class="card mt-4 animate-in"><div class="card-header"><h3 class="card-title">🗄️ <?= t('بکاپ خودکار') ?></h3></div><p class="text-muted" style="font-size:12px"><?= t('بکاپ در اولین بازدید روز ایجاد می‌شود؛ برای زمان‌بندی دقیق‌تر می‌توان PWA را با همین منطق با Cron اجرا کرد.') ?></p><div class="grid-2"><div class="form-group"><label class="form-label"><?= t('نگهداری بکاپ روزانه') ?></label><input type="number" name="backup_daily_retention" class="form-control" value="<?= $settings['backup_daily_retention'] ?? 7 ?>" min="1"></div><div class="form-group"><label class="form-label"><?= t('نگهداری بکاپ هفتگی') ?></label><input type="number" name="backup_weekly_retention" class="form-control" value="<?= $settings['backup_weekly_retention'] ?? 4 ?>" min="1"></div><div class="form-group"><label class="form-label"><?= t('نگهداری بکاپ ماهانه') ?></label><input type="number" name="backup_monthly_retention" class="form-control" value="<?= $settings['backup_monthly_retention'] ?? 12 ?>" min="1"></div></div><div class="mt-3"><button class="btn btn-primary"><?= t('set_save') ?> <?= t('btn_backup') ?></button></div></div></form>
-<!-- Backup Section -->
-<div class="card mt-4 animate-in">
-    <div class="card-header"><h3 class="card-title"><?= t('set_backup') ?></h3></div>
-    <div class="d-flex gap-3 flex-wrap">
-        <form method="POST"><?= get_csrf_field() ?><input type="hidden" name="action" value="backup">
-            <button type="submit" class="btn btn-success"><i data-lucide="download"></i> <?= t('گرفتن') ?> <?= t('btn_backup') ?> + <?= t('btn_download') ?></button>
-        </form>
-        <form method="POST" enctype="multipart/form-data"><?= get_csrf_field() ?><input type="hidden" name="action" value="restore">
-            <div class="d-flex gap-2 align-center">
-                <input type="file" name="restore_file" class="form-control" accept=".sql" required style="width:200px">
-                <button type="submit" class="btn btn-danger" onclick="return confirm('<?= t('آیا') ?> <?= t('lea_from') ?> <?= t('btn_restore') ?> <?= t('مطمئنید؟') ?> <?= t('تمام') ?> <?= t('info') ?> <?= t('فعلی') ?> <?= t('جایگزین') ?> <?= t('می‌شود') ?>!')"><i data-lucide="upload"></i> <?= t('btn_restore') ?></button>
-            </div>
-        </form>
-    </div>
-    <?php if (!empty($backups)): ?>
-    <div class="mt-3">
-        <h4 style="font-size:14px"><?= t('btn_backup') ?>‌<?= t('های') ?> <?= t('قبلی') ?>:</h4>
-        <?php foreach (array_slice($backups, 0, 10) as $b): ?>
-        <div class="d-flex justify-between align-center mt-2" style="padding:8px;background:var(--bg);border-radius:6px">
-            <div class="d-flex align-center gap-2">
-                <span style="font-size:12px"><?= basename($b) ?></span>
-                <span style="font-size:11px" class="text-muted"><?= round(filesize($b)/1024) ?> KB</span>
-            </div>
-            <div class="d-flex gap-1">
-                <form method="POST" style="display:inline"><?= get_csrf_field() ?><input type="hidden" name="action" value="download_backup"><input type="hidden" name="filename" value="<?= basename($b) ?>"><button class="btn btn-ghost btn-sm" style="font-size:11px"><?= t('btn_download') ?></button></form>
-            </div>
-        </div>
-        <?php endforeach; ?>
-    </div>
-    <?php endif; ?>
-</div>
 
 <?php include 'includes/footer.php'; ?>

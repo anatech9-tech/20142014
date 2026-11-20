@@ -53,7 +53,7 @@ include 'includes/header.php';
                 <td><?= $c['contract_end'] ? to_jalali($c['contract_end']) : '-' ?></td>
                 <td><span class="tag <?= $alert ? 'tag-rejected' : 'tag-active' ?>"><?= $remaining ?></span></td>
                 <td><?= $c['insurance_number'] ?: '-' ?></td>
-                <td><?= number_format($c['insurance_amount']) ?> <?= t('ت') ?></td>
+                <td><?= number_format($c['insurance_amount'], 0, '.', '،') ?> <?= t('ت') ?></td>
                 <td><?php $__dc = $doc_map[(int)$c['id']] ?? 0; ?>
                     <?php if ($__dc > 0): ?>
                         <a href="index.php?page=personnel" class="tag tag-active" style="text-decoration:none" title="مشاهده در صفحهٔ پرسنل (دکمهٔ 📎 در ردیف شخص)">📎 <?= $__dc ?> مدرک</a>

@@ -449,7 +449,7 @@ include 'includes/header.php';
     <div class="ls-head">
         <div>
             <h3 class="ls-title">📊 <?= t('خلاصهٔ مرخصی ماهانه') ?><?= $can_view_all ? '' : ' — ' . htmlspecialchars($_SESSION['full_name'] ?? '', ENT_QUOTES, 'UTF-8') ?></h3>
-            <div class="ls-sub"><?= t('سهمیهٔ هر ماه') ?>: <strong><?= leave_fmt_amount($ls_quota_hours, $ls_day_hours) ?></strong> (<?= rtrim(rtrim(number_format($ls_quota_days, 1), '0'), '.') ?> <?= t('روز') ?> × <?= rtrim(rtrim(number_format($ls_day_hours, 1), '0'), '.') ?> <?= t('ساعت') ?>) — <?= t('مرخصی روزانه و ساعتی از یک سهمیه کم می‌شوند') ?></div>
+
         </div>
         <div class="ls-nav">
             <a href="<?= htmlspecialchars($ls_prev_url, ENT_QUOTES, 'UTF-8') ?>" title="<?= t('ماه قبل') ?>">‹ <?= t('ماه قبل') ?></a>

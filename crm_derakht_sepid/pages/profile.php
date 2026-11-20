@@ -128,9 +128,8 @@ include 'includes/header.php';
 </div>
 
 <div class="card mt-4 animate-in">
-    <div class="card-header"><h3 class="card-title">🎨 انتخاب پالت رنگی</h3></div>
-    <p class="text-muted" style="font-size:11px;margin-bottom:12px">۶ رنگ برند مرجع کارکت؛ حالت روشن/تاریک را با دکمهٔ ماه/خورشید عوض کن. انتخاب شما در همین مرورگر ذخیره می‌شود.</p>
-    <div class="palette-grid">
+    <div class="card-header"><h3 class="card-title">🎨 پالت رنگی</h3></div>
+    <div class="palette-grid" data-palette-preview>
 <?php include __DIR__ . '/../includes/palette_swatches.php'; ?>
     </div>
 </div>
@@ -141,7 +140,7 @@ include 'includes/header.php';
         <thead><tr><th><?= t('واحد') ?></th><th><?= t('per_daily_salary') ?></th></tr></thead>
         <tbody>
             <?php foreach ($my_workshops as $w): ?>
-            <tr><td><?= $w['name'] ?></td><td><?= number_format($w['daily_salary']) ?> <?= t('ت') ?></td></tr>
+            <tr><td><?= $w['name'] ?></td><td><?= number_format($w['daily_salary'], 0, '.', '،') ?> <?= t('ت') ?></td></tr>
             <?php endforeach; ?>
         </tbody>
     </table></div>

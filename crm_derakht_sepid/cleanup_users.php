@@ -22,7 +22,7 @@
  */
 require __DIR__ . '/config.php';
 
-$ACCOUNT_TABLES = ['notification_recipients','push_subscriptions','chat_channel_members','user_page_access','user_permissions','temp_entry_grants','workshop_personnel'];
+$ACCOUNT_TABLES = ['notification_recipients','push_subscriptions','chat_channel_members','user_page_access','user_permissions','workshop_personnel'];
 $BUSINESS_TABLES = [ // فقط برای گزارش؛ پاک نمی‌شوند
     'work_hours'           => 'user_id',
     'leave_requests'       => 'user_id',
@@ -30,8 +30,6 @@ $BUSINESS_TABLES = [ // فقط برای گزارش؛ پاک نمی‌شوند
     'advances'             => 'user_id',
     'bonuses_penalties'    => 'user_id',
     'petty_cash'           => 'user_id',
-    'daily_reports'        => 'user_id',
-    'work_orders'          => 'created_by',
     'purchase_requests'    => 'created_by',
     'crm_deals'            => 'owner_user_id',
     'crm_leads'            => 'owner_user_id',
@@ -222,7 +220,7 @@ button{background:#dc2626;color:#fff;border:0;border-radius:10px;padding:10px 22
     <?php if (!$bizAfter): ?><p>هیچ دادهٔ حقوق/حضوری/مالی متصل به این حساب‌ها پیدا نشد — احتمالاً پاک‌سازی کاملاً تمیزه.</p><?php else: ?>
     <div class="warn">این جدول‌ها ردیف‌های متصل به حساب‌های در حال حذف را دارند. چون ممکن است دادهٔ واقعی (نه تست) باشند، پاک نمی‌شوند. اگر مطمئن هستی همه تستی‌اند و خودت می‌خواهی پاکشان کنم، بعد از حذف حساب‌ها همین صفحه را دوباره باز کن و مقدار «بله» را ببین؛ یا پیام بده تا نسخهٔ دوم را بنویسم.</div>
     <table><thead><tr><th>جدول.ستون</th><th>تعداد ردیف</th></tr></thead><tbody>
-    <?php foreach ($bizAfter as $k => $n): ?><tr><td><code><?= htmlspecialchars($k) ?></code></td><td><?= $n === -1 ? 'خطای خواندن' : number_format($n) ?></td></tr><?php endforeach; ?>
+    <?php foreach ($bizAfter as $k => $n): ?><tr><td><code><?= htmlspecialchars($k) ?></code></td><td><?= $n === -1 ? 'خطای خواندن' : number_format($n, 0, '.', '،') ?></td></tr><?php endforeach; ?>
     </tbody></table><?php endif; ?>
     </div>
 

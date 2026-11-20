@@ -76,7 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $staff_category = sanitize($_POST['staff_category'] ?? '');
         if (!in_array($staff_category, ['sales', 'office', 'manager'], true)) $staff_category = 'office';
         $sales_track = sanitize($_POST['sales_track'] ?? '');
-        if (!in_array($sales_track, ['کارشناس تلفنی', 'کارشناس دیجیتال مارکتینگ', 'کارشناس حضوری'], true)) $sales_track = '';
+        if (!in_array($sales_track, ['کارشناس تلفنی', 'کارشناس دیجیتال مارکتینگ', 'کارشناس حضوری', 'کارشناس غیرحضوری'], true)) $sales_track = '';
         $office_role = sanitize($_POST['office_role'] ?? '');
         $salary_effective_from = to_gregorian($_POST['salary_effective_from'] ?? '') ?: null;
         if ($staff_category !== 'sales') $salary_effective_from = null;
@@ -195,7 +195,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $staff_category = sanitize($_POST['staff_category'] ?? '');
         if (!in_array($staff_category, ['sales', 'office', 'manager'], true)) $staff_category = '';
         $sales_track = sanitize($_POST['sales_track'] ?? '');
-        if (!in_array($sales_track, ['کارشناس تلفنی', 'کارشناس دیجیتال مارکتینگ', 'کارشناس حضوری'], true)) $sales_track = '';
+        if (!in_array($sales_track, ['کارشناس تلفنی', 'کارشناس دیجیتال مارکتینگ', 'کارشناس حضوری', 'کارشناس غیرحضوری'], true)) $sales_track = '';
         $office_role = sanitize($_POST['office_role'] ?? '');
         $salary_effective_from = to_gregorian($_POST['salary_effective_from'] ?? '') ?: null;
         if ($staff_category !== 'sales') $salary_effective_from = null;
@@ -375,7 +375,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $st = $pdo->prepare("INSERT INTO bonuses_penalties (user_id, workshop_id, type, amount, date, reason, status, created_by) VALUES (?,?, 'bonus', ?, ?, ?, 'approved', ?)");
             $st->execute([$uid, $ws_id, $amount, $date_g, $reason, $_SESSION['user_id']]);
             $st2 = $pdo->prepare("INSERT INTO audit_log (user_id, action, entity_type, entity_id, new_value) VALUES (?, 'create', 'personal_commission', ?, ?)");
-            $st2->execute([$_SESSION['user_id'], $uid, $reason . ' — ' . number_format($amount)]);
+            $st2->execute([$_SESSION['user_id'], $uid, $reason . ' — ' . number_format($amount, 0, '.', '،')]);
             showToast(t('پورسانت ثبت شد و در حقوق ماه لحاظ می‌شود'));
         } else {
             showToast(t('نام مشتری و مبلغ را کامل وارد کنید'), 'error');
@@ -433,7 +433,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $done_n++;
         }
         $stmt = $pdo->prepare("INSERT INTO audit_log (user_id, action, entity_type, entity_id, new_value) VALUES (?, 'salary_raise', 'personnel', ?, ?)");
-        $stmt->execute([$_SESSION['user_id'], $user_id, "$done_n نفر — " . ($mode === 'percent' ? "$value٪" : number_format($value) . ' تومان') . " از " . to_jalali($start_date)]);
+        $stmt->execute([$_SESSION['user_id'], $user_id, "$done_n نفر — " . ($mode === 'percent' ? "$value٪" : number_format($value, 0, '.', '،') . ' تومان') . " از " . to_jalali($start_date)]);
         showToast($start_date > date('Y-m-d') ? strtr(t('افزایش حقوق برای {count} نفر ثبت شد — از «{date}» در محاسبات اعمال می‌شود 📅'), ['{count}' => $done_n, '{date}' => to_jalali($start_date)]) : strtr(t('افزایش حقوق برای {count} نفر ثبت شد'), ['{count}' => $done_n]) . ' ✅');
         redirect("index.php?page=personnel");
     }
@@ -888,6 +888,7 @@ function render_staff_groups_html(string $prefix, array $orgRoles) {
                 <option value="کارشناس تلفنی">کارشناس تلفنی</option>
                 <option value="کارشناس دیجیتال مارکتینگ">کارشناس دیجیتال مارکتینگ</option>
                 <option value="کارشناس حضوری">کارشناس حضوری</option>
+                <option value="کارشناس غیرحضوری">کارشناس غیرحضوری</option>
             </select>
         </div>
         <div class="form-group">
@@ -1088,9 +1089,9 @@ function access_row_html($key, $label, $indent = false) {
                 <td><?= $p['phone'] ?: '-' ?></td>
                 <?php if (is_strict_admin()): ?><td>
                     <?php if ($p['is_karigar'] == 2): ?>
-                        <?= number_format((float)($p['hourly_salary'] ?? 0)) ?> <?= t('ت') ?> (<?= t('ساعتی') ?>)
+                        <?= number_format((float)($p['hourly_salary'] ?? 0), 0, '.', '،') ?> <?= t('ت') ?> (<?= t('ساعتی') ?>)
                     <?php else: ?>
-                        <?= $p['is_karigar'] ? number_format($p['daily_salary']) . ' ' . t('ت') . ' (' . t('روزانه') . ')' : number_format($p['monthly_salary']) . ' ' . t('ت') . ' (' . t('ماهانه') . ')' ?>
+                        <?= $p['is_karigar'] ? number_format($p['daily_salary'], 0, '.', '،') . ' ' . t('ت') . ' (' . t('روزانه') . ')' : number_format($p['monthly_salary'], 0, '.', '،') . ' ' . t('ت') . ' (' . t('ماهانه') . ')' ?>
                     <?php endif; ?>
                 </td><?php endif; ?>
                 <td><?= $p['contract_start'] ? to_jalali($p['contract_start']) : '-' ?></td>
@@ -1150,9 +1151,9 @@ function access_row_html($key, $label, $indent = false) {
                 <input type="hidden" name="is_karigar" value="0">
                 <input type="hidden" name="staff_category" id="add_staff_category_hidden" value="office">
                 <div class="form-row mb-3">
-                    <label class="form-check"><input type="radio" name="staff_pick" value="sales" id="add_cat_sales" onchange="staffCatChanged('add', 'sales')"><span><strong>کارشناس فروش</strong> (حقوق ثابت + کمیسیون تارگتی، پنل)</span></label>
-                    <label class="form-check"><input type="radio" name="staff_pick" value="office" id="add_cat_office" checked onchange="staffCatChanged('add', 'office')"><span><strong>کارمند اداری</strong> (حقوق ثابت، بدون پورسانت)</span></label>
-                    <label class="form-check"><input type="radio" name="staff_pick" value="manager" id="add_cat_manager" onchange="staffCatChanged('add', 'manager')"><span><strong>مدیر</strong> (حقوق ثابت از روز اول + کمیسیون تارگتی)</span></label>
+                    <label class="form-check"><input type="radio" name="staff_pick" value="sales" id="add_cat_sales" onchange="staffCatChanged('add', 'sales')"><span><strong>کارشناس فروش</strong></span></label>
+                    <label class="form-check"><input type="radio" name="staff_pick" value="office" id="add_cat_office" checked onchange="staffCatChanged('add', 'office')"><span><strong>کارمند اداری</strong></span></label>
+                    <label class="form-check"><input type="radio" name="staff_pick" value="manager" id="add_cat_manager" onchange="staffCatChanged('add', 'manager')"><span><strong>مدیر</strong></span></label>
                 </div>
 
                 <!-- Common Fields -->
@@ -1173,7 +1174,7 @@ function access_row_html($key, $label, $indent = false) {
                     </div>
                     <div class="form-group">
                         <label class="form-label"><?= t('per_specialty') ?></label>
-                        <input type="text" name="specialty" class="form-control" placeholder="<?= t('مثلاً') ?>: <?= t('برق‌کار، آهنگر...') ?>">
+                        <input type="text" name="specialty" class="form-control" placeholder="مثلاً: فروش تلفنی، فروش آنلاین، پشتیبانی مشتری، امور مالی…">
                     </div>
                 </div>
                 <div class="form-row">
@@ -1294,7 +1295,7 @@ function access_row_html($key, $label, $indent = false) {
                     <label class="form-check"><input type="radio" name="staff_pick" value="sales" id="edit_cat_sales" onchange="editCategoryChanged('sales')"><span><strong>کارشناس فروش</strong></span></label>
                     <label class="form-check"><input type="radio" name="staff_pick" value="office" id="edit_cat_office" onchange="editCategoryChanged('office')"><span><strong>کارمند اداری</strong></span></label>
                     <label class="form-check"><input type="radio" name="staff_pick" value="manager" id="edit_cat_manager" onchange="editCategoryChanged('manager')"><span><strong>مدیر</strong></span></label>
-                    <label class="form-check" id="edit_legacy_radio_wrap" style="display:none"><input type="radio" name="staff_pick" value="legacy" id="edit_cat_legacy" onchange="editCategoryChanged('legacy')"><span><strong>نیروی قدیمی</strong> (کارگر/پیمانکار — حفظ ساختار قبلی)</span></label>
+                    <label class="form-check" id="edit_legacy_radio_wrap" style="display:none"><input type="radio" name="staff_pick" value="legacy" id="edit_cat_legacy" onchange="editCategoryChanged('legacy')"><span><strong>نیروی قدیمی</strong></span></label>
                 </div>
 
                 <!-- Common Fields -->
@@ -1329,7 +1330,7 @@ function access_row_html($key, $label, $indent = false) {
                 <div class="form-row">
                     <div class="form-group">
                         <label class="form-label"><?= t('per_specialty') ?></label>
-                        <input type="text" name="specialty" id="edit_specialty" class="form-control">
+                        <input type="text" name="specialty" id="edit_specialty" class="form-control" placeholder="مثلاً: فروش تلفنی، فروش آنلاین، پشتیبانی مشتری، امور مالی…">
                     </div>
                     <div class="form-group">
                         <label class="form-label"><?= t('per_address') ?></label>
@@ -1515,6 +1516,7 @@ function access_row_html($key, $label, $indent = false) {
                     ✅ <?= t('تیک') ?> <?= t('هر') ?> <?= t('صفحه') ?> = <?= t('btn_permissions') ?> <?= t('به') ?> <?= t('آن') ?> — <?= t('بعد') ?> <?= t('lea_from') ?> <?= t('تیک') ?>، <b>✏️ <?= t('ویراستار') ?></b> (<?= t('مدیریت کامل') ?>) <?= t('یا') ?> <b>👁️ <?= t('ناظر') ?></b> (<?= t('فقط مشاهده، بدون هیچ تغییری') ?>) <?= t('را') ?> <?= t('انتخاب کنید') ?>.
                     <br>📌 <?= t('صفحات') ?> <?= t('sal_base_pay') ?> <?= t('برای') ?> <?= t('همه') ?> <?= t('با') ?> <?= t('اطلاعاتِ') ?> <?= t('خودشان') ?> <?= t('فعال') ?>‌<?= t('اند') ?>؛ <?= t('تیک') ?>‌<?= t('شان') ?> <?= t('یعنی') ?> <?= t('دیدن') ?>/<?= t('مدیریت') ?> <?= t('اطلاعاتِ') ?> <?= t('بقیه') ?> <?= t('هم') ?>. <?= t('بدون') ?> <?= t('هیچ') ?> <?= t('تیکی') ?> <?= t('هر') ?> <?= t('per_count') ?>: <?= t('داشبورد') ?>، <?= t('پروفایل') ?>، <?= t('چت') ?> <?= t('و') ?> <?= t('صفحات') ?> <?= t('پایهٔ') ?> <?= t('خودش') ?> <?= t('را') ?> <?= t('دارد') ?>.
                     <br>⏳ <?= t('تیک') ?> «<?= t('lea_to') ?> <?= t('wh_today') ?>» <?= t('کنار') ?> <?= t('ناظر') ?> = <b><?= t('ناظر') ?> <?= t('موقت') ?></b>: <?= t('btn_permissions') ?> <?= t('مشاهده') ?> <?= t('بعد') ?> <?= t('lea_from') ?> <?= t('wh_end') ?> <?= t('wh_today') ?> <?= t('خودش') ?> <?= t('btn_deactivate') ?> <?= t('می‌شود') ?>.
+                    <br>🏢 <?= t('صفحات') ?> CRM <?= t('برای') ?> <?= t('همه') ?> <?= t('باز') ?>‌<?= t('اند') ?>؛ <?= t('تیک') ?>‌<?= t('شان') ?> «<?= t('ناظر') ?>» = <?= t('فقط') ?> <?= t('مشاهده') ?>.
                 </p>
                 <!-- §v12: نقش‌های آماده -->
                 <div style="margin-bottom:14px;padding:10px 12px;background:rgba(236,72,153,.06);border:1px dashed var(--border);border-radius:10px">
@@ -1524,6 +1526,7 @@ function access_row_html($key, $label, $indent = false) {
                         <button type="button" class="btn btn-ghost btn-sm" style="border:1px solid var(--border)" onclick="accPreset('supervisor')">👷 <?= t('anbar_sign_supervisor') ?></button>
                         <button type="button" class="btn btn-ghost btn-sm" style="border:1px solid var(--border)" onclick="accPreset('warehouse')">📦 <?= t('anbar_keeper') ?></button>
                         <button type="button" class="btn btn-ghost btn-sm" style="border:1px solid var(--border)" onclick="accPreset('accountant')">💰 <?= t('حسابدار') ?></button>
+                        <button type="button" class="btn btn-ghost btn-sm" style="border:1px solid var(--border)" onclick="accPreset('sales')">🏢 کارشناس فروش</button>
                         <button type="button" class="btn btn-ghost btn-sm" style="border:1px solid var(--border);color:var(--danger)" onclick="accPreset('clear')">🧹 <?= t('پاک‌سازی تیک‌ها') ?></button>
                     </div>
                 </div>
@@ -1543,6 +1546,10 @@ function access_row_html($key, $label, $indent = false) {
                 <h4 style="margin:16px 0 8px;color:var(--primary)">🧾 <?= t('nav_forms') ?> <button type="button" class="btn btn-ghost btn-sm" style="font-size:11px" onclick="accToggleGroup('form_', this)"><?= t('انتخاب/لغو همه') ?></button></h4>
                 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:8px">
                     <?php foreach ($__reg['children']['forms'] as $k => $l) echo access_row_html($k, $l, true); ?>
+                </div>
+                <h4 style="margin:16px 0 8px;color:var(--primary)">🏢 <?= t('فروش') ?> و CRM <button type="button" class="btn btn-ghost btn-sm" style="font-size:11px;font-weight:400" onclick="accToggleGroup('crm_', this)"><?= t('انتخاب/لغو همه') ?></button></h4>
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:8px">
+                    <?php foreach ($__reg['crm']['items'] as $k => $l) echo access_row_html($k, $l); ?>
                 </div>
             </div>
             <div class="modal-footer"><button type="submit" class="btn btn-primary" id="permSaveBtn"><?= t('btn_save') ?></button><button type="button" onclick="closeModal('permModal')" class="btn btn-ghost"><?= t('btn_cancel') ?></button></div>
@@ -1772,10 +1779,11 @@ function accPreset(name) {
     var repKeys = [];
     document.querySelectorAll('#permForm .acc-chk').forEach(function (cb) { if (cb.value.indexOf('rep_') === 0) repKeys.push(cb.value); });
     var P = {
-        office: { personnel:'e', work_hours:'e', salary:'e', advances:'e', leaves:'e', daily_reports:'e', work_orders:'e', petty_cash:'e', contracts:'e', archive:'v', audit:'v', form_emp_pay:'e', __reps:'v' },
-        supervisor: { work_hours:'e', daily_reports:'e', work_orders:'e', leaves:'v', salary:'v', rep_work_hours:'v' },
+        office: { personnel:'e', work_hours:'e', salary:'e', advances:'e', leaves:'e', petty_cash:'e', contracts:'e', archive:'v', audit:'v', __reps:'v' },
+        supervisor: { work_hours:'e', leaves:'v', salary:'v', rep_work_hours:'v' },
         warehouse: { inventory:'e', form_anbar:'e', rep_monthly:'v' },
-        accountant: { salary:'e', advances:'e', petty_cash:'e', contracts:'e', archive:'v', audit:'v', form_emp_pay:'e', __reps:'v' }
+        accountant: { salary:'e', advances:'e', petty_cash:'e', contracts:'e', archive:'v', audit:'v', __reps:'v' },
+        sales: { crm_customers:'e', crm_leads:'e', crm_deals:'e', crm_tasks:'e' }
     };
     var p = P[name] || {};
     if (name === 'clear') return;
@@ -1952,8 +1960,8 @@ function fixAddWorkRole() { return true; }
                 <tbody>
                 <?php foreach ($rows as $h): ?>
                     <tr>
-                        <td><?= $h['old_salary'] !== null && $h['old_salary'] !== '' ? number_format((float)$h['old_salary']) : '—' ?></td>
-                        <td style="font-weight:700;color:var(--success)"><?= number_format((float)$h['new_salary']) ?></td>
+                        <td><?= $h['old_salary'] !== null && $h['old_salary'] !== '' ? number_format((float)$h['old_salary'], 0, '.', '،') : '—' ?></td>
+                        <td style="font-weight:700;color:var(--success)"><?= number_format((float)$h['new_salary'], 0, '.', '،') ?></td>
                         <td><?= ($h['start_date'] && $h['start_date'] !== '0000-00-00') ? to_jalali($h['start_date']) : '<span class="text-muted">' . (($h['reason'] ?? '') === 'ایجاد اولیه' ? t('اولیه') : t('ویرایش مستقیم')) . '</span>' ?></td>
                         <td><?= $h['reason'] ?: '—' ?></td>
                         <td class="text-muted"><?= $h['changer'] ?: '—' ?></td>
@@ -1984,7 +1992,7 @@ function openRaiseModal(uid, name, base, isWorker) {
     raiseBase = parseFloat(base) || 0;
     document.getElementById('raiseUserId').value = uid;
     document.getElementById('raiseName').textContent = name;
-    document.getElementById('raiseCurrent').textContent = raiseBase.toLocaleString() + ' <?= t('sal_toman') ?>';
+    document.getElementById('raiseCurrent').textContent = fmtNum(raiseBase) + ' <?= t('sal_toman') ?>';
     document.getElementById('raiseKind').textContent = isWorker ? '(<?= t('sal_daily') ?>)' : '(<?= t('sal_monthly') ?>)';
     document.getElementById('raiseValue').value = '';
     document.getElementById('raisePreview').style.display = 'none';
@@ -2002,8 +2010,8 @@ function raisePreviewUpdate() {
     if (v <= 0) { box.style.display = 'none'; return; }
     var nw = mode === 'percent' ? Math.round(raiseBase * (1 + v / 100)) : Math.round(raiseBase + v);
     box.style.display = 'block';
-    box.innerHTML = '✅ <?= t('nav_salary') ?> <?= t('جدید') ?>: <strong>' + nw.toLocaleString() + ' <?= t('sal_toman') ?></strong> (' +
-        (mode === 'percent' ? v + '٪ <?= t('افزایش') ?>' : '+' + v.toLocaleString() + ' <?= t('sal_toman') ?>') + ')';
+    box.innerHTML = '✅ <?= t('nav_salary') ?> <?= t('جدید') ?>: <strong>' + fmtNum(nw) + ' <?= t('sal_toman') ?></strong> (' +
+        (mode === 'percent' ? v + '٪ <?= t('افزایش') ?>' : '+' + fmtNum(v) + ' <?= t('sal_toman') ?>') + ')';
 }
 function openGroupRaise() {
     document.getElementById('groupValue').value = '';
@@ -2032,7 +2040,7 @@ function groupPreviewUpdate() {
     if (v <= 0) { box.style.display = 'none'; return; }
     box.style.display = 'block';
     box.innerHTML = '⚠️ <?= t('این') ?> <?= t('افزایش') ?> <?= t('روی') ?> <strong>' + (groupCounts[sc] || 0) + ' <?= t('per_count') ?></strong> <?= t('اعمال') ?> <?= t('می‌شود') ?> — ' +
-        (mode === 'percent' ? v + '٪ <?= t('روی') ?> <?= t('nav_salary') ?> <?= t('هر') ?> <?= t('per_count') ?>' : '+' + v.toLocaleString() + ' <?= t('sal_toman') ?> <?= t('روی') ?> <?= t('nav_salary') ?> <?= t('هر') ?> <?= t('per_count') ?>');
+        (mode === 'percent' ? v + '٪ <?= t('روی') ?> <?= t('nav_salary') ?> <?= t('هر') ?> <?= t('per_count') ?>' : '+' + fmtNum(v) + ' <?= t('sal_toman') ?> <?= t('روی') ?> <?= t('nav_salary') ?> <?= t('هر') ?> <?= t('per_count') ?>');
 }
 </script>
 

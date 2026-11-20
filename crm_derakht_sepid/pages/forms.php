@@ -78,14 +78,6 @@ $form_ok = function ($key) { return in_array(access_mode($key), ['viewer', 'edit
 ?>
 
 <div class="forms-grid">
-    <?php if (!$is_karfarma_user && !$is_javidhse && $form_ok('form_emp_pay')): ?>
-    <a href="index.php?page=employee_payment_print" target="_blank" class="form-card animate-in">
-        <div class="icon-circle icon-emp"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-        <h3><?= t('لیست واریزی کارکنان اداری') ?></h3>
-        <p><?= t('جدول واریزی حقوق نیروهای اداری و مهندسین') ?></p>
-    </a>
-    <?php endif; ?>
-
     <?php if (!$is_karfarma_user && !$is_javidhse && $form_ok('form_anbar')): ?>
     <a href="index.php?page=anbar_report" target="_blank" class="form-card animate-in" style="animation-delay:0.3s">
         <div class="icon-circle icon-anb"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.3 7 12 12 20.7 7"/><line x1="12" y1="22" x2="12" y2="12"/></svg></div>
@@ -111,7 +103,7 @@ $form_ok = function ($key) { return in_array(access_mode($key), ['viewer', 'edit
     <?php endif; ?>
 </div>
 
-<?php if (!$is_karfarma_user && !$is_javidhse && !$form_ok('form_anbar') && !$form_ok('form_emp_pay') && !$form_ok('form_petty_month') && !$form_ok('form_inv_count')): ?>
+<?php if (!$is_karfarma_user && !$is_javidhse && !$form_ok('form_anbar') && !$form_ok('form_petty_month') && !$form_ok('form_inv_count')): ?>
 <p class="text-muted animate-in" style="text-align:center;padding:40px 20px">
     <?= t('هنوز فرمی برای شما فعال نشده است — از مدیر بخواهید در صفحه پرسنل با دکمهٔ «دسترسی»، فرم‌های موردنیازتان را فعال کند.') ?>
 </p>

@@ -77,7 +77,8 @@ function calc_person_month($pdo, $uid, $ws_id, $g_start, $g_end, $is_karigar, $d
             $hol_h += $calc['holiday_hours'];
             $salary_d = salary_at_date($history, $date, (float)($monthly_salary ?? 0));
             $regular_hourly_d = employee_hourly_rate_for_required_hours($salary_d, $required_info);
-            $special_hourly_d = $salary_d / 26 / 8;
+            $mnd = max(1, (float)($settings['monthly_salary_days'] ?? 26));
+            $special_hourly_d = $salary_d / $mnd / 8;
             $base_f += $calc['regular'] * $regular_hourly_d
                      + $calc['overtime'] * $special_hourly_d * $ot_c
                      + $calc['night'] * $special_hourly_d * $ni_c
@@ -228,11 +229,11 @@ $chart_values = array_map(fn($r) => $r['net_pay'], $report_data);
                     <td><?= fmt_hm($r['night_hours']) ?></td>
                     <td><?= fmt_hm($r['friday_hours']) ?></td>
                     <td><?= fmt_hm($r['holiday_hours']) ?></td>
-                    <td><?= number_format($r['base_pay']) ?></td>
-                    <td class="text-success"><?= $r['bonus'] > 0 ? number_format($r['bonus']) : '-' ?></td>
-                    <td class="text-danger"><?= $r['penalty'] > 0 ? number_format($r['penalty']) : '-' ?></td>
-                    <td><?= $r['advance'] > 0 ? number_format($r['advance']) : '-' ?></td>
-                    <td><strong class="<?= $r['net_pay'] >= 0 ? 'text-success' : 'text-danger' ?>"><?= number_format($r['net_pay']) ?></strong></td>
+                    <td><?= number_format($r['base_pay'], 0, '.', '،') ?></td>
+                    <td class="text-success"><?= $r['bonus'] > 0 ? number_format($r['bonus'], 0, '.', '،') : '-' ?></td>
+                    <td class="text-danger"><?= $r['penalty'] > 0 ? number_format($r['penalty'], 0, '.', '،') : '-' ?></td>
+                    <td><?= $r['advance'] > 0 ? number_format($r['advance'], 0, '.', '،') : '-' ?></td>
+                    <td><strong class="<?= $r['net_pay'] >= 0 ? 'text-success' : 'text-danger' ?>"><?= number_format($r['net_pay'], 0, '.', '،') ?></strong></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
@@ -272,8 +273,8 @@ $hours_data = $stmt->fetchAll();
                 </td>
                 <td><span class="tag <?= $h['is_karigar'] ? 'tag-karigar' : 'tag-active' ?>"><?= $h['is_karigar'] ? t('sal_worker') : t('sal_employee') ?></span></td>
                 <td><?= $h['days'] ?></td>
-                <td><?= number_format($h['total_hours'], 1) ?>h</td>
-                <td><?= $h['days'] > 0 ? number_format($h['total_hours']/$h['days'], 1) : 0 ?>h</td>
+                <td><?= number_format($h['total_hours'], 1, '.', '،') ?>h</td>
+                <td><?= $h['days'] > 0 ? number_format($h['total_hours']/$h['days'], 1, '.', '،') : 0 ?>h</td>
             </tr>
             <?php endforeach; ?>
         </tbody>
@@ -326,23 +327,23 @@ $total_net = array_sum(array_map(fn($d) => $d['net'], $monthly_data));
             <tr>
                 <td><strong><?= $d['name'] ?></strong></td>
                 <td><span class="tag <?= $d['is_karigar'] ? 'tag-karigar' : 'tag-active' ?>"><?= $d['is_karigar'] ? t('sal_worker') : t('sal_employee') ?></span></td>
-                <td><?= $d['is_karigar'] ? number_format($d['days'], 1) . ' ' . t('روز') : fmt_hm($d['hours']) ?></td>
-                <td><?= number_format($d['base_pay']) ?></td>
-                <td class="text-success"><?= $d['bonus'] > 0 ? number_format($d['bonus']) : '-' ?></td>
-                <td class="text-danger"><?= $d['penalty'] > 0 ? number_format($d['penalty']) : '-' ?></td>
-                <td><?= $d['advance'] > 0 ? number_format($d['advance']) : '-' ?></td>
-                <td><strong class="<?= $d['net'] >= 0 ? 'text-success' : 'text-danger' ?>"><?= number_format($d['net']) ?></strong></td>
+                <td><?= $d['is_karigar'] ? number_format($d['days'], 1, '.', '،') . ' ' . t('روز') : fmt_hm($d['hours']) ?></td>
+                <td><?= number_format($d['base_pay'], 0, '.', '،') ?></td>
+                <td class="text-success"><?= $d['bonus'] > 0 ? number_format($d['bonus'], 0, '.', '،') : '-' ?></td>
+                <td class="text-danger"><?= $d['penalty'] > 0 ? number_format($d['penalty'], 0, '.', '،') : '-' ?></td>
+                <td><?= $d['advance'] > 0 ? number_format($d['advance'], 0, '.', '،') : '-' ?></td>
+                <td><strong class="<?= $d['net'] >= 0 ? 'text-success' : 'text-danger' ?>"><?= number_format($d['net'], 0, '.', '،') ?></strong></td>
             </tr>
             <?php endforeach; ?>
         </tbody>
         <tfoot>
             <tr style="font-weight:bold;background:var(--bg)">
                 <td colspan="3"><?= t('rep_total') ?> <?= t('کل') ?></td>
-                <td><?= number_format($total_base) ?></td>
-                <td class="text-success"><?= number_format($total_bonus) ?></td>
-                <td class="text-danger"><?= number_format($total_penalty) ?></td>
-                <td><?= number_format($total_advance) ?></td>
-                <td class="<?= $total_net >= 0 ? 'text-success' : 'text-danger' ?>"><?= number_format($total_net) ?></td>
+                <td><?= number_format($total_base, 0, '.', '،') ?></td>
+                <td class="text-success"><?= number_format($total_bonus, 0, '.', '،') ?></td>
+                <td class="text-danger"><?= number_format($total_penalty, 0, '.', '،') ?></td>
+                <td><?= number_format($total_advance, 0, '.', '،') ?></td>
+                <td class="<?= $total_net >= 0 ? 'text-success' : 'text-danger' ?>"><?= number_format($total_net, 0, '.', '،') ?></td>
             </tr>
         </tfoot>
     </table></div>
@@ -414,9 +415,9 @@ $grand_total = array_sum($month_totals);
             <tr>
                 <td><strong><?= $d['name'] ?></strong></td>
                 <?php for ($jm = 1; $jm <= 12; $jm++): ?>
-                <td><?= ($d['months'][$jm] ?? 0) > 0 ? number_format($d['months'][$jm]) : '-' ?></td>
+                <td><?= ($d['months'][$jm] ?? 0) > 0 ? number_format($d['months'][$jm], 0, '.', '،') : '-' ?></td>
                 <?php endfor; ?>
-                <td><strong class="<?= $d['total'] >= 0 ? 'text-success' : 'text-danger' ?>"><?= number_format($d['total']) ?></strong></td>
+                <td><strong class="<?= $d['total'] >= 0 ? 'text-success' : 'text-danger' ?>"><?= number_format($d['total'], 0, '.', '،') ?></strong></td>
             </tr>
             <?php endforeach; ?>
         </tbody>
@@ -424,9 +425,9 @@ $grand_total = array_sum($month_totals);
             <tr style="font-weight:bold;background:var(--bg)">
                 <td><?= t('rep_total') ?> <?= t('sal_monthly') ?></td>
                 <?php for ($jm = 1; $jm <= 12; $jm++): ?>
-                <td><?= $month_totals[$jm] > 0 ? number_format($month_totals[$jm]) : '-' ?></td>
+                <td><?= $month_totals[$jm] > 0 ? number_format($month_totals[$jm], 0, '.', '،') : '-' ?></td>
                 <?php endfor; ?>
-                <td class="<?= $grand_total >= 0 ? 'text-success' : 'text-danger' ?>"><?= number_format($grand_total) ?></td>
+                <td class="<?= $grand_total >= 0 ? 'text-success' : 'text-danger' ?>"><?= number_format($grand_total, 0, '.', '،') ?></td>
             </tr>
         </tfoot>
     </table>

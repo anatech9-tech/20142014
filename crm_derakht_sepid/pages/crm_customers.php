@@ -302,7 +302,7 @@ include 'includes/header.php';
             <tr>
                 <td><?= htmlspecialchars($d['title']) ?></td>
                 <td><?= htmlspecialchars($d['stage_name'] ?? '—') ?></td>
-                <td dir="ltr"><?= number_format((float)$d['estimated_value']) ?> <?= htmlspecialchars($d['currency']) ?></td>
+                <td dir="ltr"><?= number_format((float)$d['estimated_value'], 0, '.', '،') ?> <?= htmlspecialchars($d['currency']) ?></td>
                 <td><?= $d['status'] === 'open' ? '🟡 باز' : ($d['status'] === 'won' ? '🟢 برنده' : '🔴 باخته') ?></td>
             </tr>
         <?php endforeach; ?>

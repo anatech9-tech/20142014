@@ -1,6 +1,5 @@
 <?php
 require_once 'config.php';
-require_once 'includes/temp_grants.php'; // §v16: دسترسی موقت ثبت ساعت
 
 $page = $_GET['page'] ?? 'login';
 $action = $_GET['action'] ?? '';
@@ -17,10 +16,6 @@ if ((isset($_GET['action']) && $_GET['action'] === 'switch_workshop') || isset($
 // سازگاری با درخواست‌های احتمالی قبلی
 if (isset($_GET['api'])) {
     $__api = (string)$_GET['api'];
-    if ($__api === 'work_orders') {
-        require_once __DIR__ . '/api/work_orders.php';
-        exit;
-    }
     if ($__api === 'notifications') {
         require_once __DIR__ . '/api/notifications.php';
         exit;
@@ -85,7 +80,7 @@ if (is_logged_in() && !access_is_special_account()) {
     $__gate_key = access_gate_page_map()[$page] ?? null;
     if ($__gate_key !== null) {
         $__mode = access_mode($__gate_key);
-        if ($__mode === null) {
+        if ($__mode === null && !in_array($__gate_key, access_default_allow_keys(), true)) {
             showToast(t('error_access_denied'), 'error');
             redirect('index.php?page=dashboard');
         }
@@ -97,6 +92,12 @@ if (is_logged_in() && !access_is_special_account()) {
 }
 
 // §v17: دسترسی موقت دیگر کاربر را قفل نمی‌کند؛ اعمال آن داخل صفحهٔ ساعت کاری است.
+
+// §v20: ذخیرهٔ پالت رنگی کاربر روی پروفایل (بعد از احراز CSRF)
+if (isset($_GET['action']) && $_GET['action'] === 'save_palette') {
+    require_once __DIR__ . '/api/save_palette.php';
+    exit;
+}
 
 // Route handling
 switch ($page) {
@@ -144,10 +145,6 @@ switch ($page) {
     case 'notifications':
         require_login();
         include 'pages/notifications.php';
-        break;
-    case 'work_orders':
-        require_login();
-        include 'pages/work_orders.php';
         break;
     case 'petty_cash':
         require_login();
@@ -218,9 +215,9 @@ switch ($page) {
         redirect('index.php?page=chat&view=channels');
         break;
     case 'daily_reports':
-        // §۱۲ تلفیق دستورکار و گزارش کار در یک صفحه
+        // صفحهٔ «دستورکار و گزارش کار» حذف شد (۲۰۲۶-۱۱-۱۰)؛ به ساعت کاری می‌فرستیم
         require_login();
-        redirect('index.php?page=work_orders&view=reports');
+        redirect('index.php?page=work_hours');
         break;
     case 'archive':
         require_login();
@@ -231,8 +228,9 @@ switch ($page) {
         include 'pages/salary_detail.php';
         break;
     case 'work_report':
+        // صفحهٔ «دستورکار و گزارش کار» حذف شد (۲۰۲۶-۱۱-۱۰)؛ گزارش کارکرد در صفحهٔ گزارش‌هاست
         require_login();
-        include 'pages/work_report.php';
+        redirect('index.php?page=reports&type=work_hours');
         break;
     case 'forms':
         require_login();
@@ -241,10 +239,6 @@ switch ($page) {
     case 'anbar_report':
         require_login();
         include 'pages/anbar_report.php';
-        break;
-    case 'employee_payment_print':
-        require_login();
-        include 'pages/employee_payment_print.php';
         break;
     case 'petty_cash_print':
         require_login();
@@ -273,10 +267,6 @@ switch ($page) {
     case 'crm_teams':
         require_login();
         include 'pages/crm_teams.php';
-        break;
-    case 'telefonchy_events':
-        require_login();
-        include 'pages/telefonchy_events.php';
         break;
     case 'calls':
         require_login();

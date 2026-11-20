@@ -42,7 +42,7 @@ if ($is_self) {
 
 $settings = get_workshop_settings($pdo, $d_ws ?: $ws_id);
 
-// COALESCE جلوی number_format(null) برای نیروهای منتقل‌شده/پایان‌کارخورده را می‌گیرد.
+// COALESCE جلوی number_format(null, 0, '.', '،') برای نیروهای منتقل‌شده/پایان‌کارخورده را می‌گیرد.
 if ($d_ws > 0) {
     $stmt = $pdo->prepare("SELECT u.*, COALESCE(wp.daily_salary,0) AS daily_salary, COALESCE(wp.monthly_salary,0) AS monthly_salary, wp.status AS wp_status FROM users u LEFT JOIN workshop_personnel wp ON wp.user_id=u.id AND wp.workshop_id=? WHERE u.id=?");
     $stmt->execute([$d_ws, $uid]);
@@ -215,7 +215,8 @@ foreach ($sorted_dates as $idx => $date) {
 
         $salary_d = salary_at_date($history, $date, (float)($user['monthly_salary'] ?? 0));
         $regular_hourly_d = employee_hourly_rate_for_required_hours($salary_d, $required_hours_info);
-        $special_hourly_d = $salary_d / 26 / 8;
+        $mnd = max(1, (float)($settings['monthly_salary_days'] ?? 26));
+        $special_hourly_d = $salary_d / $mnd / 8;
         $buck['regular'] += $calc['regular'] * $regular_hourly_d;
         $buck['overtime'] += $calc['overtime'] * $special_hourly_d * $overtime_coef;
         $buck['night'] += $calc['night'] * $special_hourly_d * $night_coef;
@@ -466,13 +467,13 @@ $print_orient = (($_GET['orient'] ?? 'portrait') === 'landscape') ? 'landscape' 
             </div>
             <div class="user-meta">
                 <?php if ($is_karigar): ?>
-                    <?= t('کارگر') ?> — <?= t('حقوق روزانه') ?>: <?= number_format($hdr_daily) ?> <?= t('تومان') ?>
-                    · <?= t('حقوق') ?> <?= t('ساعتی') ?> (<?= t('روزانه') ?>/۸): <?= number_format(round($hdr_daily / 8)) ?> <?= t('تومان') ?>
+                    <?= t('کارگر') ?> — <?= t('حقوق روزانه') ?>: <?= number_format($hdr_daily, 0, '.', '،') ?> <?= t('تومان') ?>
+                    · <?= t('حقوق') ?> <?= t('ساعتی') ?> (<?= t('روزانه') ?>/۸): <?= number_format(round($hdr_daily / 8), 0, '.', '،') ?> <?= t('تومان') ?>
                 <?php else: ?>
-                    <?= t('کارمند') ?> — <?= t('حقوق ماهانه') ?>: <?= number_format($hdr_monthly) ?> <?= t('تومان') ?>
-                    · <?= t('حقوق روزانه') ?> (/۲۶): <?= number_format(round($hdr_monthly / 26)) ?> <?= t('تومان') ?>
-                    · <?= t('نرخ') ?> <?= t('عادی') ?> <?= t('این') ?> <?= t('ماه:') ?> <?= number_format(round($hourly_base)) ?> <?= t('تومان') ?> (<?= t('بر مبنای') ?> <?= t('ساعات') ?> <?= t('کاری') ?> <?= t('الزامی') ?>)
-                    · <?= t('نرخ') ?> <?= t('ثابت') ?> <?= t('ویژه') ?>: <?= number_format(round($hdr_monthly / 26 / 8)) ?> <?= t('تومان') ?> (<?= t('جمعه') ?>/<?= t('تعطیل') ?>/<?= t('شب') ?>/<?= t('اضافه‌کار') ?>)
+                    <?= t('کارمند') ?> — <?= t('حقوق ماهانه') ?>: <?= number_format($hdr_monthly, 0, '.', '،') ?> <?= t('تومان') ?>
+                    · <?= t('حقوق روزانه') ?> (/<?= rtrim(rtrim(number_format((float)max(1, (float)($settings['monthly_salary_days'] ?? 26)), 1), '0'), '.') ?>): <?= number_format(round($hdr_monthly / max(1, (float)($settings['monthly_salary_days'] ?? 26))), 0, '.', '،') ?> <?= t('تومان') ?>
+                    · <?= t('نرخ') ?> <?= t('عادی') ?> <?= t('این') ?> <?= t('ماه:') ?> <?= number_format(round($hourly_base), 0, '.', '،') ?> <?= t('تومان') ?> (<?= t('بر مبنای') ?> <?= t('ساعات') ?> <?= t('کاری') ?> <?= t('الزامی') ?>)
+                    · <?= t('نرخ') ?> <?= t('ثابت') ?> <?= t('ویژه') ?>: <?= number_format(round($hdr_monthly / max(1, (float)($settings['monthly_salary_days'] ?? 26)) / 8), 0, '.', '،') ?> <?= t('تومان') ?> (<?= t('جمعه') ?>/<?= t('تعطیل') ?>/<?= t('شب') ?>/<?= t('اضافه‌کار') ?>)
                 <?php endif; ?>
             </div>
         </div>
@@ -505,7 +506,7 @@ $print_orient = (($_GET['orient'] ?? 'portrait') === 'landscape') ? 'landscape' 
             <div class="summary-card sc-green"><div class="label"><?= t('wh_hours') ?> <?= t('کل کار') ?> <?= t('(واقعی)') ?></div><div class="value"><?= fmt_hm(array_sum(array_column($daily_detail, 'total_worked'))) ?></div></div>
             <div class="summary-card sc-purple"><div class="label"><?= t('wh_hours') ?> <?= t('قابل') ?>‌<?= t('پرداخت') ?> (×۱.۸ <?= t('wh_friday') ?> / <?= t('حداقل') ?> ۴ <?= t('wh_night') ?>)</div><div class="value"><?= fmt_hm($totals['payable_hours']) ?></div></div>
             <div class="summary-card sc-yellow"><div class="label"><?= t('wh_day') ?> <?= t('اضافه') ?></div><div class="value"><?= $totals['extra_days'] ?></div><div class="sub"><?= t('هر') ?> ۸ <?= t('wh_hours') ?> <?= t('sal_overtime') ?> <?= t('= ۱') ?> <?= t('wh_day') ?></div></div>
-            <div class="summary-card sc-blue"><div class="label"><?= t('rep_total') ?> <?= t('مبلغ') ?> <?= t('sal_base_pay') ?></div><div class="value"><?= number_format($totals['base_pay']) ?> <?= t('ت') ?></div></div>
+            <div class="summary-card sc-blue"><div class="label"><?= t('rep_total') ?> <?= t('مبلغ') ?> <?= t('sal_base_pay') ?></div><div class="value"><?= number_format($totals['base_pay'], 0, '.', '،') ?> <?= t('ت') ?></div></div>
         </div>
         <?php else: ?>
         <div class="summary-grid">
@@ -519,29 +520,29 @@ $print_orient = (($_GET['orient'] ?? 'portrait') === 'landscape') ? 'landscape' 
               <div class="value"><?= abs($__diff) < 0.01 ? t('تسویه') : fmt_hm(abs($__diff)) ?></div>
               <div class="sub"><?= (int)$required_hours_info['calendar_work_days'] ?> <?= t('روز') ?> <?= t('کاری') ?><?= (int)$required_hours_info['leave_days'] > 0 ? ' − ' . (int)$required_hours_info['leave_days'] . ' ' . t('روز مرخصی') : '' ?><?= $required_hours_info['leave_hours'] > 0 ? ' − ' . fmt_hm((float)$required_hours_info['leave_hours']) . ' ' . t('مرخصی ساعتی') : '' ?><?= !empty($required_hours_info['unused_quota_hours']) ? ' − ' . fmt_hm((float)$required_hours_info['unused_quota_hours']) . ' ' . t('سهمیه استفاده‌نشده') : '' ?><?= !empty($required_hours_info['absent_hours']) ? ' · <b style="color:#dc2626">' . fmt_hm((float)$required_hours_info['absent_hours']) . ' ' . t('غیبت بدون مرخصی') . '</b>' . (array_key_exists('absent_dates', $required_hours_info) ? ' <span style="direction:rtl">(' . t('تاریخ') . ': ' . implode('، ', array_map(fn($d) => to_jalali($d), $required_hours_info['absent_dates'])) . ')</span>' : '') : '' ?></div>
             </div>
-            <div class="summary-card sc-green"><div class="label"><?= t('rep_regular_hours') ?> (<?= t('ضریب') ?> ۱)</div><div class="value"><?= fmt_hm($totals['regular']) ?></div><div class="sub"><?= number_format($totals['regular_pay']) ?> <?= t('sal_toman') ?></div></div>
-            <div class="summary-card sc-yellow"><div class="label"><?= t('ساعات') ?> <?= t('sal_overtime') ?> (<?= t('ضریب') ?> <?= $overtime_coef ?>)</div><div class="value"><?= fmt_hm($totals['overtime']) ?></div><div class="sub"><?= number_format($totals['overtime_pay']) ?> <?= t('sal_toman') ?></div></div>
-            <div class="summary-card sc-purple"><div class="label"><?= t('ساعات') ?> <?= t('rep_night_hours') ?> (<?= t('ضریب') ?> <?= $night_coef ?>)</div><div class="value"><?= fmt_hm($totals['night']) ?></div><div class="sub"><?= number_format($totals['night_pay']) ?> <?= t('sal_toman') ?></div></div>
+            <div class="summary-card sc-green"><div class="label"><?= t('rep_regular_hours') ?> (<?= t('ضریب') ?> ۱)</div><div class="value"><?= fmt_hm($totals['regular']) ?></div><div class="sub"><?= number_format($totals['regular_pay'], 0, '.', '،') ?> <?= t('sal_toman') ?></div></div>
+            <div class="summary-card sc-yellow"><div class="label"><?= t('ساعات') ?> <?= t('sal_overtime') ?> (<?= t('ضریب') ?> <?= $overtime_coef ?>)</div><div class="value"><?= fmt_hm($totals['overtime']) ?></div><div class="sub"><?= number_format($totals['overtime_pay'], 0, '.', '،') ?> <?= t('sal_toman') ?></div></div>
+            <div class="summary-card sc-purple"><div class="label"><?= t('ساعات') ?> <?= t('rep_night_hours') ?> (<?= t('ضریب') ?> <?= $night_coef ?>)</div><div class="value"><?= fmt_hm($totals['night']) ?></div><div class="sub"><?= number_format($totals['night_pay'], 0, '.', '،') ?> <?= t('sal_toman') ?></div></div>
             <?php if ($totals['friday_hours'] > 0): ?>
-            <div class="summary-card sc-blue"><div class="label"><?= t('ساعات') ?> <?= t('wh_friday') ?> (<?= t('ضریب') ?> <?= $friday_coef ?>)</div><div class="value"><?= fmt_hm($totals['friday_hours']) ?></div><div class="sub"><?= number_format($totals['friday_pay']) ?> <?= t('sal_toman') ?></div></div>
+            <div class="summary-card sc-blue"><div class="label"><?= t('ساعات') ?> <?= t('wh_friday') ?> (<?= t('ضریب') ?> <?= $friday_coef ?>)</div><div class="value"><?= fmt_hm($totals['friday_hours']) ?></div><div class="sub"><?= number_format($totals['friday_pay'], 0, '.', '،') ?> <?= t('sal_toman') ?></div></div>
             <?php endif; ?>
             <?php if ($totals['holiday_hours'] > 0): ?>
-            <div class="summary-card sc-red"><div class="label"><?= t('ساعات') ?> <?= t('wh_holiday') ?> (<?= t('ضریب') ?> <?= $holiday_coef ?>)</div><div class="value"><?= fmt_hm($totals['holiday_hours']) ?></div><div class="sub"><?= number_format($totals['holiday_pay']) ?> <?= t('sal_toman') ?></div></div>
+            <div class="summary-card sc-red"><div class="label"><?= t('ساعات') ?> <?= t('wh_holiday') ?> (<?= t('ضریب') ?> <?= $holiday_coef ?>)</div><div class="value"><?= fmt_hm($totals['holiday_hours']) ?></div><div class="sub"><?= number_format($totals['holiday_pay'], 0, '.', '،') ?> <?= t('sal_toman') ?></div></div>
             <?php endif; ?>
-            <div class="summary-card sc-gray"><div class="label"><?= t('دستمزد') ?> <?= t('هر') ?> <?= t('wh_hours') ?></div><div class="value"><?= number_format(round($hourly_base)) ?> <?= t('ت') ?></div></div>
+            <div class="summary-card sc-gray"><div class="label"><?= t('دستمزد') ?> <?= t('هر') ?> <?= t('wh_hours') ?></div><div class="value"><?= number_format(round($hourly_base), 0, '.', '،') ?> <?= t('ت') ?></div></div>
         </div>
         <?php endif; ?>
     </div>
 
     <div class="pay-summary">
-        <div class="pay-row" style="color:#64748b"><span>📅 <?= t('باقی') ?>‌<?= t('ماندهٔ') ?> <?= t('مطالبات') ?> <?= t('rep_month') ?>‌<?= t('های') ?> <?= t('قبل') ?></span><span><?= number_format($prev_balance) ?> <?= t('sal_toman') ?></span></div>
-        <div class="pay-row"><span><?= t('rep_total') ?> <?= t('sal_total_debt') ?> <?= t('rep_month') ?> <?= t('جاری') ?> (<?= t('کارکرد') ?> <?= t('sal_regular') ?> + <?= t('sal_overtime') ?> <?= t('و') ?> <?= t('ضرایب') ?>)</span><span><?= number_format($current_month_gross) ?> <?= t('sal_toman') ?></span></div>
-        <div class="pay-row" style="font-weight:700;color:#7c3aed"><span><?= t('rep_total') ?> <?= t('sal_total_debt') ?> <?= t('ناخالص') ?> <?= t('lea_to') ?> <?= t('این') ?> <?= t('rep_month') ?></span><span><?= number_format($total_gross_claim) ?> <?= t('sal_toman') ?></span></div>
-        <div class="pay-row" style="color:#dc2626"><span><?= t('sal_penalty') ?></span><span>-<?= number_format($penalty_total) ?> <?= t('sal_toman') ?></span></div>
-        <div class="pay-row" style="color:#0369a1"><span><?= t('sal_advance') ?> / <?= t('adv_debt') ?> / <?= t('پرداخت') ?> <?= t('ثبت') ?><?= t('‌شده') ?></span><span>-<?= number_format($advance_total) ?> <?= t('sal_toman') ?></span></div>
-        <div class="pay-row" style="color:#16a34a"><span><?= t('sal_bonus') ?></span><span>+<?= number_format($bonus_total) ?> <?= t('sal_toman') ?></span></div>
+        <div class="pay-row" style="color:#64748b"><span>📅 <?= t('باقی') ?>‌<?= t('ماندهٔ') ?> <?= t('مطالبات') ?> <?= t('rep_month') ?>‌<?= t('های') ?> <?= t('قبل') ?></span><span><?= number_format($prev_balance, 0, '.', '،') ?> <?= t('sal_toman') ?></span></div>
+        <div class="pay-row"><span><?= t('rep_total') ?> <?= t('sal_total_debt') ?> <?= t('rep_month') ?> <?= t('جاری') ?> (<?= t('کارکرد') ?> <?= t('sal_regular') ?> + <?= t('sal_overtime') ?> <?= t('و') ?> <?= t('ضرایب') ?>)</span><span><?= number_format($current_month_gross, 0, '.', '،') ?> <?= t('sal_toman') ?></span></div>
+        <div class="pay-row" style="font-weight:700;color:#7c3aed"><span><?= t('rep_total') ?> <?= t('sal_total_debt') ?> <?= t('ناخالص') ?> <?= t('lea_to') ?> <?= t('این') ?> <?= t('rep_month') ?></span><span><?= number_format($total_gross_claim, 0, '.', '،') ?> <?= t('sal_toman') ?></span></div>
+        <div class="pay-row" style="color:#dc2626"><span><?= t('sal_penalty') ?></span><span>-<?= number_format($penalty_total, 0, '.', '،') ?> <?= t('sal_toman') ?></span></div>
+        <div class="pay-row" style="color:#0369a1"><span><?= t('sal_advance') ?> / <?= t('adv_debt') ?> / <?= t('پرداخت') ?> <?= t('ثبت') ?><?= t('‌شده') ?></span><span>-<?= number_format($advance_total, 0, '.', '،') ?> <?= t('sal_toman') ?></span></div>
+        <div class="pay-row" style="color:#16a34a"><span><?= t('sal_bonus') ?></span><span>+<?= number_format($bonus_total, 0, '.', '،') ?> <?= t('sal_toman') ?></span></div>
         <div class="pay-row total" style="color:<?= $final_payable >= 0 ? '#16a34a' : '#dc2626' ?>">
-            <span>💳 <?= t('مبلغ نهایی قابل پرداخت') ?></span><span><?= number_format($final_payable) ?> <?= t('sal_toman') ?></span>
+            <span>💳 <?= t('مبلغ نهایی قابل پرداخت') ?></span><span><?= number_format($final_payable, 0, '.', '،') ?> <?= t('sal_toman') ?></span>
         </div>
     </div>
 
@@ -613,13 +614,13 @@ $print_orient = (($_GET['orient'] ?? 'portrait') === 'landscape') ? 'landscape' 
                         <?php if ($is_first): ?>
                         <?php foreach ($day_bps as $bp): ?>
                             <span class="bp-tag <?= $bp['type'] === 'bonus' ? 'bp-bonus' : 'bp-penalty' ?>">
-                                <?= $bp['type'] === 'bonus' ? '+' : '-' ?><?= number_format($bp['amount']) ?><?= t('ت') ?>
+                                <?= $bp['type'] === 'bonus' ? '+' : '-' ?><?= number_format($bp['amount'], 0, '.', '،') ?><?= t('ت') ?>
                                 <?php if (!empty($bp['hours']) && $bp['hours'] > 0): ?>(<?= fmt_hm((float)$bp['hours']) ?>)<?php endif; ?>
                                 <?php if ($bp['reason']): ?> (<?= htmlspecialchars($bp['reason']) ?>)<?php endif; ?>
                             </span>
                         <?php endforeach; ?>
                         <?php foreach ($day_ads as $ad): ?>
-                            <span class="bp-tag bp-advance">-<?= number_format($ad['amount']) ?><?= t('ت') ?> <?= ($ad['payment_type'] ?? '') === 'debt' ? t('adv_debt') : t('sal_advance') ?></span>
+                            <span class="bp-tag bp-advance">-<?= number_format($ad['amount'], 0, '.', '،') ?><?= t('ت') ?> <?= ($ad['payment_type'] ?? '') === 'debt' ? t('adv_debt') : t('sal_advance') ?></span>
                         <?php endforeach; ?>
                         <?php endif; ?>
                     </td>

@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $team = (int)($_POST['team_id'] ?? 0);
         if (!$isMgr) $team = $myTeam;
 
-        $value    = (float)str_replace([',', '٬'], '', (string)($_POST['estimated_value'] ?? '0'));
+        $value    = (float)str_replace([',', '٬', '،'], '', (string)($_POST['estimated_value'] ?? '0'));
         $currency = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', (string)($_POST['currency'] ?? 'USD')), 0, 3)) ?: 'USD';
         $closeDate = to_gregorian((string)($_POST['expected_close_date'] ?? '')) ?: null;
 
@@ -145,7 +145,7 @@ include 'includes/header.php';
 
 <div class="stats-grid animate-in">
     <div class="stat-card glass-gradient-1"><div class="stat-info"><h3><?= $openCount ?></h3><p>معاملات باز</p></div></div>
-    <div class="stat-card glass-gradient-2"><div class="stat-info"><h3 dir="ltr"><?= number_format($pipelineValue) ?></h3><p>ارزش کل پایپ‌لاین باز</p></div></div>
+    <div class="stat-card glass-gradient-2"><div class="stat-info"><h3 dir="ltr"><?= number_format($pipelineValue, 0, '.', '،') ?></h3><p>ارزش کل پایپ‌لاین باز</p></div></div>
     <div class="stat-card glass-gradient-3"><div class="stat-info"><h3><?= $wonCount ?></h3><p>برنده‌شده</p></div></div>
 </div>
 
@@ -155,14 +155,14 @@ include 'includes/header.php';
             <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid <?= htmlspecialchars($stage['color']) ?>;padding-bottom:8px;margin-bottom:8px">
                 <div><strong style="font-size:12px"><?= htmlspecialchars($stage['name']) ?></strong><br>
                     <span class="text-muted" style="font-size:10px">احتمال <?= (int)$stage['probability'] ?>٪ • <?= count($dealsByStage[$sid] ?? []) ?> معامله</span></div>
-                <span dir="ltr" style="font-size:10px;color:var(--text-secondary)"><?= number_format($stageTotals[$sid] ?? 0) ?></span>
+                <span dir="ltr" style="font-size:10px;color:var(--text-secondary)"><?= number_format($stageTotals[$sid] ?? 0, 0, '.', '،') ?></span>
             </div>
             <div style="display:flex;flex-direction:column;gap:8px;max-height:62vh;overflow-y:auto">
                 <?php foreach ($dealsByStage[$sid] ?? [] as $d): if ($filterStatus !== 'all' && $d['status'] !== $filterStatus) continue; ?>
                     <div style="border:1px solid var(--border);border-radius:10px;padding:9px;background:var(--bg);font-size:12px">
                         <div style="font-weight:700;line-height:1.7"><?= htmlspecialchars($d['title']) ?></div>
                         <div class="text-muted" style="font-size:11px"><?= $d['customer_name'] ? htmlspecialchars($d['customer_name']) : 'بدون مشتری' ?> • <?= htmlspecialchars($d['owner_name'] ?? '') ?></div>
-                        <div dir="ltr" style="font-weight:800;color:var(--primary-light);margin:6px 0;font-size:12px"><?= number_format((float)$d['estimated_value']) ?> <?= htmlspecialchars($d['currency']) ?></div>
+                        <div dir="ltr" style="font-weight:800;color:var(--primary-light);margin:6px 0;font-size:12px"><?= number_format((float)$d['estimated_value'], 0, '.', '،') ?> <?= htmlspecialchars($d['currency']) ?></div>
                         <form method="post" style="margin:2px 0"><?= get_csrf_field() ?><input type="hidden" name="action" value="move_stage"><input type="hidden" name="id" value="<?= (int)$d['id'] ?>">
                             <select name="stage_id" class="form-control" style="font-size:11px;padding:3px" onchange="this.form.submit()">
                                 <?php foreach ($stages as $s2): ?><option value="<?= (int)$s2['id'] ?>" <?= (int)$s2['id'] === $sid ? 'selected' : '' ?>><?= htmlspecialchars($s2['name']) ?></option><?php endforeach; ?>

@@ -45,14 +45,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare("UPDATE advances SET amount = ?, remaining = ?, reason = ? WHERE id = ?")
                 ->execute([$new_amount, $new_amount, sanitize($_POST['reason']), $id]);
             $pdo->prepare("INSERT INTO audit_log (user_id, action, entity_type, entity_id, new_value) VALUES (?, 'edit', 'advance', ?, ?)")
-                ->execute([$_SESSION['user_id'], $id, 'ویرایش مانده از قبل: ' . number_format($adv['amount']) . ' ← ' . number_format($new_amount)]);
+                ->execute([$_SESSION['user_id'], $id, 'ویرایش مانده از قبل: ' . number_format($adv['amount'], 0, '.', '،') . ' ← ' . number_format($new_amount, 0, '.', '،')]);
             showToast(t('بروزرسانی شد'));
             redirect("index.php?page=advances");
         }
         if ($new_amount < 0) $new_amount = 0;
         $spent = (float)$adv['amount'] - (float)$adv['remaining'];
         if ($new_amount < $spent) {
-            showToast(strtr(t('مبلغ کمتر از هزینه‌های ثبت‌شده ({spent}) نمی‌تواند باشد'), ['{spent}' => number_format($spent)]), 'error');
+            showToast(strtr(t('مبلغ کمتر از هزینه‌های ثبت‌شده ({spent}) نمی‌تواند باشد'), ['{spent}' => number_format($spent, 0, '.', '،')]), 'error');
             redirect("index.php?page=advances");
         }
         $new_remaining = $new_amount - $spent;
@@ -73,7 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->prepare("UPDATE petty_cash SET date = ? WHERE advance_id = ?")->execute([substr($new_paid_at, 0, 10), $id]);
         }
         $pdo->prepare("INSERT INTO audit_log (user_id, action, entity_type, entity_id, new_value) VALUES (?, 'edit', 'advance', ?, ?)")
-            ->execute([$_SESSION['user_id'], $id, 'ویرایش: ' . number_format($adv['amount']) . ' ← ' . number_format($new_amount) . (!empty($new_paid_at) ? ' | تاریخ پرداخت: ' . to_jalali(substr($new_paid_at,0,10)) : '')]);
+            ->execute([$_SESSION['user_id'], $id, 'ویرایش: ' . number_format($adv['amount'], 0, '.', '،') . ' ← ' . number_format($new_amount, 0, '.', '،') . (!empty($new_paid_at) ? ' | تاریخ پرداخت: ' . to_jalali(substr($new_paid_at,0,10)) : '')]);
         showToast(t('مساعده بروزرسانی شد'));
         redirect("index.php?page=advances");
     }
@@ -90,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->prepare("DELETE FROM advance_expenses WHERE advance_id = ?")->execute([$id]);
         $pdo->prepare("DELETE FROM advances WHERE id = ?")->execute([$id]);
         $pdo->prepare("INSERT INTO audit_log (user_id, action, entity_type, entity_id, new_value) VALUES (?, 'delete', 'advance', ?, ?)")
-            ->execute([$_SESSION['user_id'], $id, 'حذف مساعده ' . number_format($adv['amount'])]);
+            ->execute([$_SESSION['user_id'], $id, 'حذف مساعده ' . number_format($adv['amount'], 0, '.', '،')]);
         showToast(t('مساعده حذف شد'));
         redirect("index.php?page=advances");
     }
@@ -123,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt2->execute([$id]);
         $info = $stmt2->fetch();
         $stmt2 = $pdo->prepare("INSERT INTO audit_log (user_id, action, entity_type, entity_id, new_value) VALUES (?, 'pay_fund', 'advance', ?, ?)");
-        $stmt2->execute([$_SESSION['user_id'], $id, 'پرداخت از صندوق: ' . number_format($info['amount']) . ' به ' . $info['full_name'] . ' در ' . to_jalali($pay_date)]);
+        $stmt2->execute([$_SESSION['user_id'], $id, 'پرداخت از صندوق: ' . number_format($info['amount'], 0, '.', '،') . ' به ' . $info['full_name'] . ' در ' . to_jalali($pay_date)]);
         showToast(t('پرداخت از صندوق با تاریخ انتخاب‌شده ثبت شد'));
         redirect("index.php?page=advances");
     }
@@ -149,7 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt2->execute([$ws_id, $info['amount'], $desc, $pay_date, $_SESSION['user_id']]);
         }
         $stmt2 = $pdo->prepare("INSERT INTO audit_log (user_id, action, entity_type, entity_id, new_value) VALUES (?, 'pay_petty', 'advance', ?, ?)");
-        $stmt2->execute([$_SESSION['user_id'], $id, 'پرداخت از تنخواه: ' . number_format($info['amount']) . ' به ' . $info['full_name'] . ' در ' . to_jalali($pay_date)]);
+        $stmt2->execute([$_SESSION['user_id'], $id, 'پرداخت از تنخواه: ' . number_format($info['amount'], 0, '.', '،') . ' به ' . $info['full_name'] . ' در ' . to_jalali($pay_date)]);
         showToast(t('پرداخت از تنخواه با تاریخ انتخاب‌شده ثبت شد'));
         redirect("index.php?page=advances");
     }
@@ -189,7 +189,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         $stmt2 = $pdo->prepare("INSERT INTO audit_log (user_id, action, entity_type, entity_id, new_value) VALUES (?, ?, 'advance', ?, ?)");
-        $stmt2->execute([$_SESSION['user_id'], 'manual_' . $payment_type, $user_id, $type_label . ' دستی: ' . number_format($amount) . ' به ' . $name]);
+        $stmt2->execute([$_SESSION['user_id'], 'manual_' . $payment_type, $user_id, $type_label . ' دستی: ' . number_format($amount, 0, '.', '،') . ' به ' . $name]);
         
         showToast($type_label . ' ' . t('با موفقیت ثبت شد'));
         redirect("index.php?page=advances");
@@ -292,13 +292,13 @@ include 'includes/header.php';
                     <td><span class="tag <?= $ptype_class ?>"><?= $ptype_label ?></span></td>
                     <td style="<?= $amt_style ?>">
                         <?php if ($is_debt_row): ?>
-                            <?= ((float)$a['amount'] < 0 ? '+' : '−') . number_format(abs((float)$a['amount'])) ?> <?= t('ت') ?>
+                            <?= ((float)$a['amount'] < 0 ? '+' : '−') . number_format(abs((float)$a['amount']), 0, '.', '،') ?> <?= t('ت') ?>
                             <div class="text-muted" style="font-size:9px;font-weight:400"><?= (float)$a['amount'] < 0 ? t('adv_debt_credit') : t('adv_debt_debit') ?></div>
                         <?php else: ?>
-                            <?= number_format($a['amount']) ?> <?= t('ت') ?>
+                            <?= number_format($a['amount'], 0, '.', '،') ?> <?= t('ت') ?>
                         <?php endif; ?>
                     </td>
-                    <td><?= $is_debt_row ? '—' : number_format($a['remaining']) . ' ' . t('ت') ?></td>
+                    <td><?= $is_debt_row ? '—' : number_format($a['remaining'], 0, '.', '،') . ' ' . t('ت') ?></td>
                     <td><?= $a['reason'] ?: '-' ?></td>
                     <td><span class="tag <?= $label[1] ?>"><?= $label[0] ?></span></td>
                     <td><?= to_jalali($a['status'] === 'paid' && !empty($a['paid_at']) ? $a['paid_at'] : ($a['approved_at'] ?: $a['created_at'])) ?><?= $a['status'] === 'paid' ? '<div class="text-muted" style="font-size:9px">' . t('تاریخ پرداخت') . '</div>' : '' ?></td>
@@ -496,7 +496,7 @@ function openManualPayment(type) {
 function showPayModal(id, amount, name) {
     document.getElementById('pay_id').value = id;
     document.getElementById('pay_name').textContent = name;
-    document.getElementById('pay_amount').textContent = Number(amount).toLocaleString();
+    document.getElementById('pay_amount').textContent = fmtNum(amount);
     document.getElementById('approvedPayDate').value = '<?= jalali_now() ?>';
     openModal('payModal');
 }
@@ -510,7 +510,7 @@ function editAdvance(a) {
     document.getElementById('edit_adv_id').value = a.id;
     document.getElementById('edit_adv_amount').value = a.amount;
     document.getElementById('edit_adv_reason').value = a.reason;
-    document.getElementById('edit_adv_name').textContent = a.name + ' (<?= t('pet_balance') ?> <?= t('فعلی') ?>: ' + Number(a.remaining).toLocaleString() + ' <?= t('ت') ?>)';
+    document.getElementById('edit_adv_name').textContent = a.name + ' (<?= t('pet_balance') ?> <?= t('فعلی') ?>: ' + fmtNum(a.remaining) + ' <?= t('ت') ?>)';
     var paidWrap = document.getElementById('editPaidDateWrap');
     paidWrap.style.display = a.status === 'paid' ? '' : 'none';
     document.getElementById('edit_adv_paid_date').value = a.paid_date || '';

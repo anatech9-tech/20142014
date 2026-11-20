@@ -1,6 +1,8 @@
 <?php
 /**
- * CRM — مدیریت تیم‌های فروش (فقط مدیر کل): نام/مدیر/وضعیت تیم + تخصیص اعضا
+ * CRM — مدیریت تیم‌های فروش (فقط مدیر کل)
+ * §v20 (۲۰۲۶-۱۱-۱۰) بازطراحی: مدیرها با اسم، اعضای زیرمجموعهٔ هر مدیر در همان کارت تیم،
+ * همه‌چیز قابل ویرایش، فاصلهٔ کافی بین کارت‌ها و ردیف‌ها.
  */
 $pageTitle = 'تیم‌های فروش';
 $me = (int)($_SESSION['user_id'] ?? 0);
@@ -49,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $nmSt->execute([$userId]);
             $nmVal = (string)($nmSt->fetchColumn() ?: '');
             operations_audit($pdo, $me, 'crm_org_assign', 'user', $userId, trim($nmVal . ' | سمت سازمانی: ' . ($orgRoleId ?? '∅') . ' | تیم: ' . ($teamId ?? '∅')));
-            showToast('تخصیص تیم و سمت سازمانی ذخیره شد.');
+            showToast('تخصیص کاربر ذخیره شد.');
         }
         redirect('index.php?page=crm_teams');
     }
@@ -62,7 +64,46 @@ $userCols      = $hasOrgCol ? 'id, full_name, role, team_id, org_role_id' : 'id,
 $users         = $pdo->query("SELECT $userCols FROM users ORDER BY (role='admin'), full_name")->fetchAll();
 $managerOptions = $users;
 
-$rowStyle = 'display:grid;grid-template-columns:70px 1.1fr 1fr 110px 44px;gap:10px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border)';
+// ایندکس کاربران بر اساس تیم (و بدون‌تیم‌ها)
+$usersByTeam = [];
+$noTeam      = [];
+$teamIds     = array_map(function($t) { return (int)$t['id']; }, $teams);
+$teamNameById = [];
+foreach ($teams as $t) { $teamNameById[(int)$t['id']] = (string)$t['name']; }
+$userNameById = [];
+foreach ($users as $u) { $userNameById[(int)$u['id']] = (string)$u['full_name']; }
+foreach ($users as $u) {
+    $tid = (int)($u['team_id'] ?? 0);
+    if ($tid > 0 && in_array($tid, $teamIds, true)) { $usersByTeam[$tid][] = $u; } else { $noTeam[] = $u; }
+}
+
+$gridEdit    = 'display:grid;grid-template-columns:70px 1.2fr 1fr 110px 44px;gap:10px;align-items:center;padding:10px 12px';
+$gridMember  = 'display:grid;grid-template-columns:1.15fr 84px 1.2fr 1.4fr 44px;gap:10px;align-items:center;padding:10px 12px;border-top:1px solid var(--border)';
+$memberHead  = 'display:grid;grid-template-columns:1.15fr 84px 1.2fr 1.4fr 44px;gap:10px;align-items:center;padding:8px 12px;font-size:11px;color:var(--text-secondary);background:var(--bg)';
+
+// رندر یک ردیف عضو قابل‌ویرایش (تیم + سمت سازمانی)
+$renderMember = function (array $u) use ($teams, $orgRoles, $hasOrgCol, $gridMember) {
+    ob_start(); ?>
+    <form method="post" style="<?= $gridMember ?>;margin:0">
+        <?= get_csrf_field() ?><input type="hidden" name="action" value="assign_user"><input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
+        <div style="font-weight:600"><?= htmlspecialchars($u['full_name']) ?></div>
+        <div><code style="font-size:11px"><?= htmlspecialchars($u['role']) ?></code></div>
+        <div><select name="team_id" class="form-control"><option value="0">— بدون تیم —</option>
+            <?php foreach ($teams as $t): ?><option value="<?= (int)$t['id'] ?>" <?= (int)($u['team_id'] ?? 0) === (int)$t['id'] ? 'selected' : '' ?>><?= htmlspecialchars($t['name']) ?></option><?php endforeach; ?>
+        </select></div>
+        <div><select name="org_role_id" class="form-control" <?= $hasOrgCol ? '' : 'disabled' ?>><option value="0">— بدون سمت —</option>
+            <optgroup label="مرحلهٔ استقرار (۶ ماههٔ اول)">
+                <?php foreach ($orgRoles as $or): if ($or['stage'] !== 'stage1') continue; ?><option value="<?= (int)$or['id'] ?>" <?= (int)($u['org_role_id'] ?? 0) === (int)$or['id'] ? 'selected' : '' ?>><?= htmlspecialchars($or['name']) ?></option><?php endforeach; ?>
+            </optgroup>
+            <optgroup label="چارت توسعه‌یافته (پس از رشد)">
+                <?php foreach ($orgRoles as $or): if ($or['stage'] !== 'growth') continue; ?><option value="<?= (int)$or['id'] ?>" <?= (int)($u['org_role_id'] ?? 0) === (int)$or['id'] ? 'selected' : '' ?>><?= htmlspecialchars($or['name']) ?></option><?php endforeach; ?>
+            </optgroup>
+        </select></div>
+        <div><button type="submit" class="btn btn-ghost btn-sm" title="ذخیره"><i data-lucide="check"></i></button></div>
+    </form>
+    <?php
+    return ob_get_clean();
+};
 
 include 'includes/header.php';
 ?>
@@ -71,82 +112,82 @@ include 'includes/header.php';
     <a href="index.php?page=crm_customers" class="btn btn-ghost"><i data-lucide="arrow-right"></i> CRM</a>
 </div>
 
-<div class="card animate-in">
-    <div class="card-header"><h3 class="card-title">➕ افزودن تیم</h3></div>
-    <form method="post" class="d-flex gap-2 align-center" style="padding:10px 12px;flex-wrap:wrap">
-        <?= get_csrf_field() ?><input type="hidden" name="action" value="save_team"><input type="hidden" name="id" value="0">
-        <input name="name" class="form-control" style="max-width:260px" placeholder="نام تیم (مثلاً تیم توسعه بازار)" required>
-        <input name="code" class="form-control" style="max-width:180px" placeholder="کد لاتین (اختیاری)" pattern="[A-Za-z0-9_\-]+" dir="ltr">
-        <select name="manager_user_id" class="form-control" style="max-width:220px"><option value="0">— بدون مدیر —</option>
-            <?php foreach ($managerOptions as $u): ?><option value="<?= (int)$u['id'] ?>"><?= htmlspecialchars($u['full_name']) ?></option><?php endforeach; ?>
-        </select>
-        <button type="submit" class="btn btn-primary"><i data-lucide="plus"></i> ساخت تیم</button>
-    </form>
-    <p class="text-muted" style="padding:0 12px 10px;font-size:11px">بذر سند نهایی برای نصب تازه شامل «تیم فروش تلفنی / آنلاین / سازمانی» و «تیم توسعه بازار» است؛ روی دیتابیس‌های قدیمی همین‌جا تیم‌های معادل را بسازید و با فرم ویرایش، نام تیم‌های «دیجیتال/حضوری» قدیمی را تطبیق دهید.</p>
-</div>
-<div class="card animate-in">
-    <div class="card-header"><h3 class="card-title">👥 تیم‌ها <span class="text-muted" style="font-size:11px;font-weight:400">(مدیر تیم = دیدن همهٔ مشتریان/سرنخ‌ها/معاملات تیم)</span></h3></div>
-    <div style="display:flex;flex-direction:column">
-        <div style="<?= $rowStyle ?>;background:var(--bg);font-size:11px;color:var(--text-secondary);border-bottom:2px solid var(--border)"><div>کد</div><div>نام تیم</div><div>مدیر تیم</div><div>وضعیت</div><div></div></div>
-        <?php foreach ($teams as $tm): ?>
-        <form method="post" style="<?= $rowStyle ?>;margin:0">
-            <?= get_csrf_field() ?><input type="hidden" name="action" value="save_team"><input type="hidden" name="id" value="<?= (int)$tm['id'] ?>">
+<div style="display:flex;flex-direction:column;gap:16px">
+
+    <!-- افزودن تیم جدید -->
+    <div class="card animate-in" style="margin:0">
+        <div class="card-header"><h3 class="card-title">➕ افزودن تیم</h3></div>
+        <form method="post" class="d-flex gap-2 align-center" style="padding:12px;flex-wrap:wrap">
+            <?= get_csrf_field() ?><input type="hidden" name="action" value="save_team"><input type="hidden" name="id" value="0">
+            <input name="name" class="form-control" style="max-width:260px" placeholder="نام تیم (مثلاً تیم توسعه بازار)" required>
+            <input name="code" class="form-control" style="max-width:180px" placeholder="کد لاتین (اختیاری)" pattern="[A-Za-z0-9_\-]+" dir="ltr">
+            <select name="manager_user_id" class="form-control" style="max-width:220px"><option value="0">— بدون مدیر —</option>
+                <?php foreach ($managerOptions as $u): ?><option value="<?= (int)$u['id'] ?>"><?= htmlspecialchars($u['full_name']) ?></option><?php endforeach; ?>
+            </select>
+            <button type="submit" class="btn btn-primary"><i data-lucide="plus"></i> ساخت تیم</button>
+        </form>
+    </div>
+
+    <!-- کارتِ هر تیم: مدیر تیم با اسمش + اعضای زیرمجموعه‌اش (همه قابل ویرایش) -->
+    <?php foreach ($teams as $tm): $tid = (int)$tm['id']; $members = $usersByTeam[$tid] ?? []; $mgrName = $tid && (int)($tm['manager_user_id'] ?? 0) ? ($userNameById[(int)$tm['manager_user_id']] ?? '—') : '—'; ?>
+    <div class="card animate-in" style="margin:0">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <h3 class="card-title">👥 <?= htmlspecialchars($tm['name']) ?>
+                <span class="text-muted" style="font-size:12px;font-weight:400">— مدیر: <b><?= htmlspecialchars($mgrName) ?></b></span>
+            </h3>
+            <span class="tag <?= $tm['status'] === 'active' ? 'tag-active' : 'tag-holiday' ?>"><?= $tm['status'] === 'active' ? 'فعال' : 'غیرفعال' ?></span>
+        </div>
+
+        <!-- ویرایش مشخصات تیم -->
+        <form method="post" style="<?= $gridEdit ?>;margin:0">
+            <?= get_csrf_field() ?><input type="hidden" name="action" value="save_team"><input type="hidden" name="id" value="<?= $tid ?>">
             <div dir="ltr"><code><?= htmlspecialchars($tm['code']) ?></code></div>
-            <div><input name="name" class="form-control" value="<?= htmlspecialchars($tm['name']) ?>" required></div>
-            <div><select name="manager_user_id" class="form-control"><option value="0">— بدون مدیر —</option>
+            <div><input name="name" class="form-control" value="<?= htmlspecialchars($tm['name']) ?>" required placeholder="نام تیم"></div>
+            <div><select name="manager_user_id" class="form-control" title="مدیر تیم"><option value="0">— بدون مدیر —</option>
                 <?php foreach ($managerOptions as $u): ?><option value="<?= (int)$u['id'] ?>" <?= (int)($tm['manager_user_id'] ?? 0) === (int)$u['id'] ? 'selected' : '' ?>><?= htmlspecialchars($u['full_name']) ?></option><?php endforeach; ?>
             </select></div>
             <div><select name="status" class="form-control"><option value="active" <?= $tm['status'] === 'active' ? 'selected' : '' ?>>فعال</option><option value="inactive" <?= $tm['status'] !== 'active' ? 'selected' : '' ?>>غیرفعال</option></select></div>
-            <div><button type="submit" class="btn btn-primary btn-sm"><i data-lucide="save"></i></button></div>
+            <div><button type="submit" class="btn btn-primary btn-sm" title="ذخیره تغییرات تیم"><i data-lucide="save"></i></button></div>
         </form>
-        <?php endforeach; ?>
-    </div>
-</div>
 
-<div class="card animate-in">
-    <div class="card-header"><h3 class="card-title">🧑‍💼 تخصیص اعضا به تیم</h3></div>
-    <div style="display:flex;flex-direction:column">
-        <div style="<?= $rowStyle ?>;grid-template-columns:44px 1fr 96px 1fr 1fr 44px;background:var(--bg);font-size:11px;color:var(--text-secondary);border-bottom:2px solid var(--border)"><div>#</div><div>نام</div><div>نقش سیستم</div><div>تیم</div><div>سمت سازمانی</div><div></div></div>
-        <?php foreach ($users as $u): ?>
-        <form method="post" style="<?= $rowStyle ?>;grid-template-columns:44px 1fr 96px 1fr 1fr 44px;margin:0">
-            <?= get_csrf_field() ?><input type="hidden" name="action" value="assign_user"><input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
-            <div><?= (int)$u['id'] ?></div>
-            <div><?= htmlspecialchars($u['full_name']) ?></div>
-            <div><code style="font-size:11px"><?= htmlspecialchars($u['role']) ?></code></div>
-            <div><select name="team_id" class="form-control"><option value="0">— بدون تیم —</option>
-                <?php foreach ($teams as $t): ?><option value="<?= (int)$t['id'] ?>" <?= (int)($u['team_id'] ?? 0) === (int)$t['id'] ? 'selected' : '' ?>><?= htmlspecialchars($t['name']) ?></option><?php endforeach; ?>
-            </select></div>
-            <div><select name="org_role_id" class="form-control" <?= $hasOrgCol ? '' : 'disabled' ?>><option value="0">— بدون سمت —</option>
-                <optgroup label="مرحلهٔ استقرار (سند نهایی)">
-                    <?php foreach ($orgRoles as $or): if ($or['stage'] !== 'stage1') continue; ?><option value="<?= (int)$or['id'] ?>" <?= (int)($u['org_role_id'] ?? 0) === (int)$or['id'] ? 'selected' : '' ?>><?= htmlspecialchars($or['name']) ?></option><?php endforeach; ?>
-                </optgroup>
-                <optgroup label="چارت توسعه‌یافته (پس از رشد)">
-                    <?php foreach ($orgRoles as $or): if ($or['stage'] !== 'growth') continue; ?><option value="<?= (int)$or['id'] ?>" <?= (int)($u['org_role_id'] ?? 0) === (int)$or['id'] ? 'selected' : '' ?>><?= htmlspecialchars($or['name']) ?></option><?php endforeach; ?>
-                </optgroup>
-            </select></div>
-            <div><button type="submit" class="btn btn-ghost btn-sm"><i data-lucide="check"></i></button></div>
+        <!-- اعضای زیرمجموعهٔ این مدیر -->
+        <div style="padding:10px 12px 6px;font-size:12px;color:var(--text-secondary);font-weight:600">
+            اعضای زیرمجموعه <?= $mgrName !== '—' ? 'مدیر «' . htmlspecialchars($mgrName) . '»' : 'این تیم' ?> (<?= count($members) ?>)
+        </div>
+        <?php if ($members): ?>
+        <div style="<?= $memberHead ?>"><div>نام</div><div>نقش</div><div>تیم</div><div>سمت سازمانی</div><div></div></div>
+        <?php foreach ($members as $u) echo $renderMember($u); ?>
+        <?php else: ?>
+        <div class="text-muted" style="padding:10px 12px 14px;font-size:12px">هنوز عضوی در این تیم نیست — از بخش «افزودن عضو» یک کاربر انتخاب کنید.</div>
+        <?php endif; ?>
+
+        <!-- افزودن عضو جدید به این تیم -->
+        <?php $candidates = array_values(array_filter($users, function($u) use ($tid) { return (int)($u['team_id'] ?? 0) !== $tid; })); ?>
+        <?php if ($candidates): ?>
+        <form method="post" class="d-flex gap-2 align-center" style="padding:12px;border-top:1px solid var(--border);flex-wrap:wrap">
+            <?= get_csrf_field() ?><input type="hidden" name="action" value="assign_user"><input type="hidden" name="team_id" value="<?= $tid ?>"><input type="hidden" name="org_role_id" value="0">
+            <select name="user_id" class="form-control" style="max-width:260px" required>
+                <option value="0">انتخاب عضو جدید…</option>
+                <?php foreach ($candidates as $u): $curTid = (int)($u['team_id'] ?? 0); ?><option value="<?= (int)$u['id'] ?>"><?= htmlspecialchars($u['full_name']) ?><?= $curTid ? ' (تیم فعلی: ' . htmlspecialchars($teamNameById[$curTid] ?? '?') . ')' : '' ?></option><?php endforeach; ?>
+            </select>
+            <button type="submit" class="btn btn-ghost btn-sm"><i data-lucide="user-plus"></i> افزودن به تیم</button>
         </form>
-        <?php endforeach; ?>
-        <?php if (!$users): ?><div class="text-muted text-center" style="padding:20px">هنوز کاربری وجود ندارد.</div><?php endif; ?>
+        <?php endif; ?>
     </div>
-</div>
-<div class="card animate-in">
-    <div class="card-header"><h3 class="card-title">🏛️ سمت‌های سازمانی — سند نهایی ساختار سازمانی و کمیسیون</h3></div>
-    <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead><tr style="color:var(--text-secondary);text-align:right"><th style="padding:6px 10px">سمت</th><th style="padding:6px 10px">مرحله</th><th style="padding:6px 10px">شرح (از سند)</th></tr></thead>
-            <tbody>
-            <?php foreach ($orgRoles as $or): ?>
-                <tr style="border-top:1px solid var(--border)">
-                    <td style="padding:8px 10px;font-weight:600"><?= htmlspecialchars($or['name']) ?></td>
-                    <td style="padding:8px 10px;white-space:nowrap"><span class="badge" style="background:var(--bg)"><?= $or['stage'] === 'growth' ? 'توسعهٔ مرحله‌ای' : 'استقرار (۶ ماههٔ اول)' ?></span></td>
-                    <td style="padding:8px 10px;color:var(--text-secondary)"><?= htmlspecialchars((string)($or['description'] ?? '')) ?></td>
-                </tr>
-            <?php endforeach; ?>
-            <?php if (!$orgRoles): ?><tr><td colspan="3" class="text-muted text-center" style="padding:18px">شمای سمت‌های سازمانی هنوز در این دیتابیس ساخته نشده (صفحه به‌صورت خودکار می‌سازد؛ اگر نمایش داده نشد با مدیر سیستم تماس بگیرید).</td></tr><?php endif; ?>
-            </tbody>
-        </table>
+    <?php endforeach; ?>
+
+    <!-- کاربران بدون تیم -->
+    <div class="card animate-in" style="margin:0">
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+            <h3 class="card-title">🧑‍💼 بدون تیم <span class="text-muted" style="font-size:12px;font-weight:400">(<?= count($noTeam) ?>)</span></h3>
+        </div>
+        <?php if ($noTeam): ?>
+        <div style="<?= $memberHead ?>"><div>نام</div><div>نقش</div><div>تیم</div><div>سمت سازمانی</div><div></div></div>
+        <?php foreach ($noTeam as $u) echo $renderMember($u); ?>
+        <?php else: ?>
+        <div class="text-muted" style="padding:12px;font-size:12px">همهٔ کاربران عضو یک تیم هستند.</div>
+        <?php endif; ?>
     </div>
-    <p class="text-muted" style="padding:8px 12px;font-size:11px">«نقش سیستم» = سطح دسترسی نرم‌افزار (admin/…) و با این سمت یکی نیست. تیم فروش و تیم توسعه بازار عمداً جدا هستند تا انتساب لید و کمیسیون دوباره‌شماری نشود. اعداد تارگت/کمیسیون از سند می‌آیند و عمداً در برنامه هاردکد نشده‌اند (فاز ۴: موتور کمیسیون پیکربندی‌پذیر).</p>
+
 </div>
 <?php include 'includes/footer.php'; ?>

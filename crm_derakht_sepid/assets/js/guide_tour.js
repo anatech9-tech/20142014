@@ -149,25 +149,15 @@
             { sel: '#editModal #edit_full_name', title: 'ویرایش مشخصات', text: 'با دکمه ویرایش هر ردیف، مشخصات، حقوق و بیمه همان نفر عوض می‌شود.' }
         ],
 
-        daily_reports: [
-            { sel: '.card-header', title: 'گزارش‌های روز', text: 'گزارش‌های امروز هر نفر با وضعیت تأیید نمایش داده می‌شود.' },
-            { sel: '[onclick*="reportEditModal"]', title: 'ویرایش گزارش', text: 'متن گزارش، پیشرفت کار و کار فردا را از اینجا ویرایش کن.', waitFor: '#reportEditModal' },
-            { sel: '#reportEditModal #edit_report_text', title: 'متن گزارش', text: 'شرح کار انجام‌شده و درصد پیشرفت را بنویس.' }
-        ],
-
         settings: [
             { sel: '#menuOrderForm', title: 'ترتیب منو', text: 'ترتیب آیتم‌های منوی کناری را با جابه‌جا کردن تعیین کن.' },
             { sel: '#menuOrderList', title: 'لیست منو', text: 'با کشیدن هر آیتم، جای آن را عوض کن و ذخیره کن.' }
         ],
 
-        work_orders: [
-            { sel: '.card', title: 'دستور کارها', text: 'لیست دستور کارها و وضعیت هر کدام (جدید/در حال انجام/پایان‌یافته) همین‌جاست.' },
-            { sel: '[onclick*="taskSendModal"]', title: 'ارسال دستور کار', text: 'دستور کار جدید برای یک نفر یا گروه ارسال می‌شود.', waitFor: '#taskSendModal' }
-        ]
     };
 
     /* صفحات مستقل/چاپی که header.php ندارند — تور با دکمه شناور روی آن‌ها کار می‌کند */
-    var DOC_PAGES = ['employee_payment_print', 'anbar_report', 'petty_cash_print', 'inventory_count_print', 'inventory_label_print', 'work_report', 'salary_detail'];
+    var DOC_PAGES = ['anbar_report', 'petty_cash_print', 'inventory_count_print', 'inventory_label_print', 'salary_detail'];
 
     /* ─── وضعیت تور ─── */
     var state = { active: false, steps: [], idx: 0, lastEl: null };

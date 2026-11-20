@@ -82,36 +82,6 @@ function output_csv_fallback($filename, $headers, $rows) {
     exit;
 }
 
-function generate_employee_payment_csv($pdo, $ws_id, $sel_year, $sel_month) {
-    // دقیقاً همان بازه/موتور فرم واریزی کارمندان؛ قبلاً انتهای ماه میلادی و
-    // فرمول قدیمی استفاده می‌شد و اکسل با صفحه حقوق هم‌خوان نبود.
-    [$g_start, $g_end] = jalali_month_bounds((int)$sel_year, (int)$sel_month);
-    $month_label = jalali_month_name($sel_month) . ' ' . $sel_year;
-    $settings = [];
-    foreach ($pdo->query("SELECT setting_key, setting_value FROM settings") as $r) $settings[$r['setting_key']] = $r['setting_value'];
-
-    $st = $pdo->prepare("SELECT u.id, u.full_name, COALESCE(MAX(wp_all.monthly_salary),0) AS monthly_salary, u.iban, u.account_name, u.account_number
-        FROM users u JOIN workshop_personnel wp_current ON wp_current.user_id=u.id AND wp_current.workshop_id=? AND wp_current.status='active'
-        LEFT JOIN workshop_personnel wp_all ON wp_all.user_id=u.id AND wp_all.status='active'
-        WHERE u.is_karigar=0 GROUP BY u.id,u.full_name,u.iban,u.account_name,u.account_number ORDER BY u.full_name");
-    $st->execute([$ws_id]);
-    $headers = [t('ردیف'),t('نام و نام خانوادگی'),t('طلب ماه'),t('مانده طلب قبلی'),t('پاداش'),t('جریمه'),t('کسر مساعده/پرداخت'),t('قابل پرداخت'),t('شماره شبا'),t('نام صاحب حساب'),t('بانک مقصد')];
-    $rows=[]; $total=0; $num=0;
-    foreach ($st->fetchAll() as $p) {
-        $base = employee_month_pay($pdo, $p['id'], 0, $g_start, $g_end, (float)$p['monthly_salary'], $settings);
-        $prev = compute_prev_balance($pdo, $p['id'], 0, 0, $g_start, 0, (float)$p['monthly_salary'], $settings);
-        $adv = advance_deduction_month($pdo, $p['id'], 0, $g_start, $g_end);
-        $bp = $pdo->prepare("SELECT type, COALESCE(SUM(amount),0) total FROM bonuses_penalties WHERE user_id=? AND status='approved' AND date BETWEEN ? AND ? GROUP BY type");
-        $bp->execute([$p['id'],$g_start,$g_end]); $bonus=0; $penalty=0;
-        foreach ($bp->fetchAll() as $r) { if ($r['type']==='bonus') $bonus=(float)$r['total']; else $penalty=(float)$r['total']; }
-        $payable=round($base+$prev+$bonus-$penalty-$adv);
-        if ($payable<=0) continue;
-        $num++; $total+=$payable;
-        $rows[] = [$num,$p['full_name'],$base,$prev,$bonus,$penalty,$adv,$payable,$p['iban']?:'-',$p['account_name']?:'-',$p['account_number']?:'-'];
-    }
-    $rows[]=['',t('جمع کل'),'','','','','',$total,'','',''];
-    output_csv(t('لیست واریزی کارمندان').'_'.$month_label.'.xlsx',$headers,$rows);
-}
 
 function excel_worker_iban_group_key($iban, $worker_id) {
     $value = strtoupper(normalize_digits(trim((string)$iban)));

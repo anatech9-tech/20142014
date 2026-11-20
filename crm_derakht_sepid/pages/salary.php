@@ -91,7 +91,8 @@ function compute_person_balance(PDO $pdo, array $p, string $calc_upto, int $s_ws
                 $calc = calc_employee_day($shifts, $date, $is_hol, $settings, $prev_s, $prev_d);
                 $salary_d = salary_at_date($history, $date, (float)($p['monthly_salary'] ?? 0));
                 $regular_hourly_d = employee_hourly_rate_for_required_hours($salary_d, $required_for_period);
-                $special_hourly_d = $salary_d / 26 / 8;
+                $mnd = max(1, (float)($settings['monthly_salary_days'] ?? 26));
+                $special_hourly_d = $salary_d / $mnd / 8;
                 $month_pay += ($calc['regular'] * $regular_hourly_d)
                             + ($calc['overtime'] * $special_hourly_d * $ot_c)
                             + ($calc['night'] * $special_hourly_d * $ni_c)
@@ -159,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'settl
     $b = compute_person_balance($pdo, $per + ['id' => $uid], $gdate, $s_ws, $W, $settings);
     $due = round($b['balance']);
     if ($due <= 0) {
-        showToast(strtr(t('مانده قابل تسویه تا این تاریخ صفر یا منفی است ({amount} تومان)'), ['{amount}' => number_format($due)]), 'error'); redirect('index.php?page=salary'); exit;
+        showToast(strtr(t('مانده قابل تسویه تا این تاریخ صفر یا منفی است ({amount} تومان)'), ['{amount}' => number_format($due, 0, '.', '،')]), 'error'); redirect('index.php?page=salary'); exit;
     }
     $jdate = to_jalali($gdate);
     $reason = t('تسویه حساب تا تاریخ') . ' ' . $jdate;
@@ -172,8 +173,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'settl
         $stmt2->execute([$ws_id, $due, $desc, $gdate, $_SESSION['user_id']]);
     }
     $stmt2 = $pdo->prepare("INSERT INTO audit_log (user_id, action, entity_type, entity_id, new_value) VALUES (?, 'personnel_settle', 'advance', ?, ?)");
-    $stmt2->execute([$_SESSION['user_id'], $uid, 'تسویه حساب ' . $per['full_name'] . ' تا ' . $jdate . ': ' . number_format($due) . ' تومان (' . ($method === 'petty_cash' ? t('nav_petty_cash') : 'صندوق') . ')']);
-    showToast(strtr(t('✅ تسویه حساب {name} تا {date} با مبلغ {amount} تومان ثبت شد'), ['{name}' => $per['full_name'], '{date}' => $jdate, '{amount}' => number_format($due)]));
+    $stmt2->execute([$_SESSION['user_id'], $uid, 'تسویه حساب ' . $per['full_name'] . ' تا ' . $jdate . ': ' . number_format($due, 0, '.', '،') . ' تومان (' . ($method === 'petty_cash' ? t('nav_petty_cash') : 'صندوق') . ')']);
+    showToast(strtr(t('✅ تسویه حساب {name} تا {date} با مبلغ {amount} تومان ثبت شد'), ['{name}' => $per['full_name'], '{date}' => $jdate, '{amount}' => number_format($due, 0, '.', '،')]));
     redirect('index.php?page=salary');
     exit;
 }
@@ -501,10 +502,11 @@ if (isset($_GET['detail_user'])) {
                 $fri_h += $calc['friday_hours'];
                 $hol_h += $calc['holiday_hours'];
 
-                // فقط ساعت عادی نرخ پویا دارد؛ همهٔ کارهای ویژه نرخ ثابت ۲۶×۸ را نگه می‌دارند.
+                // فقط ساعت عادی نرخ پویا دارد؛ همهٔ کارهای ویژه نرخ ثابت روزهای‌مبنا×۸ را نگه می‌دارند.
                 $salary_d = salary_at_date($history, $date, $monthly_salary);
                 $regular_hourly_d = employee_hourly_rate_for_required_hours($salary_d, $required_info);
-                $special_hourly_d = $salary_d / 26 / 8;
+                $mnd = max(1, (float)($settings['monthly_salary_days'] ?? 26));
+                $special_hourly_d = $salary_d / $mnd / 8;
                 $reg_pay_f += $calc['regular'] * $regular_hourly_d;
                 $ot_pay_f += $calc['overtime'] * $special_hourly_d * $overtime_coef;
                 $night_pay_f += $calc['night'] * $special_hourly_d * $night_coef;
@@ -660,11 +662,11 @@ include 'includes/header.php';
                 <tr>
                     <td><strong><?= htmlspecialchars($cr['name']) ?></strong></td>
                     <td><?= htmlspecialchars($roleName) ?></td>
-                    <td><?= number_format($cr['sales']) ?> <?= t('ت') ?></td>
-                    <td><?= $cr['target'] > 0 ? number_format($cr['target']) . ' <span style="font-size:10px">ت</span>' : '—' ?></td>
-                    <td><strong><?= $cr['target'] > 0 ? number_format($cr['achievement'], 1) . '٪' : '—' ?></strong></td>
-                    <td><?= $cr['rate'] ? '<span class="tag tag-active">' . number_format($cr['rate'], 1) . '٪</span>' : '—' ?></td>
-                    <td><strong style="color:#7c3aed"><?= number_format($cr['commission']) ?> <?= t('ت') ?></strong></td>
+                    <td><?= number_format($cr['sales'], 0, '.', '،') ?> <?= t('ت') ?></td>
+                    <td><?= $cr['target'] > 0 ? number_format($cr['target'], 0, '.', '،') . ' <span style="font-size:10px">ت</span>' : '—' ?></td>
+                    <td><strong><?= $cr['target'] > 0 ? number_format($cr['achievement'], 1, '.', '،') . '٪' : '—' ?></strong></td>
+                    <td><?= $cr['rate'] ? '<span class="tag tag-active">' . number_format($cr['rate'], 1, '.', '،') . '٪</span>' : '—' ?></td>
+                    <td><strong style="color:#7c3aed"><?= number_format($cr['commission'], 0, '.', '،') ?> <?= t('ت') ?></strong></td>
                     <td style="font-size:11px"><?= !empty($cr['start_from']) ? to_jalali($cr['start_from']) : '—' ?></td>
                 </tr>
             <?php endforeach; ?>
@@ -720,7 +722,7 @@ include 'includes/header.php';
                     </td>
                     <td><span class="tag <?= $p['is_karigar'] ? 'tag-karigar' : 'tag-active' ?>"><?= $p['is_karigar'] ? t('sal_worker') : t('sal_employee') ?></span></td>
                     <td class="<?= $b['balance'] < 0 ? 'text-danger' : 'text-success' ?>">
-                        <strong style="font-size:15px"><?= number_format($b['balance']) ?> <?= t('sal_toman') ?></strong>
+                        <strong style="font-size:15px"><?= number_format($b['balance'], 0, '.', '،') ?> <?= t('sal_toman') ?></strong>
                     </td>
                     <td>
                         <div class="d-flex gap-2" style="flex-wrap:wrap">
@@ -850,8 +852,8 @@ async function showDetail(userId, name, scope) {
             html += '<strong style="font-size:16px">' + data.user.full_name + '</strong>';
             html += '<div class="text-muted" style="font-size:12px;margin-top:4px">';
             html += isKarigar
-                ? T.worker + ' — ' + T.daily + ': ' + Number(data.user.daily_salary).toLocaleString() + ' ' + T.toman + ' · <?= t('ساعتی') ?>: ' + Number(Math.round(data.user.daily_salary / 8)).toLocaleString() + ' ' + T.toman
-                : T.employee + ' — ' + T.monthly + ': ' + Number(data.user.monthly_salary).toLocaleString() + ' ' + T.toman + ' · <?= t('نرخ ساعتی') ?> <?= t('هر') ?> <?= t('rep_month') ?> <?= t('lea_from') ?> «<?= t('ساعات') ?> <?= t('کاری') ?> <?= t('الزامی') ?> <?= t('همان') ?> <?= t('rep_month') ?>» <?= t('btn_calculate') ?> <?= t('می‌شود') ?>.';
+                ? T.worker + ' — ' + T.daily + ': ' + fmtNum(data.user.daily_salary) + ' ' + T.toman + ' · <?= t('ساعتی') ?>: ' + fmtNum(Math.round(data.user.daily_salary / 8)) + ' ' + T.toman
+                : T.employee + ' — ' + T.monthly + ': ' + fmtNum(data.user.monthly_salary) + ' ' + T.toman + ' · <?= t('نرخ ساعتی') ?> <?= t('هر') ?> <?= t('rep_month') ?> <?= t('lea_from') ?> «<?= t('ساعات') ?> <?= t('کاری') ?> <?= t('الزامی') ?> <?= t('همان') ?> <?= t('rep_month') ?>» <?= t('btn_calculate') ?> <?= t('می‌شود') ?>.';
             html += '</div></div>';
 
             if (data.months.length === 0) {
@@ -877,13 +879,13 @@ async function showDetail(userId, name, scope) {
                     } else {
                         html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;font-size:12px">';
                         if (typeof m.required_hours !== 'undefined') html += '<div style="padding:8px;background:rgba(99,102,241,0.08);border-radius:8px"><div style="color:var(--text-secondary);font-size:11px"><?= t('ساعات') ?> <?= t('کاری') ?> <?= t('الزامی') ?> <?= t('rep_month') ?></div><strong>' + fmtHM(m.required_hours) + '</strong><div style="font-size:10px;color:var(--text-secondary)">' + (m.required_work_days || 0) + ' <?= t('sal_work_days') ?> − ' + (m.approved_leave_days || 0) + ' <?= t('wh_day') ?> <?= t('nav_leaves') ?> <?= t('تأییدشده') ?></div></div>';
-                        if (m.regular_hours > 0) html += '<div style="padding:8px;background:rgba(34,197,94,0.08);border-radius:8px"><div style="color:var(--text-secondary);font-size:11px"><?= t('ضریب') ?> ۱ — <?= t('sal_regular') ?></div><strong>' + fmtHM(m.regular_hours) + '</strong>' + (m.regular_pay ? ' = ' + Number(m.regular_pay).toLocaleString() + ' <?= t('ت') ?>' : '') + '</div>';
-                        if (m.overtime_hours > 0) html += '<div style="padding:8px;background:rgba(234,179,8,0.08);border-radius:8px"><div style="color:var(--text-secondary);font-size:11px"><?= t('ضریب') ?> ۱.۳۳ — <?= t('sal_overtime') ?></div><strong>' + fmtHM(m.overtime_hours) + '</strong>' + (m.overtime_pay ? ' = ' + Number(m.overtime_pay).toLocaleString() + ' <?= t('ت') ?>' : '') + '</div>';
-                        if (m.night_hours > 0) html += '<div style="padding:8px;background:rgba(168,85,247,0.08);border-radius:8px"><div style="color:var(--text-secondary);font-size:11px"><?= t('ضریب') ?> ۲ — <?= t('wh_night') ?></div><strong>' + fmtHM(m.night_hours) + '</strong>' + (m.night_pay ? ' = ' + Number(m.night_pay).toLocaleString() + ' <?= t('ت') ?>' : '') + '</div>';
-                        if (m.friday_hours > 0) html += '<div style="padding:8px;background:rgba(59,130,246,0.08);border-radius:8px"><div style="color:var(--text-secondary);font-size:11px"><?= t('ضریب') ?> ۱.۳۳ — <?= t('wh_friday') ?></div><strong>' + fmtHM(m.friday_hours) + '</strong>' + (m.friday_pay ? ' = ' + Number(m.friday_pay).toLocaleString() + ' <?= t('ت') ?>' : '') + '</div>';
-                        if (m.holiday_hours > 0) html += '<div style="padding:8px;background:rgba(239,68,68,0.08);border-radius:8px"><div style="color:var(--text-secondary);font-size:11px"><?= t('ضریب') ?> ۲ — <?= t('wh_holiday') ?></div><strong>' + fmtHM(m.holiday_hours) + '</strong>' + (m.holiday_pay ? ' = ' + Number(m.holiday_pay).toLocaleString() + ' <?= t('ت') ?>' : '') + '</div>';
+                        if (m.regular_hours > 0) html += '<div style="padding:8px;background:rgba(34,197,94,0.08);border-radius:8px"><div style="color:var(--text-secondary);font-size:11px"><?= t('ضریب') ?> ۱ — <?= t('sal_regular') ?></div><strong>' + fmtHM(m.regular_hours) + '</strong>' + (m.regular_pay ? ' = ' + fmtNum(m.regular_pay) + ' <?= t('ت') ?>' : '') + '</div>';
+                        if (m.overtime_hours > 0) html += '<div style="padding:8px;background:rgba(234,179,8,0.08);border-radius:8px"><div style="color:var(--text-secondary);font-size:11px"><?= t('ضریب') ?> ۱.۳۳ — <?= t('sal_overtime') ?></div><strong>' + fmtHM(m.overtime_hours) + '</strong>' + (m.overtime_pay ? ' = ' + fmtNum(m.overtime_pay) + ' <?= t('ت') ?>' : '') + '</div>';
+                        if (m.night_hours > 0) html += '<div style="padding:8px;background:rgba(168,85,247,0.08);border-radius:8px"><div style="color:var(--text-secondary);font-size:11px"><?= t('ضریب') ?> ۲ — <?= t('wh_night') ?></div><strong>' + fmtHM(m.night_hours) + '</strong>' + (m.night_pay ? ' = ' + fmtNum(m.night_pay) + ' <?= t('ت') ?>' : '') + '</div>';
+                        if (m.friday_hours > 0) html += '<div style="padding:8px;background:rgba(59,130,246,0.08);border-radius:8px"><div style="color:var(--text-secondary);font-size:11px"><?= t('ضریب') ?> ۱.۳۳ — <?= t('wh_friday') ?></div><strong>' + fmtHM(m.friday_hours) + '</strong>' + (m.friday_pay ? ' = ' + fmtNum(m.friday_pay) + ' <?= t('ت') ?>' : '') + '</div>';
+                        if (m.holiday_hours > 0) html += '<div style="padding:8px;background:rgba(239,68,68,0.08);border-radius:8px"><div style="color:var(--text-secondary);font-size:11px"><?= t('ضریب') ?> ۲ — <?= t('wh_holiday') ?></div><strong>' + fmtHM(m.holiday_hours) + '</strong>' + (m.holiday_pay ? ' = ' + fmtNum(m.holiday_pay) + ' <?= t('ت') ?>' : '') + '</div>';
                         html += '</div>';
-                        if (m.hourly_rate) html += '<div style="margin-top:6px;font-size:11px;color:var(--text-secondary)"><?= t('دستمزد') ?> <?= t('هر') ?> <?= t('wh_hours') ?>: ' + Number(m.hourly_rate).toLocaleString() + ' <?= t('sal_toman') ?></div>';
+                        if (m.hourly_rate) html += '<div style="margin-top:6px;font-size:11px;color:var(--text-secondary)"><?= t('دستمزد') ?> <?= t('هر') ?> <?= t('wh_hours') ?>: ' + fmtNum(m.hourly_rate) + ' <?= t('sal_toman') ?></div>';
                     }
                     html += '</div>';
 
@@ -913,13 +915,13 @@ async function showDetail(userId, name, scope) {
 
                     // Summary row: same ledger order as the printable/detail page.
                     html += '<div style="padding:10px 14px;display:flex;gap:16px;flex-wrap:wrap;font-size:12px;border-top:1px solid var(--border)">';
-                    html += '<div style="color:var(--text-secondary)">📅 <?= t('مطالبات') ?> <?= t('rep_month') ?>‌<?= t('های') ?> <?= t('قبل') ?>: <strong>' + Number(m.prev_balance || 0).toLocaleString() + '</strong></div>';
-                    html += '<div>' + '<?= t('طلب') ?> <?= t('ناخالص') ?> <?= t('rep_month') ?> <?= t('جاری') ?>' + ': <strong>' + Number(m.base_pay).toLocaleString() + '</strong></div>';
-                    html += '<div style="font-weight:700;color:#7c3aed"><?= t('rep_total') ?> <?= t('sal_total_debt') ?> <?= t('ناخالص') ?>: <strong>' + Number(typeof m.gross_claim !== 'undefined' ? m.gross_claim : ((m.prev_balance || 0) + m.base_pay)).toLocaleString() + '</strong></div>';
-                    html += '<div class="text-danger">' + T.penalty + ': <strong>-' + Number(m.penalty).toLocaleString() + '</strong>' + (m.penalty_hours ? ' (' + fmtHM(m.penalty_hours) + ')' : '') + '</div>';
-                    html += '<div>' + T.advance + ': <strong>-' + Number(m.advance).toLocaleString() + '</strong></div>';
-                    html += '<div class="text-success">' + T.bonus + ': <strong>+' + Number(m.bonus).toLocaleString() + '</strong>' + (m.bonus_hours ? ' (' + fmtHM(m.bonus_hours) + ')' : '') + '</div>';
-                    html += '<div style="font-weight:800;color:' + (m.balance_upto >= 0 ? 'var(--success)' : 'var(--danger)') + '">💳 <?= t('مبلغ نهایی قابل پرداخت') ?>: ' + Number(m.balance_upto).toLocaleString() + '</div>';
+                    html += '<div style="color:var(--text-secondary)">📅 <?= t('مطالبات') ?> <?= t('rep_month') ?>‌<?= t('های') ?> <?= t('قبل') ?>: <strong>' + fmtNum(m.prev_balance || 0) + '</strong></div>';
+                    html += '<div>' + '<?= t('طلب') ?> <?= t('ناخالص') ?> <?= t('rep_month') ?> <?= t('جاری') ?>' + ': <strong>' + fmtNum(m.base_pay) + '</strong></div>';
+                    html += '<div style="font-weight:700;color:#7c3aed"><?= t('rep_total') ?> <?= t('sal_total_debt') ?> <?= t('ناخالص') ?>: <strong>' + fmtNum(typeof m.gross_claim !== 'undefined' ? m.gross_claim : ((m.prev_balance || 0) + m.base_pay)) + '</strong></div>';
+                    html += '<div class="text-danger">' + T.penalty + ': <strong>-' + fmtNum(m.penalty) + '</strong>' + (m.penalty_hours ? ' (' + fmtHM(m.penalty_hours) + ')' : '') + '</div>';
+                    html += '<div>' + T.advance + ': <strong>-' + fmtNum(m.advance) + '</strong></div>';
+                    html += '<div class="text-success">' + T.bonus + ': <strong>+' + fmtNum(m.bonus) + '</strong>' + (m.bonus_hours ? ' (' + fmtHM(m.bonus_hours) + ')' : '') + '</div>';
+                    html += '<div style="font-weight:800;color:' + (m.balance_upto >= 0 ? 'var(--success)' : 'var(--danger)') + '">💳 <?= t('مبلغ نهایی قابل پرداخت') ?>: ' + fmtNum(m.balance_upto) + '</div>';
                     html += '</div>';
 
                     // Advance items detail
@@ -929,7 +931,7 @@ async function showDetail(userId, name, scope) {
                             let typeLabel = ai.type === 'debt'
                                 ? (Number(ai.amount) < 0 ? '📌 <?= t('adv_debt_credit') ?>' : '📌 <?= t('adv_debt_debit') ?>')
                                 : '💵 ' + T.advance;
-                            html += '<div style="padding:3px 0;color:var(--text-secondary)">' + typeLabel + ': ' + (ai.pay_date || '-') + ' — ' + (ai.reason || '<?= t('بدون توضیح') ?>') + ' = ' + Number(ai.amount).toLocaleString() + ' <?= t('ت') ?></div>';
+                            html += '<div style="padding:3px 0;color:var(--text-secondary)">' + typeLabel + ': ' + (ai.pay_date || '-') + ' — ' + (ai.reason || '<?= t('بدون توضیح') ?>') + ' = ' + fmtNum(ai.amount) + ' <?= t('ت') ?></div>';
                         });
                         html += '</div>';
                     }
@@ -939,7 +941,7 @@ async function showDetail(userId, name, scope) {
 
                 html += '<div style="margin-top:14px;padding:14px;background:' + (totalNet >= 0 ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)') + ';border-radius:12px;text-align:center">';
                 html += '<div class="text-muted" style="font-size:11px">' + T.totalDebt + '</div>';
-                html += '<strong style="font-size:20px;color:' + (totalNet >= 0 ? 'var(--success)' : 'var(--danger)') + '">' + Number(totalNet).toLocaleString() + ' ' + T.toman + '</strong>';
+                html += '<strong style="font-size:20px;color:' + (totalNet >= 0 ? 'var(--success)' : 'var(--danger)') + '">' + fmtNum(totalNet) + ' ' + T.toman + '</strong>';
                 html += '</div>';
             }
         }
@@ -987,10 +989,10 @@ async function updateSettlePreview() {
             return;
         }
         if (data.amount <= 0) {
-            box.innerHTML = '💼 <?= t('pet_balance') ?> <?= t('lea_to') ?> <strong>' + data.jdate + '</strong>: <strong>' + Number(data.amount).toLocaleString() + '</strong> <?= t('sal_toman') ?><br><span class="text-danger" style="font-size:12px"><?= t('pet_balance') ?><?= t('‌ای') ?> <?= t('برای تسویه وجود ندارد') ?></span>';
+            box.innerHTML = '💼 <?= t('pet_balance') ?> <?= t('lea_to') ?> <strong>' + data.jdate + '</strong>: <strong>' + fmtNum(data.amount) + '</strong> <?= t('sal_toman') ?><br><span class="text-danger" style="font-size:12px"><?= t('pet_balance') ?><?= t('‌ای') ?> <?= t('برای تسویه وجود ندارد') ?></span>';
             return;
         }
-        box.innerHTML = '💼 <?= t('pet_balance') ?> <?= t('lea_to') ?> <strong>' + data.jdate + '</strong>:<br><strong style="font-size:20px;color:var(--success)">' + Number(data.amount).toLocaleString() + '</strong> <?= t('sal_toman') ?>';
+        box.innerHTML = '💼 <?= t('pet_balance') ?> <?= t('lea_to') ?> <strong>' + data.jdate + '</strong>:<br><strong style="font-size:20px;color:var(--success)">' + fmtNum(data.amount) + '</strong> <?= t('sal_toman') ?>';
         btn.disabled = false;
     } catch (e) {
         box.innerHTML = '<span class="text-danger"><?= t('error') ?> <?= t('در') ?> <?= t('ارتباط') ?> <?= t('با') ?> <?= t('سرور') ?></span>';
