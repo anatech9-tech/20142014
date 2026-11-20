@@ -536,6 +536,11 @@ $__roleNames = ['sales_expert' => 'کارشناس فروش', 'sales_manager' => 
     </div>
     <div class="mt-3"><button type="submit" class="btn btn-primary"><i data-lucide="save"></i> ذخیرهٔ تارگت و پله‌ها</button></div>
 </form>
+<!-- کارت میان‌بر «استعلام قیمت» -->
+<a href="index.php?page=quote_flow" class="card mt-4 animate-in" style="display:block;text-decoration:none;border-right:4px solid var(--primary)">
+    <div class="card-header d-flex justify-between align-center" style="margin-bottom:6px"><h3 class="card-title">🧾 استعلام قیمت — گردش‌کار و حاشیهٔ سود</h3><i data-lucide="arrow-left"></i></div>
+    <p class="text-muted" style="font-size:11.5px;padding:0 4px 12px;margin:0">تنظیم بصری مراحل «استعلام → تأیید مدیر → اعلام قیمت نت → تأیید نهایی و سود → فیکس» با گره و اتصال (شبیه n8n) + حاشیهٔ سود پیش‌فرض. استعلام‌ها از هر معامله در «پایپ‌لاین واردات» (پیش‌فاکتور) ساخته می‌شوند.</p>
+</a>
 <?php endif; ?>
 
 

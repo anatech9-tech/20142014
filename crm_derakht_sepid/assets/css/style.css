@@ -905,3 +905,69 @@ tr:hover td { background: var(--primary-soft); }
 @media (max-width:640px) {
     .topbar-popover { position:fixed; top:60px; inset-inline:12px; width:auto; }
 }
+
+/* ═══════════ «استعلام قیمت» (quotes) ═══════════ */
+.quote-stepper { display:flex; align-items:flex-start; justify-content:center; gap:4px; direction:rtl; overflow-x:auto; padding:6px 4px 14px; margin-bottom:6px; }
+.qstep { display:flex; flex-direction:column; align-items:center; gap:6px; min-width:86px; max-width:150px; text-align:center; }
+.qstep-dot { width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--surface); border:2px solid var(--border); color:var(--text-muted,#94a3b8); transition:all .25s; }
+.qstep-dot i, .qstep-dot svg { width:18px; height:18px; }
+.qstep-label { font-size:11px; line-height:1.6; color:var(--text-secondary); font-weight:600; }
+.qstep-done .qstep-dot { background:#dcfce7; border-color:#22c55e; color:#16a34a; }
+.qstep-done .qstep-label { color:#166534; }
+.qstep-current .qstep-dot { background:var(--primary); border-color:var(--primary-dark); color:#fff; box-shadow:0 0 0 5px var(--primary-soft,rgba(48,142,137,.18)); animation:qpulse 1.6s ease-in-out infinite; }
+.qstep-current .qstep-label { color:var(--primary-dark); font-weight:800; }
+@keyframes qpulse { 0%,100% { box-shadow:0 0 0 4px var(--primary-soft,rgba(48,142,137,.18)); } 50% { box-shadow:0 0 0 8px var(--primary-soft,rgba(48,142,137,.12)); } }
+.qstep-line { flex:0 0 34px; height:2px; background:var(--border); margin-top:18px; border-radius:2px; }
+.qstep-line.done { background:#22c55e; }
+
+.quote-layout { display:grid; grid-template-columns: minmax(0,1fr) 340px; gap:14px; align-items:start; }
+@media (max-width: 1100px) { .quote-layout { grid-template-columns: 1fr; } }
+.quote-main { display:flex; flex-direction:column; gap:14px; min-width:0; }
+.quote-side { display:flex; flex-direction:column; gap:12px; min-width:0; }
+
+.quote-cost-table td, .quote-cost-table th { vertical-align:middle; }
+.quote-cost-table tfoot .q-total-row th, .quote-cost-table tfoot .q-total-row td { border-top:2px solid var(--primary-line,rgba(48,142,137,.28)); background:var(--primary-soft,rgba(48,142,137,.08)); font-size:13px; }
+.q-amount { text-align:left; }
+
+.price-chip { display:flex; flex-direction:column; gap:2px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:8px 16px; min-width:150px; }
+.price-chip span { font-size:10.5px; color:var(--text-muted); font-weight:600; }
+.price-chip b { font-size:16px; color:var(--primary-dark); }
+.price-chip-lg b { font-size:22px; }
+.price-chip-rial { background:var(--primary-soft,rgba(48,142,137,.08)); border-color:var(--primary-line,rgba(48,142,137,.28)); }
+
+.quote-fixed-badge { background:#dcfce7; color:#166534; border:1px solid #22c55e; padding:6px 16px; border-radius:12px; font-weight:800; font-size:13px; }
+.quote-cancel-badge { background:#fee2e2; color:#991b1b; border:1px solid #f87171; padding:6px 16px; border-radius:12px; font-weight:700; font-size:13px; }
+.quote-final-card { border-color:var(--primary-line,rgba(48,142,137,.35)); }
+.btn-lg { font-size:14px; padding:12px 22px; }
+
+/* ═══════════ سازندهٔ گردش‌کار استعلام (quote flow builder) ═══════════ */
+.flow-shell { display:grid; grid-template-columns: 190px minmax(0,1fr) 300px; gap:12px; align-items:stretch; height:calc(100vh - 210px); min-height:560px; }
+@media (max-width: 1200px) { .flow-shell { grid-template-columns: 150px minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto; height:auto; } .flow-editor { grid-column:1 / -1; } }
+.flow-palette { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:10px; overflow:auto; display:flex; flex-direction:column; gap:8px; }
+.flow-palette-title { font-size:11px; font-weight:800; color:var(--text-secondary); margin:2px 2px 4px; }
+.flow-palette-item { display:flex; align-items:center; gap:8px; border:1.5px dashed var(--primary-line,rgba(48,142,137,.4)); background:var(--primary-soft,rgba(48,142,137,.06)); border-radius:10px; padding:9px 10px; cursor:grab; font-size:11.5px; font-weight:700; color:var(--primary-dark); user-select:none; transition:all .15s; }
+.flow-palette-item:hover { border-style:solid; transform:translateY(-1px); box-shadow:0 4px 14px rgba(0,0,0,.08); }
+.flow-palette-item .flow-pi-icon { width:30px; height:30px; border-radius:8px; background:#fff; display:flex; align-items:center; justify-content:center; border:1px solid var(--border); flex:0 0 auto; }
+.flow-canvas-wrap { position:relative; border:1px solid var(--border); border-radius:14px; overflow:hidden; background: radial-gradient(circle, #d7dbe4 1.1px, transparent 1.1px) 0 0/18px 18px, var(--bg); min-height:420px; }
+.flow-canvas-wrap .flow-canvas-toolbar { position:absolute; top:10px; left:10px; z-index:5; display:flex; gap:6px; background:rgba(255,255,255,.92); backdrop-filter:blur(4px); border:1px solid var(--border); border-radius:10px; padding:5px; }
+.drawflow { height:100%; min-height:420px; }
+.drawflow .drawflow-node { background:#fff; border:1.5px solid var(--border); border-radius:12px; padding:10px 12px; width:190px; font-family:'Vazirmatn',Tahoma,sans-serif; box-shadow:0 6px 18px rgba(15,23,42,.10); color:#0f172a; }
+.drawflow .drawflow-node.selected, .drawflow .drawflow-node:hover { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-soft,rgba(48,142,137,.25)); }
+.drawflow .drawflow-node .qfn-head { display:flex; align-items:center; gap:8px; border-bottom:1px solid #e2e8f0; padding-bottom:7px; margin-bottom:7px; }
+.drawflow .drawflow-node .qfn-icon { width:32px; height:32px; border-radius:9px; display:flex; align-items:center; justify-content:center; color:#fff; flex:0 0 auto; }
+.drawflow .drawflow-node .qfn-title { font-size:11.5px; font-weight:800; line-height:1.5; }
+.drawflow .drawflow-node .qfn-meta { font-size:9.5px; color:#64748b; line-height:1.6; }
+.drawflow .drawflow-node .inputs .input_1, .drawflow .drawflow-node .outputs .output_1 { border-color:var(--primary); }
+.drawflow .connection .main-path { stroke:var(--primary); stroke-width:2.5px; }
+.flow-editor { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:12px; overflow:auto; display:flex; flex-direction:column; gap:10px; }
+.flow-editor-title { font-size:11px; font-weight:800; color:var(--text-secondary); }
+.flow-empty { color:var(--text-muted); font-size:11.5px; text-align:center; padding:22px 8px; }
+.qfn-type-submit { background:#0ea5e9; } .qfn-type-approval { background:#f59e0b; } .qfn-type-costing { background:#8b5cf6; }
+.qfn-type-pricing { background:#10b981; } .qfn-type-finalize { background:#22c55e; } .qfn-type-notify { background:#64748b; }
+
+/* دکمه‌های outline + کلاس‌های کمکی استعلام */
+.btn-outline-primary { background:transparent; border:1.5px solid var(--primary); color:var(--primary-dark); }
+.btn-outline-primary:hover { background:var(--primary-soft,rgba(48,142,137,.12)); }
+.btn-outline-danger { background:transparent; border:1.5px solid #dc2626; color:#b91c1c; border-radius:10px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; font-family:inherit; }
+.btn-outline-danger:hover { background:#fef2f2; }
+.overflow-x-auto { overflow-x:auto; }

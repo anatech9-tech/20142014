@@ -51,6 +51,7 @@ $translations = [
         'nav_crm_customers' => 'مشتریان',
         'nav_crm_leads' => 'سرنخ‌ها (لید)',
         'nav_crm_deals' => 'پایپ‌لاین واردات',
+        'nav_quotes' => 'استعلام قیمت',
         'nav_crm_tasks' => 'وظایف من',
         'nav_crm_teams' => 'تیم‌های فروش',
         'nav_telefonchy_events' => 'رویدادهای تلفنچی',

@@ -163,6 +163,7 @@ function fx_to_toman(PDO $pdo): array {
         'CNY' => (float)commission_setting($pdo, 'fx_to_toman_CNY', '0'),
         'AED' => (float)commission_setting($pdo, 'fx_to_toman_AED', '0'),
         'IRR' => (float)commission_setting($pdo, 'fx_to_toman_IRR', '0.1'),
+        'TOM' => 1.0, // ۱ تومان = ۱ تومان (استعلام‌های قیمت فیکس‌شده با ارز TOM ذخیره می‌شوند)
     ];
 }
 
@@ -185,6 +186,39 @@ function month_sales_by_currency(PDO $pdo, string $whereExtra, array $params, st
         }
     } catch (Throwable $e) {}
     return ['toman' => $toman, 'missing' => $missing];
+}
+
+/** فروش ماه + سود ماه. اگر معامله از استعلام قیمت فیکس‌شده بیاید، «سود فیکس‌شدهٔ همان استعلام» مبناست؛
+ *  در غیر این صورت سود = فروش × حاشیهٔ کمیسیون جهانی. ['toman'=>float,'profit'=>float,'missing'=>string[]] */
+function month_sales_and_profit(PDO $pdo, string $whereExtra, array $params, string $monthKey): array {
+    [$jy, $jm] = array_map('intval', explode('-', $monthKey));
+    [$bStart, $bEnd] = jalali_month_bounds($jy, $jm);
+    $rates = fx_to_toman($pdo);
+    $globalMargin = commission_targets($pdo)['margin_pct'] / 100.0;
+    $sales = 0.0; $profit = 0.0; $missing = [];
+    $hasQuotes = false;
+    try { $chk = $pdo->query("SHOW TABLES LIKE 'crm_quotes'"); $hasQuotes = $chk && $chk->fetch() !== false; } catch (Throwable $e) {}
+    $profitCol = $hasQuotes
+        ? "(SELECT q.fixed_sell_toman - q.total_cost_toman FROM crm_quotes q WHERE q.deal_id = d.id AND q.status = 'fixed' ORDER BY q.fixed_at DESC, q.id DESC LIMIT 1) AS fixed_profit"
+        : "NULL AS fixed_profit";
+    try {
+        $st = $pdo->prepare("SELECT d.id AS deal_id, d.currency, d.estimated_value, {$profitCol}
+            FROM crm_deals d
+            WHERE d.status = 'won' AND d.updated_at BETWEEN ? AND ? {$whereExtra}");
+        $st->execute(array_merge([$bStart . ' 00:00:00', $bEnd . ' 23:59:59'], $params));
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $cur = strtoupper((string)($row['currency'] ?: 'USD'));
+            $rate = $rates[$cur] ?? 0.0;
+            $s = (float)$row['estimated_value'];
+            if ($s <= 0) continue;
+            if ($rate <= 0) { $missing[] = $cur; continue; }
+            $toman = $s * $rate;
+            $sales += $toman;
+            $fp = $row['fixed_profit'];
+            if ($fp !== null) { $profit += (float)$fp; } else { $profit += $toman * $globalMargin; }
+        }
+    } catch (Throwable $e) {}
+    return ['toman' => $sales, 'profit' => $profit, 'missing' => array_values(array_unique($missing))];
 }
 
 function user_month_sales(PDO $pdo, int $userId, string $monthKey): float {
@@ -228,10 +262,9 @@ function commission_snapshot(PDO $pdo, int $userId, string $monthKey): array {
     $snap = ['category' => $cat, 'sales' => 0.0, 'achievement' => 0.0, 'rate' => 0.0, 'commission' => 0.0, 'target' => 0.0, 'role' => '', 'start_from' => salary_start_for($pdo, $userId, $cat)];
 
     if ($cat === 'sales') {
-        $sr = month_sales_by_currency($pdo, "AND owner_user_id = ?", [$userId], $monthKey);
+        $sr = month_sales_and_profit($pdo, "AND owner_user_id = ?", [$userId], $monthKey);
         $sales = $sr['toman'];
-        $margin = $targets['margin_pct'] / 100.0;
-        $profit = $sales * $margin;
+        $profit = $sr['profit'];
         $ratio = $targets['sales_toman'] > 0 ? $sales / $targets['sales_toman'] : 0;
         $rate = tier_rate($pdo, 'sales_expert', $ratio);
         $snap = array_merge($snap, ['role' => 'sales_expert', 'sales' => $sales, 'target' => $targets['sales_toman'], 'achievement' => $ratio * 100, 'rate' => $rate, 'commission' => $profit * $rate / 100, 'missing_fx' => $sr['missing']]);
@@ -243,18 +276,18 @@ function commission_snapshot(PDO $pdo, int $userId, string $monthKey): array {
             // سِمت‌هایی که در سند نهایی پلهٔ تارگت ندارند (مثل مدیر دیجیتال مارکتینگ) — نمایش «بدون پله»
             $snap = array_merge($snap, ['role' => implode('+', $roles), 'sales' => 0.0, 'target' => 0.0, 'achievement' => 0.0, 'rate' => 0.0, 'commission' => 0.0, 'missing_fx' => []]);
         } elseif ($isBD) {
-            $dr = month_sales_by_currency($pdo, "AND owner_user_id = ?", [$userId], $monthKey);
+            $dr = month_sales_and_profit($pdo, "AND owner_user_id = ?", [$userId], $monthKey);
             $sales = $dr['toman'];
             $ratio = $targets['bd_toman'] > 0 ? $sales / $targets['bd_toman'] : 0;
             $rate = tier_rate($pdo, 'business_development', $ratio);
-            $profit = $sales * ($targets['margin_pct'] / 100.0);
+            $profit = $dr['profit'];
             $snap = array_merge($snap, ['role' => 'business_development', 'sales' => $sales, 'target' => $targets['bd_toman'], 'achievement' => $ratio * 100, 'rate' => $rate, 'commission' => $profit * $rate / 100, 'missing_fx' => $dr['missing']]);
         } else {
-            $tr = team_month_sales($pdo, $monthKey);
+            $tr = month_sales_and_profit($pdo, "AND EXISTS (SELECT 1 FROM users u WHERE u.id = crm_deals.owner_user_id AND u.staff_category = 'sales')", [], $monthKey);
             $sales = $tr['toman'];
             $ratio = $targets['team_toman'] > 0 ? $sales / $targets['team_toman'] : 0;
             $rate = tier_rate($pdo, 'sales_manager', $ratio);
-            $profit = $sales * ($targets['margin_pct'] / 100.0);
+            $profit = $tr['profit'];
             $snap = array_merge($snap, ['role' => 'sales_manager', 'sales' => $sales, 'target' => $targets['team_toman'], 'achievement' => $ratio * 100, 'rate' => $rate, 'commission' => $profit * $rate / 100, 'missing_fx' => $tr['missing']]);
         }
     }

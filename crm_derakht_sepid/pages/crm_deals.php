@@ -167,7 +167,8 @@ include 'includes/header.php';
                             <select name="stage_id" class="form-control" style="font-size:11px;padding:3px" onchange="this.form.submit()">
                                 <?php foreach ($stages as $s2): ?><option value="<?= (int)$s2['id'] ?>" <?= (int)$s2['id'] === $sid ? 'selected' : '' ?>><?= htmlspecialchars($s2['name']) ?></option><?php endforeach; ?>
                             </select></form>
-                        <div style="display:flex;gap:4px;margin-top:6px">
+                        <div style="display:flex;gap:4px;margin-top:6px;align-items:center">
+                            <form method="post" action="index.php?page=quotes&new=1&deal_id=<?= (int)$d['id'] ?>" style="margin:0"><?= get_csrf_field() ?><button type="submit" class="btn btn-outline-primary btn-sm" style="font-size:10px;padding:4px 8px" title="ثبت/پیگیری استعلام قیمت این معامله">🧾 استعلام قیمت</button></form>
                             <?php if ($d['status'] !== 'won'): ?><form method="post" style="flex:1"><?= get_csrf_field() ?><input type="hidden" name="action" value="set_status"><input type="hidden" name="id" value="<?= (int)$d['id'] ?>"><input type="hidden" name="status" value="won"><button class="btn btn-success btn-sm" style="width:100%;font-size:10px;padding:4px">✔ برنده</button></form><?php endif; ?>
                             <?php if ($d['status'] !== 'lost'): ?><form method="post" style="flex:1"><?= get_csrf_field() ?><input type="hidden" name="action" value="set_status"><input type="hidden" name="id" value="<?= (int)$d['id'] ?>"><input type="hidden" name="status" value="lost"><button class="btn btn-ghost btn-sm" style="width:100%;font-size:10px;padding:4px">✘ باخته</button></form><?php endif; ?>
                         </div>

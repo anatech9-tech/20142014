@@ -804,6 +804,58 @@ function schema_statements(): array {
         KEY `idx_crm_deal_customer` (`customer_id`)
     ) $T";
 
+    $S['crm_quotes'] = "CREATE TABLE IF NOT EXISTS `crm_quotes` (
+        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        `deal_id` INT(11) NULL,
+        `customer_id` INT(11) NULL,
+        `title` VARCHAR(255) NOT NULL DEFAULT '',
+        `product_name` VARCHAR(255) NULL,
+        `specs` TEXT NULL,
+        `quantity` DECIMAL(18,3) NULL,
+        `unit` VARCHAR(30) NULL,
+        `hs_code` VARCHAR(32) NULL,
+        `incoterm` VARCHAR(16) NULL,
+        `status` VARCHAR(24) NOT NULL DEFAULT 'in_flow',
+        `current_step` INT(11) NOT NULL DEFAULT 0,
+        `workflow_json` MEDIUMTEXT NULL,
+        `fx_snapshot_json` MEDIUMTEXT NULL,
+        `margin_pct` DECIMAL(6,2) NULL,
+        `total_cost_toman` DECIMAL(20,2) NULL,
+        `fixed_sell_toman` DECIMAL(20,2) NULL,
+        `fixed_at` DATETIME NULL,
+        `fixed_by` INT(11) NULL,
+        `created_by` INT(11) NULL,
+        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `updated_at` DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+        KEY `idx_quote_deal` (`deal_id`),
+        KEY `idx_quote_customer` (`customer_id`),
+        KEY `idx_quote_creator` (`created_by`),
+        KEY `idx_quote_status` (`status`)
+    ) $T";
+
+    $S['quote_cost_lines'] = "CREATE TABLE IF NOT EXISTS `quote_cost_lines` (
+        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        `quote_id` INT(11) NOT NULL,
+        `component_code` VARCHAR(40) NOT NULL,
+        `label` VARCHAR(120) NOT NULL,
+        `amount` DECIMAL(20,4) NULL,
+        `currency` VARCHAR(6) NULL,
+        `sort_order` INT(11) NOT NULL DEFAULT 0,
+        KEY `idx_qcl_quote` (`quote_id`)
+    ) $T";
+
+    $S['quote_history'] = "CREATE TABLE IF NOT EXISTS `quote_history` (
+        `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        `quote_id` INT(11) NOT NULL,
+        `actor_user_id` INT(11) NULL,
+        `step_index` INT(11) NULL,
+        `step_type` VARCHAR(24) NULL,
+        `action` VARCHAR(24) NOT NULL,
+        `note` TEXT NULL,
+        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY `idx_qh_quote` (`quote_id`)
+    ) $T";
+
     $S['crm_activities'] = "CREATE TABLE IF NOT EXISTS `crm_activities` (
         `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
         `customer_id` INT(11) NULL,

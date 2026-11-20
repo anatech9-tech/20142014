@@ -260,6 +260,22 @@ switch ($page) {
         require_login();
         include 'pages/crm_deals.php';
         break;
+    case 'quotes':
+        require_login();
+        include 'pages/quotes.php';
+        break;
+    case 'quote_view':
+        require_login();
+        include 'pages/quote_view.php';
+        break;
+    case 'quote_print':
+        require_login();
+        include 'pages/quote_print.php';
+        break;
+    case 'quote_flow':
+        require_login();
+        include 'pages/quote_flow.php';
+        break;
     case 'crm_tasks':
         require_login();
         include 'pages/crm_tasks.php';

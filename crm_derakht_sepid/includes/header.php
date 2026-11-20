@@ -72,7 +72,7 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = generate_token()
     <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
     <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
-    <link rel="stylesheet" href="assets/css/style.css?v=20261106b">
+    <link rel="stylesheet" href="assets/css/style.css?v=20261106c">
     <link rel="stylesheet" href="assets/css/glass.css">
     <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
 <script>
@@ -170,6 +170,7 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = generate_token()
                 'crm_customers'  => ['crm_customers', 'building-2', t('nav_crm_customers'), true],
                 'crm_leads'      => ['crm_leads', 'magnet', t('nav_crm_leads'), true],
                 'crm_deals'      => ['crm_deals', 'trending-up', t('nav_crm_deals'), true],
+                'quotes'         => ['quotes', 'receipt-text', t('nav_quotes'), true],
                 'crm_tasks'      => ['crm_tasks', 'list-todo', t('nav_crm_tasks'), true],
                 'crm_teams'      => ['crm_teams', 'users-round', t('nav_crm_teams'), $is_admin],
                 'calls'             => ['calls', 'phone', t('nav_calls'), $is_admin],
@@ -195,7 +196,7 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = generate_token()
                 'finance' => ['label' => t('nav_grp_finance'), 'icon' => 'wallet',         'items' => ['work_hours', 'salary', 'advances', 'petty_cash', 'reports']],
                 'hr'      => ['label' => t('nav_grp_hr'),      'icon' => 'users',          'items' => ['personnel', 'leaves', 'contracts']],
                 'ops'     => ['label' => t('nav_grp_ops'),     'icon' => 'package',        'items' => ['forms', 'inventory', 'workshops']],
-                'crm'     => ['label' => t('nav_grp_crm'),     'icon' => 'trending-up',    'items' => ['crm_customers', 'crm_leads', 'crm_deals', 'crm_tasks', 'crm_teams', 'calls']],
+                'crm'     => ['label' => t('nav_grp_crm'),     'icon' => 'trending-up',    'items' => ['crm_customers', 'crm_leads', 'crm_deals', 'quotes', 'crm_tasks', 'crm_teams', 'calls']],
                 'comms'   => ['label' => t('nav_grp_comms'),   'icon' => 'message-circle', 'items' => ['chat', 'notifications', 'archive']],
                 'mgmt'    => ['label' => t('nav_grp_mgmt'),    'icon' => 'settings',       'items' => ['audit', 'settings', 'profile']],
             ];
