@@ -94,7 +94,11 @@ function ensure_quote_schema(PDO $pdo): bool {
 
 /* ── نرخ ارز به تومان (نقطه‌ای که بعدها به API زنده تبدیل می‌شود) ── */
 function quote_fx_rates(PDO $pdo): array {
-    $get = function (string $k, string $def) use ($pdo) {
+    // نرخ مؤثر = زنده (اگر «نرخ لحظه‌ای» فعال و کش معتبر باشد) یا دستی — یک منبع برای همهٔ موتورها
+    if (!function_exists('fx_effective_rates')) require_once __DIR__ . '/fx.php';
+    $eff = function_exists('fx_effective_rates') ? fx_effective_rates($pdo) : [];
+    $get = function (string $k, string $def) use ($pdo, $eff) {
+        if (isset($eff[$k]) && $eff[$k] > 0) return (float)$eff[$k];
         try {
             $st = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = ? LIMIT 1");
             $st->execute(['fx_to_toman_' . $k]);
@@ -103,12 +107,14 @@ function quote_fx_rates(PDO $pdo): array {
         } catch (Throwable $e) { return (float)$def; }
     };
     return [
-        'USD' => $get('USD', '0'),
-        'CNY' => $get('CNY', '0'),
-        'TOM' => 1.0,
-        'IRR' => $get('IRR', '0.1'),
-        'EUR' => $get('EUR', '0'),
-        'AED' => $get('AED', '0'),
+        'USD'  => $get('USD', '0'),
+        'CNY'  => $get('CNY', '0'),
+        'TOM'  => 1.0,
+        'IRR'  => isset($eff['IRR']) ? (float)$eff['IRR'] : $get('IRR', '0.1'),
+        'EUR'  => $get('EUR', '0'),
+        'AED'  => $get('AED', '0'),
+        'GBP'  => $get('GBP', '0'),
+        'USDT' => $get('USDT', '0'),
     ];
 }
 

@@ -157,13 +157,26 @@ function tier_rate(PDO $pdo, string $role_code, float $achievementRatio): float 
 /** فروش کلِ خالصِ برندهٔ یک کارشناس در یک ماه شمسی ('jy-jm') */
 /** نرخ ارز به تومان — از تنظیمات خوانده می‌شود؛ کارفرما باید وارد کند (۰ = نامشخص) */
 function fx_to_toman(PDO $pdo): array {
+    // نرخ مؤثر = زنده (اگر فعال و کش معتبر) یا دستی — همان منبع موتور استعلام
+    if (!function_exists('fx_effective_rates')) require_once __DIR__ . '/fx.php';
+    if (function_exists('fx_effective_rates')) {
+        $eff = fx_effective_rates($pdo);
+        return [
+            'USD' => (float)($eff['USD'] ?? 0),
+            'EUR' => (float)($eff['EUR'] ?? 0),
+            'CNY' => (float)($eff['CNY'] ?? 0),
+            'AED' => (float)($eff['AED'] ?? 0),
+            'IRR' => (float)($eff['IRR'] ?? 0.1),
+            'TOM' => 1.0,
+        ];
+    }
     return [
         'USD' => (float)commission_setting($pdo, 'fx_to_toman_USD', '0'),
         'EUR' => (float)commission_setting($pdo, 'fx_to_toman_EUR', '0'),
         'CNY' => (float)commission_setting($pdo, 'fx_to_toman_CNY', '0'),
         'AED' => (float)commission_setting($pdo, 'fx_to_toman_AED', '0'),
         'IRR' => (float)commission_setting($pdo, 'fx_to_toman_IRR', '0.1'),
-        'TOM' => 1.0, // ۱ تومان = ۱ تومان (استعلام‌های قیمت فیکس‌شده با ارز TOM ذخیره می‌شوند)
+        'TOM' => 1.0,
     ];
 }
 

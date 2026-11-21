@@ -539,7 +539,7 @@ if ($__fx['cached_at'] > 0) { $__fxCachedJalali = (function_exists('to_jalali') 
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:800;font-size:12px;color:#047857">
             <input type="checkbox" name="fx_live_enabled" value="1" <?= !empty($__fx['enabled']) ? 'checked' : '' ?>> 📡 نرخ لحظه‌ای ارز فعال باشد — منبع: «نرخ‌سنج» (هر ۳۰ دقیقه کش می‌شود)
         </label>
-        <div class="text-muted" style="font-size:10.5px;margin-top:6px;line-height:1.9">منبع: <a href="https://nerkh.jahankhahan.shop/developers" target="_blank" rel="noopener" style="color:#047857">نرخ‌سنج</a> — نرخ بازار آزاد تهران به تومان (دلار/یورو/یوان/درهم/پوند + تتر). در حالت فعال، فیلدهای بالا به‌صورت خودکار بروز می‌شوند؛ ریال ثابت ۰٫۱ تومان می‌ماند. اگر اینترنت سرور قطع شود، آخرین نرخ کش‌شده اعمال می‌شود.</div>
+        <div class="text-muted" style="font-size:10.5px;margin-top:6px;line-height:1.9">منبع: <a href="https://nerkh.jahankhahan.shop/developers" target="_blank" rel="noopener" style="color:#047857">نرخ‌سنج</a> — نرخ بازار آزاد تهران به تومان (دلار/یورو/یوان/درهم/پوند + تتر). در حالت فعال، موتور استعلام و موتور کمیسیون نرخ زنده را به کار می‌برند؛ فیلدهای دستی بالا دست‌نخورده می‌مانند و فقط در حالت خاموش (یا اگر ارزی در کش نباشد) اعمال می‌شوند.<br>📌 نرخ مؤثر فعلی: <b><?= htmlspecialchars(function_exists('fx_live_summary') ? fx_live_summary($pdo) : '—') ?></b></div>
         <div style="margin-top:6px;font-size:10.5px;line-height:1.9">
             <?php if (!empty($__fx['enabled'])): ?>
                 <?php if (($__fx['error'] ?? '') !== ''): ?>

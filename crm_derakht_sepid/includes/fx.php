@@ -113,9 +113,9 @@ function fx_live_refresh(PDO $pdo): array {
     }
     foreach (['USD', 'EUR', 'CNY', 'AED', 'GBP', 'USDT'] as $c) {
         $v = (float)($res['rates'][$c] ?? 0);
-        if ($v > 0) fx_setting_set($pdo, 'fx_to_toman_' . $c, (string)round($v, 2));
+        // نرخ زنده در کلیدهای جدا (fx_live_toman_*) ذخیره می‌شود تا مقادیر دستی fx_to_toman_* دست‌نخورده بمانند
+        if ($v > 0) fx_setting_set($pdo, 'fx_live_toman_' . $c, (string)round($v, 2));
     }
-    fx_setting_set($pdo, 'fx_to_toman_TOM', '1');
     fx_setting_set($pdo, 'fx_live_cached_at', (string)time());
     fx_setting_set($pdo, 'fx_live_as_of', (string)($res['as_of'] ?? ''));
     fx_setting_set($pdo, 'fx_live_error', '');
@@ -133,6 +133,45 @@ function fx_live_maybe_refresh(PDO $pdo): void {
         if ($now - $attempt < 300) return; // اخیراً تلاش شد؛ ۵ دقیقه صبر
         fx_live_refresh($pdo);
     } catch (Throwable $e) { /* هرگز صفحه را خراب نکند */ }
+}
+
+
+/**
+ * نرخ‌های مؤثر: اگر نرخ لحظه‌ای فعال باشد و کش معتبری وجود داشته باشد، نرخ زندهٔ هر ارز را برمی‌گرداند؛
+ * در غیر این صورت (یا اگر آن ارز در کش نباشد) مقدار دستی fx_to_toman_* اعمال می‌شود. ریال همیشه دستی (۰٫۱).
+ */
+function fx_effective_rates(PDO $pdo): array {
+    $manual = function (string $k, string $def) use ($pdo) {
+        try {
+            $st = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = ? LIMIT 1");
+            $st->execute(['fx_to_toman_' . $k]);
+            $v = $st->fetchColumn();
+            return ($v === false || $v === '') ? (float)$def : (float)$v;
+        } catch (Throwable $e) { return (float)$def; }
+    };
+    $live = function (string $k) use ($pdo) { return (float)fx_setting_get($pdo, 'fx_live_toman_' . $k, '0'); };
+    $useLive = fx_live_enabled($pdo);
+    $pick = function (string $k, string $def) use ($useLive, $live, $manual) {
+        if ($useLive) { $v = $live($k); if ($v > 0) return $v; }
+        return $manual($k, $def);
+    };
+    return [
+        'USD'  => $pick('USD', '0'),
+        'EUR'  => $pick('EUR', '0'),
+        'CNY'  => $pick('CNY', '0'),
+        'AED'  => $pick('AED', '0'),
+        'GBP'  => $pick('GBP', '0'),
+        'USDT' => $pick('USDT', '0'),
+        'TOM'  => 1.0,
+        'IRR'  => $manual('IRR', '0.1'),
+    ];
+}
+
+/** متن وضعیت منبع برای صفحات تنظیمات (دلار/یورو/یوان زنده یا دستی) */
+function fx_live_summary(PDO $pdo): string {
+    $eff = fx_effective_rates($pdo);
+    $toman = fn($v) => number_format((float)$v, 0, '.', '،');
+    return 'دلار ' . $toman($eff['USD']) . ' • یورو ' . $toman($eff['EUR']) . ' • یوان ' . $toman($eff['CNY']) . ' تومان';
 }
 
 /** فقط برای نمایش «منبع نرخ» روی صفحات (با قید احترام به شرایط استفادهٔ منبع) */
