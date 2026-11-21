@@ -77,7 +77,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $r = (float)str_replace(',', '', (string)$rate);
             $stU->execute([max(0, min(100, $r)), (int)$tid]);
         }
-        showToast(t('تنظیمات تارگت و کمیسیون ذخیره شد'));
+        $liveNow = isset($_POST['fx_live_enabled']) ? '1' : '0';
+        $ins->execute(['fx_live_enabled', $liveNow]);
+        $toast = t('تنظیمات تارگت و کمیسیون ذخیره شد');
+        if ($liveNow === '1') {
+            require_once __DIR__ . '/../includes/fx.php';
+            $rr = fx_live_refresh($pdo);
+            $toast .= !empty($rr['ok']) ? (' — نرخ ارز به‌روز شد' . (($rr['as_of'] ?? '') !== '' ? ' (نرخ ' . $rr['as_of'] . ')' : '')) : (' — اما گرفتن نرخ لحظه‌ای ناموفق بود: ' . ($rr['error'] ?? 'خطای نامشخص'));
+        }
+        showToast($toast);
+        redirect('index.php?page=settings');
+        exit;
+    }
+
+    // ─── نرخ ارز لحظه‌ای «نرخ‌سنج» — دکمهٔ «به‌روزرسانی همین حالا» ───
+    if ($action === 'fx_refresh_now') {
+        if (!is_strict_admin()) {
+            showToast(t('دسترسی ندارید'), 'error');
+            redirect('index.php?page=settings');
+            exit;
+        }
+        require_once __DIR__ . '/../includes/fx.php';
+        $rr = fx_live_refresh($pdo);
+        showToast(!empty($rr['ok']) ? ('✅ نرخ ارز به‌روز شد' . (($rr['as_of'] ?? '') !== '' ? ' — نرخ ' . $rr['as_of'] : '')) : ('❌ خطا در گرفتن نرخ: ' . ($rr['error'] ?? 'خطای نامشخص')), !empty($rr['ok']) ? 'success' : 'error');
         redirect('index.php?page=settings');
         exit;
     }
@@ -498,6 +520,10 @@ $__comm = commission_targets($pdo);
 $__tiers = [];
 try { $__tiers = $pdo->query("SELECT * FROM commission_tier_rules ORDER BY FIELD(role_code,'sales_expert','sales_manager','business_development'), min_pct")->fetchAll(); } catch (Throwable $e) {}
 $__roleNames = ['sales_expert' => 'کارشناس فروش', 'sales_manager' => 'مدیر فروش', 'business_development' => 'توسعه بازار'];
+require_once __DIR__ . '/../includes/fx.php';
+$__fx = fx_live_status($pdo);
+$__fxCachedJalali = '';
+if ($__fx['cached_at'] > 0) { $__fxCachedJalali = (function_exists('to_jalali') ? to_jalali(date('Y-m-d', $__fx['cached_at'])) : date('Y-m-d', $__fx['cached_at'])) . ' ' . date('H:i', $__fx['cached_at']); }
 ?>
 <form method="POST" class="card mt-4 animate-in"><?= get_csrf_field() ?>
     <input type="hidden" name="action" value="save_commission_settings">
@@ -508,6 +534,25 @@ $__roleNames = ['sales_expert' => 'کارشناس فروش', 'sales_manager' => 
         <div class="form-group"><label class="form-label">تارگت کارشناس فروش</label><input type="number" name="commission_target_sales_toman" class="form-control" min="0" step="1000000" value="<?= (int)$__comm['sales_toman'] ?>"></div>
         <div class="form-group"><label class="form-label">تارگت تیم فروش (مدیر فروش)</label><input type="number" name="commission_target_team_toman" class="form-control" min="0" step="1000000" value="<?= (int)$__comm['team_toman'] ?>"></div>
         <div class="form-group"><label class="form-label">تارگت توسعه بازار</label><input type="number" name="commission_target_bd_toman" class="form-control" min="0" step="1000000" value="<?= (int)$__comm['bd_toman'] ?>"></div>
+    </div>
+    <div style="background:rgba(16,185,129,.09);border:1px dashed #10b981;border-radius:10px;padding:10px 12px;margin:2px 0 12px;font-size:11px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:800;font-size:12px;color:#047857">
+            <input type="checkbox" name="fx_live_enabled" value="1" <?= !empty($__fx['enabled']) ? 'checked' : '' ?>> 📡 نرخ لحظه‌ای ارز فعال باشد — منبع: «نرخ‌سنج» (هر ۳۰ دقیقه کش می‌شود)
+        </label>
+        <div class="text-muted" style="font-size:10.5px;margin-top:6px;line-height:1.9">منبع: <a href="https://nerkh.jahankhahan.shop/developers" target="_blank" rel="noopener" style="color:#047857">نرخ‌سنج</a> — نرخ بازار آزاد تهران به تومان (دلار/یورو/یوان/درهم/پوند + تتر). در حالت فعال، فیلدهای بالا به‌صورت خودکار بروز می‌شوند؛ ریال ثابت ۰٫۱ تومان می‌ماند. اگر اینترنت سرور قطع شود، آخرین نرخ کش‌شده اعمال می‌شود.</div>
+        <div style="margin-top:6px;font-size:10.5px;line-height:1.9">
+            <?php if (!empty($__fx['enabled'])): ?>
+                <?php if (($__fx['error'] ?? '') !== ''): ?>
+                    <span style="color:#b45309;font-weight:700">⚠️ <?= htmlspecialchars((string)$__fx['error']) ?></span>
+                <?php elseif ($__fxCachedJalali !== ''): ?>
+                    <span style="color:#047857;font-weight:700">✅ آخرین به‌روزرسانی: <?= htmlspecialchars($__fxCachedJalali) ?><?php if (!empty($__fx['as_of'])): ?> — نرخ <?= htmlspecialchars((string)$__fx['as_of']) ?><?php endif; ?></span>
+                <?php else: ?>
+                    <span style="color:#0369a1;font-weight:700">⏳ کش خالی است — نرخ با باز شدن همین صفحه گرفته می‌شود (یا دکمهٔ پایین).</span>
+                <?php endif; ?>
+            <?php else: ?>
+                <span style="color:#64748b;font-weight:700">🔕 حالت دستی فعال است — نرخ‌ها دقیقاً همان مقادیر این فرم هستند.</span>
+            <?php endif; ?>
+        </div>
     </div>
     <div style="background:rgba(37,99,235,.06);border:1px dashed var(--border);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:11px;color:var(--text-secondary)">
         <b>📄 مرجع سند — حقوق ثابت پیشنهادی (بودجه‌ریزی، نه قرارداد):</b> کارشناس فروش ۲۳ تا ۲۸ م | مدیر فروش ۳۵ تا ۴۵ م | توسعهٔ بازار ۳۰ تا ۳۵ م | هماهنگ‌کنندهٔ سفارشات ۲۸ تا ۳۵ م تومان/ماه (به‌علاوهٔ کمیسیون و مزایای قانونی). مبالغ واقعیِ هر نفر را در «پرسنل» ثبت کنید؛ این‌جا صرفاً برای یادآوری سند نهایی نمایش داده می‌شود و قابل ویرایش نیست.
@@ -534,7 +579,11 @@ $__roleNames = ['sales_expert' => 'کارشناس فروش', 'sales_manager' => 
             </tbody>
         </table>
     </div>
-    <div class="mt-3"><button type="submit" class="btn btn-primary"><i data-lucide="save"></i> ذخیرهٔ تارگت و پله‌ها</button></div>
+    <div class="mt-3" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button type="submit" class="btn btn-primary"><i data-lucide="save"></i> ذخیرهٔ تارگت و پله‌ها</button></div>
+</form>
+<form method="post" style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><?= get_csrf_field() ?><input type="hidden" name="action" value="fx_refresh_now">
+    <span style="font-size:11px;color:var(--text-secondary)">بدون صبر کش ۳۰ دقیقه‌ای، نرخ را همین حالا از نرخ‌سنج بگیر:</span>
+    <button type="submit" class="btn btn-success btn-sm"><i data-lucide="refresh-cw"></i> به‌روزرسانی همین حالا</button>
 </form>
 <!-- کارت میان‌بر «استعلام قیمت» -->
 <a href="index.php?page=quote_flow" class="card mt-4 animate-in" style="display:block;text-decoration:none;border-right:4px solid var(--primary)">

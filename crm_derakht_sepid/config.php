@@ -85,6 +85,7 @@ require_once __DIR__ . '/includes/salary_calc.php';
 require_once __DIR__ . '/includes/arash_coin.php';
 // Operational helpers: backups, anti-cheat, system messages and audit utilities
 require_once __DIR__ . '/includes/operations_hub.php';
+require_once __DIR__ . '/includes/fx.php';
 
 // Helper Functions
 function is_logged_in() {
@@ -993,3 +994,10 @@ function save_compressed_upload($tmp_name, $dest_dir, $filename, $max_px = 1200,
     compress_image($full_path, $max_px, $quality);
     return $full_path;
 }
+
+/* §fx: رفرش نرم نرخ ارز لحظه‌ای (کش ۳۰ دقیقه‌ای در settings؛ در صورت خطا نادیده) */
+try {
+    if (isset($pdo) && $pdo instanceof PDO && function_exists('is_logged_in') && is_logged_in() && function_exists('fx_live_maybe_refresh')) {
+        fx_live_maybe_refresh($pdo);
+    }
+} catch (Throwable $e) { /* هرگز راه‌اندازی را خراب نکن */ }

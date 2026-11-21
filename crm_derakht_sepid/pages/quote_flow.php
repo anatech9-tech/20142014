@@ -151,7 +151,8 @@ include 'includes/header.php';
         <div class="card-header"><h3 class="card-title">💱 نرخ مرجع امروز (تومان)</h3></div>
         <div style="padding:12px 14px;font-size:12px;line-height:2.1">
             <div>۱ دلار = <b dir="ltr"><?= number_format((float)$fx['USD'], 0, '.', '،') ?></b> تومان &nbsp;•&nbsp; ۱ یوان = <b dir="ltr"><?= number_format((float)$fx['CNY'], 0, '.', '،') ?></b> تومان</div>
-            <div class="text-muted" style="font-size:10.5px">تنظیم نرخ ارز: «تنظیمات ← تارگت و کمیسیون». API قیمت لحظه‌ای ارز به‌زودی متصل می‌شود؛ تا آن موقع تبدیل‌ها با همین نرخ‌ها انجام می‌شود و هر سه ارز در همهٔ استعلام‌ها نمایش داده می‌شوند.</div>
+            <div class="text-muted" style="font-size:10px"><?= htmlspecialchars(function_exists('fx_source_line') ? fx_source_line($pdo) : '') ?></div>
+            <div class="text-muted" style="font-size:10.5px">نرخ‌ها هر ۳۰ دقیقه خودکار از «نرخ‌سنج» گرفته می‌شوند (خاموش/روشن و به‌روزرسانی فوری: «تنظیمات ← تارگت و کمیسیون ← نرخ لحظه‌ای»). هر سه ارز در همهٔ استعلام‌ها نمایش داده می‌شوند.</div>
         </div>
     </div>
 </div>

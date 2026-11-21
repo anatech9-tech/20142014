@@ -206,7 +206,7 @@ include 'includes/header.php';
 <!-- ۲) هزینهٔ نت -->
 <div class="card animate-in">
     <div class="card-header d-flex justify-between align-center"><h3 class="card-title">💱 هزینهٔ نت (قیمت خام)<?php if (!empty($q['fx_snapshot_json'])): ?><span class="text-muted" style="font-size:10.5px;font-weight:400"> — نرخ ثبت‌شده در لحظهٔ قیمت‌گذاری</span><?php endif; ?></h3>
-        <span class="text-muted" style="font-size:10.5px">قیمت لحظه‌ای ارز به‌زودی با API جایگزین می‌شود</span>
+        <span class="text-muted" style="font-size:10px"><?= htmlspecialchars(function_exists('fx_source_line') ? fx_source_line($pdo) : 'منبع نرخ: تنظیمات') ?></span>
     </div>
     <form method="post" id="costingForm"><?= get_csrf_field() ?><input type="hidden" name="action" value="costing_save">
     <div class="overflow-x-auto"><table class="table quote-cost-table">
@@ -232,7 +232,7 @@ include 'includes/header.php';
         </tfoot>
     </table></div>
     <div style="padding:8px 14px;font-size:10.5px;color:var(--text-muted)">
-        نرخ مرجع امروز: ۱ دلار = <b dir="ltr"><?= number_format((float)$fxNow['USD'], 0, '.', '،') ?></b> تومان • ۱ یوان = <b dir="ltr"><?= number_format((float)$fxNow['CNY'], 0, '.', '،') ?></b> تومان • ۱ ریال = <b dir="ltr"><?= $fxNow['IRR'] ?></b> تومان<?php if ((float)$fxNow['USD'] <= 0 || (float)$fxNow['CNY'] <= 0): ?> <span style="color:#b45309">⚠ نرخ USD/CNY تنظیم نشده — از «تنظیمات ← کمیسیون و تارگت» وارد کنید.</span><?php endif; ?>
+        نرخ مرجع: ۱ دلار = <b dir="ltr"><?= number_format((float)$fxNow['USD'], 0, '.', '،') ?></b> تومان • ۱ یوان = <b dir="ltr"><?= number_format((float)$fxNow['CNY'], 0, '.', '،') ?></b> تومان • ۱ ریال = <b dir="ltr"><?= $fxNow['IRR'] ?></b> تومان<br><?= htmlspecialchars(function_exists('fx_source_line') ? fx_source_line($pdo) : 'منبع نرخ: تنظیمات') ?><?php if ((float)$fxNow['USD'] <= 0 || (float)$fxNow['CNY'] <= 0): ?> <span style="color:#b45309">⚠ نرخ USD/CNY تنظیم نشده — «تنظیمات ← تارگت و کمیسیون ← نرخ لحظه‌ای» را فعال کنید.</span><?php endif; ?>
     </div>
     <?php if ($stype === 'costing' && $curCanAct && $q['status'] === 'in_flow' && !$isViewer): ?>
     <div style="padding:10px 14px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-top:1px dashed var(--border)">
