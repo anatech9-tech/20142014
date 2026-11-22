@@ -37,6 +37,20 @@ $curCanAct = quote_user_can_act($pdo, $q, $me);
 $canSee = $canAll || (int)$q['created_by'] === $me || (int)($q['deal_owner'] ?? 0) === $me
     || (!empty($managed) && in_array((int)($q['deal_team'] ?? 0), $managed, true)) || $curCanAct;
 if (!$canSee) { include 'includes/header.php'; echo '<div class="alert alert-danger">دسترسی ندارید.</div>'; include 'includes/footer.php'; exit; }
+// دانلود فقط پس از احراز همان سطح دسترسی صفحهٔ استعلام؛ داده خارج از وب‌روت است.
+if (isset($_GET['attachment'])) {
+    $aid = (int)$_GET['attachment'];
+    $st = $pdo->prepare('SELECT original_name,file_size,file_data FROM quote_attachments WHERE id=? AND quote_id=?');
+    $st->execute([$aid,$id]); $attachment=$st->fetch(PDO::FETCH_ASSOC);
+    if (!$attachment) { http_response_code(404); exit('File not found'); }
+    header('Content-Type: application/octet-stream');
+    header('Content-Disposition: attachment; filename="attachment"; filename*=UTF-8\'\'' . rawurlencode($attachment['original_name']));
+    header('Content-Length: ' . (int)$attachment['file_size']);
+    header('X-Content-Type-Options: nosniff');
+    header('Cache-Control: private, no-store');
+    if (is_resource($attachment['file_data'])) fpassthru($attachment['file_data']); else echo $attachment['file_data'];
+    exit;
+}
 $isCreator = ((int)$q['created_by'] === $me);
 $editableInfo = ($q['status'] === 'in_flow' && $stype === 'submit' && $curCanAct && !$isViewer);
 $lines  = quote_cost_lines($pdo, $id);
@@ -52,6 +66,33 @@ $fixedSell = (float)($q['fixed_sell_toman'] ?? 0);
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isViewer) {
     $action = (string)($_POST['action'] ?? '');
     $back = 'index.php?page=quote_view&id=' . $id;
+
+    if ($action === 'upload_attachment' && $editableInfo) {
+        $file = $_FILES['attachment'] ?? null;
+        $types = [
+            'jpg' => ['image/jpeg'], 'jpeg' => ['image/jpeg'], 'png' => ['image/png'], 'webp' => ['image/webp'],
+            'pdf' => ['application/pdf'],
+            'docx' => ['application/zip','application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+            'xlsx' => ['application/zip','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+        ];
+        $name = $file ? basename(str_replace('\\','/',(string)$file['name'])) : '';
+        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        $size = (int)($file['size'] ?? 0);
+        $mime = ($file && function_exists('mime_content_type') && ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK && is_uploaded_file($file['tmp_name'])) ? (string)@mime_content_type($file['tmp_name']) : '';
+        if (!$file || $size < 1 || $size > 8*1024*1024 || !isset($types[$ext]) || !in_array($mime,$types[$ext],true)) {
+            showToast('فایل باید عکس، PDF، DOCX یا XLSX و حداکثر ۸ مگابایت باشد.', 'error'); redirect($back);
+        }
+        try {
+            $bytes=file_get_contents($file['tmp_name']);
+            if ($bytes === false || strlen($bytes) !== $size) throw new RuntimeException('read failed');
+            $st=$pdo->prepare('INSERT INTO quote_attachments (quote_id,original_name,mime_type,file_size,file_data,uploaded_by) VALUES (?,?,?,?,?,?)');
+            $st->bindValue(1,$id,PDO::PARAM_INT); $st->bindValue(2,mb_substr($name,0,255)); $st->bindValue(3,$mime);
+            $st->bindValue(4,$size,PDO::PARAM_INT); $st->bindValue(5,$bytes,PDO::PARAM_LOB); $st->bindValue(6,$me,PDO::PARAM_INT); $st->execute();
+            operations_audit($pdo,$me,'quote_attachment_add','crm_quote',$id,$name);
+            showToast('پیوست استعلام ثبت شد.');
+        } catch (Throwable $e) { error_log('Quote attachment: '.$e->getMessage()); showToast('ثبت پیوست انجام نشد؛ محدودیت حجم دیتابیس یا دسترسی را بررسی کنید.', 'error'); }
+        redirect($back);
+    }
 
     if ($action === 'save_info' && $editableInfo) {
         $title    = trim((string)($_POST['title'] ?? ''));
@@ -145,6 +186,9 @@ $totals = quote_cost_total($lines, $rates);
 $total  = (float)($q['total_cost_toman'] ?? $totals['toman']);
 $sell   = ($total > 0) ? quote_sell_toman($total, $margin) : 0.0;
 $history = quote_history($pdo, $id);
+$attachments = [];
+try { $st=$pdo->prepare('SELECT a.id,a.original_name,a.file_size,a.created_at,u.full_name FROM quote_attachments a LEFT JOIN users u ON u.id=a.uploaded_by WHERE a.quote_id=? ORDER BY a.id DESC'); $st->execute([$id]); $attachments=$st->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) {}
+
 
 $money = function (?float $v, string $ccy): string {
     if ($v === null) return '—';
@@ -207,6 +251,15 @@ include 'includes/header.php';
         <button type="submit" class="btn btn-primary"><i data-lucide="send"></i> ارسال برای تأیید</button>
     </form>
     <?php endif; ?>
+</div>
+
+<div class="card animate-in" style="padding:16px;margin-bottom:12px">
+    <h3 class="card-title">📎 عکس کالا و پکینگ‌لیست / فایل‌ها</h3>
+    <p class="text-muted" style="font-size:11px;margin:6px 0">فایل‌ها فقط در پروندهٔ استعلام و برای افراد مجاز قابل دانلود هستند. هر فایل حداکثر ۸ مگابایت.</p>
+    <?php if ($editableInfo): ?><form method="post" enctype="multipart/form-data" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0"><?= get_csrf_field() ?><input type="hidden" name="action" value="upload_attachment"><input type="file" name="attachment" required accept=".jpg,.jpeg,.png,.webp,.pdf,.docx,.xlsx" class="form-control" style="max-width:390px"><button class="btn btn-primary btn-sm">افزودن فایل</button></form><?php endif; ?>
+    <?php if ($attachments): ?><div class="overflow-x-auto"><table class="table"><thead><tr><th>نام فایل</th><th>حجم</th><th>ثبت‌کننده</th><th>تاریخ</th><th></th></tr></thead><tbody>
+    <?php foreach ($attachments as $att): ?><tr><td><?= htmlspecialchars((string)$att['original_name'], ENT_QUOTES, 'UTF-8') ?></td><td><?= number_format((int)$att['file_size']/1024,1) ?> KB</td><td><?= htmlspecialchars((string)($att['full_name'] ?: '—'), ENT_QUOTES, 'UTF-8') ?></td><td><?= htmlspecialchars(to_jalali(substr((string)$att['created_at'],0,10)), ENT_QUOTES, 'UTF-8') ?></td><td><a class="btn btn-ghost btn-sm" href="index.php?page=quote_view&amp;id=<?= $id ?>&amp;attachment=<?= (int)$att['id'] ?>">دریافت</a></td></tr><?php endforeach; ?>
+    </tbody></table></div><?php else: ?><p class="text-muted" style="font-size:12px">هنوز فایلی ثبت نشده است.</p><?php endif; ?>
 </div>
 
 <?php if ($stype === 'approval' && $curCanAct && $q['status'] === 'in_flow' && !$isViewer): ?>

@@ -835,6 +835,18 @@ function schema_statements(): array {
         KEY `idx_quote_status` (`status`)
     ) $T";
 
+    $S['quote_attachments'] = "CREATE TABLE IF NOT EXISTS `quote_attachments` (
+        `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        `quote_id` INT UNSIGNED NOT NULL,
+        `original_name` VARCHAR(255) NOT NULL,
+        `mime_type` VARCHAR(100) NOT NULL,
+        `file_size` INT UNSIGNED NOT NULL,
+        `file_data` MEDIUMBLOB NOT NULL,
+        `uploaded_by` INT NULL,
+        `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY `idx_quote_attachment` (`quote_id`, `id`)
+    ) $T";
+
     $S['quote_cost_lines'] = "CREATE TABLE IF NOT EXISTS `quote_cost_lines` (
         `id` INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
         `quote_id` INT(11) NOT NULL,
