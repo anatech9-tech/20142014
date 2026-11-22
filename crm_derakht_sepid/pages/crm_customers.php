@@ -1,7 +1,7 @@
 <?php
 /**
  * CRM — مشتریان (شرکت/شخص حقیقی)
- * اسکوپ دید: مدیر کل و مسئول مالی → همه | مدیر تیم → تیم‌هایش | کارشناس → فقط مشتریان خودش
+ * همهٔ افراد دارای دسترسی به صفحه مشتریان را می‌بینند؛ ویرایش برای مدیر و ثبت‌کننده است.
  */
 $pageTitle = 'مشتریان';
 
@@ -28,9 +28,11 @@ if ($isMgr) {
 
 // ── هلپر: آیا کاربر جاری می‌تواند این رکورد را ویرایش کند؟ ──
 function crm_can_edit_record(array $row, bool $canAll, array $managed, int $me): bool {
-    if ($canAll) return true;
+    if (is_strict_admin() || is_project_manager() || !empty($managed)) return true;
+    $creator = (int)($row['created_by'] ?? 0);
+    if ($creator > 0) return $creator === $me;
+    // رکوردهای قدیمی که ثبت‌کننده ندارند: مسئول قبلی را ملاک قرار بده.
     if ((int)($row['owner_user_id'] ?? 0) === $me) return true;
-    if (!empty($managed) && in_array((int)($row['team_id'] ?? 0), $managed, true)) return true;
     return false;
 }
 
@@ -67,6 +69,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $st->execute([$id]);
             $row = $st->fetch();
             if (!$row || !crm_can_edit_record($row, $canAll, $managed, $me)) { showToast(t('error_access_denied'), 'error'); redirect('index.php?page=crm_customers'); }
+            // ثبت‌کننده هنگام ویرایش، مسئول پیگیری و تیم تخصیص‌داده‌شده را تغییر نمی‌دهد.
+            if (!$isMgr) { $owner = (int)($row['owner_user_id'] ?? 0) ?: null; $team = (int)($row['team_id'] ?? 0); }
             $sql = "UPDATE crm_customers SET type=?, name=?, economic_code=?, national_id=?, registration_no=?, phone=?, mobile=?, email=?, website=?, city=?, address=?, industry=?, source=?, notes=?, status=?, owner_user_id=?, team_id=? WHERE id=?";
             $pdo->prepare($sql)->execute([
                 $data['type'], $data['name'], $data['economic_code'], $data['national_id'], $data['registration_no'],
@@ -162,7 +166,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-[$scopeSql, $scopeParams] = crm_scope_where($pdo, 'c');
+// این تغییر فقط دید مشتریان را باز می‌کند، نه معاملات، سرنخ‌ها یا وظایف.
+[$scopeSql, $scopeParams] = ['1=1', []];
 
 // ═══════════ نمایش تک‌رکورد ═══════════
 $viewId = (int)($_GET['view'] ?? 0);

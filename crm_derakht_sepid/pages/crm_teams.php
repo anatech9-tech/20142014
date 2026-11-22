@@ -42,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $teamId    = (int)($_POST['team_id'] ?? 0) ?: null;
         $orgRoleId = (int)($_POST['org_role_id'] ?? 0) ?: null;
         if ($userId > 0) {
-            if (db_has_column($pdo, 'users', 'org_role_id')) {
+            if (db_has_column($pdo, 'users', 'org_role_id') && array_key_exists('org_role_id', $_POST)) {
                 $pdo->prepare("UPDATE users SET team_id = ?, org_role_id = ? WHERE id = ?")->execute([$teamId, $orgRoleId, $userId]);
             } else {
                 $pdo->prepare("UPDATE users SET team_id = ? WHERE id = ?")->execute([$teamId, $userId]);
@@ -165,7 +165,7 @@ include 'includes/header.php';
         <?php $candidates = array_values(array_filter($users, function($u) use ($tid) { return (int)($u['team_id'] ?? 0) !== $tid; })); ?>
         <?php if ($candidates): ?>
         <form method="post" class="d-flex gap-2 align-center" style="padding:12px;border-top:1px solid var(--border);flex-wrap:wrap">
-            <?= get_csrf_field() ?><input type="hidden" name="action" value="assign_user"><input type="hidden" name="team_id" value="<?= $tid ?>"><input type="hidden" name="org_role_id" value="0">
+            <?= get_csrf_field() ?><input type="hidden" name="action" value="assign_user"><input type="hidden" name="team_id" value="<?= $tid ?>">
             <select name="user_id" class="form-control" style="max-width:260px" required>
                 <option value="0">انتخاب عضو جدید…</option>
                 <?php foreach ($candidates as $u): $curTid = (int)($u['team_id'] ?? 0); ?><option value="<?= (int)$u['id'] ?>"><?= htmlspecialchars($u['full_name']) ?><?= $curTid ? ' (تیم فعلی: ' . htmlspecialchars($teamNameById[$curTid] ?? '?') . ')' : '' ?></option><?php endforeach; ?>

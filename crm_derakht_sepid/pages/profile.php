@@ -10,17 +10,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'update_profile') {
-        // Handle avatar upload
         $avatar_path = $current_user['avatar'] ?? '';
-        if (!empty($_FILES['avatar']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
+        if (isset($_FILES['avatar']) && $_FILES['avatar']['error'] !== UPLOAD_ERR_NO_FILE) {
+            $file = $_FILES['avatar'];
+            $info = $file['error'] === UPLOAD_ERR_OK ? @getimagesize($file['tmp_name']) : false;
+            $extensions = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+            if (!$info || !isset($extensions[$info['mime'] ?? '']) || (int)$file['size'] > 5 * 1024 * 1024) {
+                showToast('عکس باید JPG، PNG یا WebP و حداکثر ۵ مگابایت باشد.', 'error');
+                redirect('index.php?page=profile');
+            }
             $upload_dir = __DIR__ . '/../uploads/avatars/';
-            if (!is_dir($upload_dir)) mkdir($upload_dir, 0777, true);
-            $filename = 'avatar_' . $_SESSION['user_id'] . '_' . time() . '_' . basename($_FILES['avatar']['name']);
+            if (!is_dir($upload_dir) && !mkdir($upload_dir, 0755, true) && !is_dir($upload_dir)) {
+                showToast('پوشهٔ عکس قابل ساخت نیست.', 'error'); redirect('index.php?page=profile');
+            }
+            $filename = 'avatar_' . (int)$_SESSION['user_id'] . '_' . bin2hex(random_bytes(12)) . '.' . $extensions[$info['mime']];
+            if (!move_uploaded_file($file['tmp_name'], $upload_dir . $filename)) {
+                showToast('ذخیرهٔ عکس ممکن نشد.', 'error'); redirect('index.php?page=profile');
+            }
             $avatar_path = 'uploads/avatars/' . $filename;
-            move_uploaded_file($_FILES['avatar']['tmp_name'], $upload_dir . $filename);
-            compress_image($upload_dir . $filename, 500, 85);
-        } else {
-            $avatar_path = sanitize($_POST['avatar_path'] ?? $current_user['avatar'] ?? '');
         }
         $stmt = $pdo->prepare("UPDATE users SET full_name = ?, phone = ?, address = ?, iban = ?, card_number = ?, account_number = ?, account_name = ?, avatar = ? WHERE id = ?");
         $stmt->execute([sanitize($_POST['full_name']), sanitize($_POST['phone'] ?? ''), sanitize($_POST['address'] ?? ''), sanitize($_POST['iban'] ?? ''), sanitize($_POST['card_number'] ?? ''), sanitize($_POST['account_number'] ?? ''), sanitize($_POST['account_name'] ?? ''), $avatar_path, $_SESSION['user_id']]);
@@ -100,7 +107,11 @@ include 'includes/header.php';
             <div class="form-group"><label class="form-label"><?= t('per_card_number') ?></label><input type="text" name="card_number" class="form-control" value="<?= $user['card_number'] ?: '' ?>"></div>
             <div class="form-group"><label class="form-label"><?= t('per_account_number') ?></label><input type="text" name="account_number" class="form-control" value="<?= $user['account_number'] ?: '' ?>"></div>
             <div class="form-group"><label class="form-label"><?= t('per_bank_name') ?></label><input type="text" name="account_name" class="form-control" value="<?= $user['account_name'] ?: '' ?>"></div>
-            <div class="form-group"><label class="form-label"><?= t('عکس') ?> <?= t('پروفایل') ?></label><input type="file" name="avatar" class="form-control" accept="image/*"></div>
+            <div class="form-group"><label class="form-label"><?= t('عکس') ?> <?= t('پروفایل') ?></label>
+                <?php $profileAvatar = (string)($user['avatar'] ?? ''); if (strpos($profileAvatar, 'uploads/avatars/') === 0 && basename($profileAvatar) === substr($profileAvatar, strlen('uploads/avatars/')) && is_file(__DIR__ . '/../' . $profileAvatar)): ?>
+                    <div style="margin:8px 0"><img src="<?= htmlspecialchars($profileAvatar, ENT_QUOTES, 'UTF-8') ?>" alt="عکس پروفایل" style="width:80px;height:80px;border-radius:50%;object-fit:cover"></div>
+                <?php endif; ?>
+                <input type="file" name="avatar" class="form-control" accept="image/jpeg,image/png,image/webp"><small class="text-muted">JPG، PNG یا WebP، حداکثر ۵ مگابایت</small></div>
             <button type="submit" class="btn btn-primary"><?= t('btn_save') ?></button>
         </form>
     </div>

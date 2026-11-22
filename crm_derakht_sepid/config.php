@@ -527,6 +527,8 @@ function access_mode($page_key) {
     if (is_workshop_manager()) return 'editor';            // مدیر واحد: کامل در واحد خود
     $map = $pdo ? user_access_map($pdo, (int)($_SESSION['user_id'] ?? 0)) : [];
     if (isset($map[$page_key])) return $map[$page_key];
+    // اعضای تیم فروش و مدیر آن به مشتریان و استعلام دسترسی دارند؛ سطح صریح تنظیم‌شده مقدم است.
+    if (in_array($page_key, ['crm_customers', 'quotes'], true) && $pdo && (current_team_id($pdo) > 0 || is_team_manager($pdo))) return 'editor';
     // دسترسی‌های قدیمیِ زیرصفحه‌های انبار، بعد از ادغام همچنان دسترسی به ماژول انبار می‌دهند.
     if ($page_key === 'inventory') {
         foreach (['inventory_serials', 'purchases', 'depreciation'] as $legacy_key) {

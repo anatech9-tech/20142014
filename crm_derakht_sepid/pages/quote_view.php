@@ -80,6 +80,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isViewer) {
         redirect($back);
     }
 
+    if ($action === 'approve_review' && $stype === 'approval' && $curCanAct && $q['status'] === 'in_flow') {
+        $r = quote_transition($pdo, $id, $me, 'approve', trim((string)($_POST['note'] ?? '')));
+        showToast(!empty($r['ok']) ? 'تأیید ثبت و استعلام به مرحلهٔ بعد ارسال شد.' : ('خطا: ' . ($r['error'] ?? '')), !empty($r['ok']) ? 'success' : 'error');
+        redirect($back);
+    }
+
     if ($action === 'costing_save' && $stype === 'costing' && $curCanAct) {
         $amounts = []; $currencies = [];
         foreach (quote_components() as $code => $_label) {
@@ -202,6 +208,18 @@ include 'includes/header.php';
     </form>
     <?php endif; ?>
 </div>
+
+<?php if ($stype === 'approval' && $curCanAct && $q['status'] === 'in_flow' && !$isViewer): ?>
+<div class="card animate-in" style="padding:16px;margin-bottom:12px">
+    <h3 class="card-title">تأیید استعلام</h3>
+    <form method="post" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+        <?= get_csrf_field() ?><input type="hidden" name="action" value="approve_review">
+        <input name="note" class="form-control" style="max-width:400px" placeholder="یادداشت برای مرحلهٔ بعد (اختیاری)">
+        <button type="submit" class="btn btn-primary"><i data-lucide="check-circle"></i> تأیید و ارسال به مرحلهٔ بعد</button>
+        <?php if ($idx > 0): ?><button type="button" class="btn btn-outline-danger" onclick="document.getElementById('returnForm').style.display='flex'"><i data-lucide="undo-2"></i> برگشت برای اصلاح</button><?php endif; ?>
+    </form>
+</div>
+<?php endif; ?>
 
 <!-- ۲) هزینهٔ نت -->
 <div class="card animate-in">

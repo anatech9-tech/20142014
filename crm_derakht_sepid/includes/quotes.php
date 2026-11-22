@@ -239,6 +239,23 @@ function quote_assignee_user_ids(PDO $pdo, array $step, array $quote): array {
     $role = (string)($a['role'] ?? '');
     if ($role === '') return [];
     $ids = [];
+    // مدیر فروشِ تیم ثبت‌کننده؛ برای استعلام‌های بدون تیم، رفتار قدیمی حفظ می‌شود.
+    if ($role === 'sales_manager') {
+        try {
+            $st = $pdo->prepare("SELECT COALESCE(NULLIF(u.team_id, 0), d.team_id) AS team_id, t.manager_user_id, m.status AS manager_status
+                FROM crm_quotes q LEFT JOIN users u ON u.id = q.created_by
+                LEFT JOIN crm_deals d ON d.id = q.deal_id
+                LEFT JOIN teams t ON t.id = COALESCE(NULLIF(u.team_id, 0), d.team_id)
+                LEFT JOIN users m ON m.id = t.manager_user_id WHERE q.id = ?");
+            $st->execute([(int)($quote['id'] ?? 0)]);
+            $team = $st->fetch(PDO::FETCH_ASSOC);
+            if (!empty($team['team_id'])) {
+                if (!empty($team['manager_user_id']) && ($team['manager_status'] ?? '') === 'active') return [(int)$team['manager_user_id']];
+                // تیم تنظیم‌شده اما بدون مدیر فعال: فقط مدیر کل، نه مدیر تیم دیگر.
+                return array_map('intval', $pdo->query("SELECT id FROM users WHERE role = 'admin' AND status = 'active'")->fetchAll(PDO::FETCH_COLUMN));
+            }
+        } catch (Throwable $e) { return []; } // در خطای پایگاه داده به تیم دیگری ارجاع نده.
+    }
     try {
         $st = $pdo->prepare("SELECT DISTINCT u.id FROM users u JOIN user_org_roles uo ON uo.user_id = u.id JOIN org_roles o ON o.id = uo.org_role_id WHERE o.code = ? AND o.is_active = 1 AND u.status = 'active'");
         $st->execute([$role]);

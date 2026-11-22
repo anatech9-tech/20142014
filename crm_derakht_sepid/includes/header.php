@@ -32,6 +32,14 @@ foreach (preg_split('/\s+/', $__full_name) as $__w) {
     if (mb_strlen($__initials, 'UTF-8') >= 2) break;
 }
 $__initials = $__initials !== '' ? $__initials : '؟';
+$__avatar = '';
+try {
+    $avatarStmt = $pdo->prepare('SELECT avatar FROM users WHERE id = ?');
+    $avatarStmt->execute([(int)($_SESSION['user_id'] ?? 0)]);
+    $avatarCandidate = (string)$avatarStmt->fetchColumn();
+    if (strpos($avatarCandidate, 'uploads/avatars/') === 0 && basename($avatarCandidate) === substr($avatarCandidate, strlen('uploads/avatars/')) && is_file(__DIR__ . '/../' . $avatarCandidate)) $__avatar = $avatarCandidate;
+} catch (Throwable $e) {}
+
 
 // ═══ §v11: تشخیص «حالت ناظر» روی صفحه جاری (برای بنر + غیرفعال‌شدن دکمه‌های ثبت) ═══
 $__is_viewer_page = false;
@@ -307,7 +315,7 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = generate_token()
         </nav>
         <div class="sidebar-footer account-footer">
             <a href="index.php?page=profile" class="account-user" title="پروفایل من">
-                <span class="account-avatar"><?= htmlspecialchars($__initials, ENT_QUOTES, 'UTF-8') ?></span>
+                <span class="account-avatar"><?php if ($__avatar !== ''): ?><img src="<?= htmlspecialchars($__avatar, ENT_QUOTES, 'UTF-8') ?>" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%"><?php else: ?><?= htmlspecialchars($__initials, ENT_QUOTES, 'UTF-8') ?><?php endif; ?></span>
                 <span class="account-meta"><strong><?= htmlspecialchars($__full_name, ENT_QUOTES, 'UTF-8') ?></strong><small><?= htmlspecialchars($__role_label, ENT_QUOTES, 'UTF-8') ?></small></span>
             </a>
             <a href="index.php?page=logout" class="icon-btn account-logout" title="<?= t('nav_logout') ?>" aria-label="<?= t('nav_logout') ?>"><i data-lucide="log-out"></i></a>

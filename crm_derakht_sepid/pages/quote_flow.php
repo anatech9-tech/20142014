@@ -67,6 +67,19 @@ $stepsForJs = $wf['steps'] ?? [];
 include 'includes/header.php';
 ?>
 <link rel="stylesheet" href="assets/js/vendor/drawflow.min.css">
+<style>
+/* Drawflow مختصات را چپ‌به‌راست محاسبه می‌کند؛ محتوای فارسی داخل گره راست‌چین است. */
+#flowCanvas { direction:ltr; }
+#flowCanvas .drawflow-node { width:190px; padding:12px; border:1px solid #cbd5e1; border-radius:16px; background:linear-gradient(145deg,#fff,#f0fdfa); color:#0f172a; box-shadow:0 8px 24px rgba(15,76,80,.13); }
+#flowCanvas .drawflow-node.selected { border-color:#0d9488; box-shadow:0 0 0 3px rgba(13,148,136,.2),0 10px 24px rgba(15,76,80,.16); }
+#flowCanvas .drawflow_content_node { direction:rtl; }
+#flowCanvas .drawflow-node .inputs, #flowCanvas .drawflow-node .outputs { position:absolute; top:50%; width:0; height:0; }
+#flowCanvas .drawflow-node .inputs { left:0; }
+#flowCanvas .drawflow-node .outputs { right:0; }
+#flowCanvas .drawflow-node .input, #flowCanvas .drawflow-node .output { position:absolute; top:0; left:0; right:auto; width:16px; height:16px; margin:0; transform:translate(-50%,-50%); border:3px solid #0d9488; background:white; z-index:4; }
+#flowCanvas .connection .main-path { stroke:#0d9488; stroke-width:3px; }
+#flowCanvas .qfn-icon { background:linear-gradient(135deg,#0f766e,#14b8a6); }
+</style>
 
 <div class="d-flex justify-between align-center mb-3 animate-in" style="flex-wrap:wrap;gap:10px">
     <div>
@@ -77,7 +90,7 @@ include 'includes/header.php';
 </div>
 
 <div class="alert alert-info" style="font-size:11px;margin-bottom:10px">
-    💡 ترتیب اجرا از گرهٔ <b>«ثبت استعلام»</b> شروع و از یک خروجی به ورودی گرهٔ بعد وصل می‌شود. گره‌های <b>«اعلان»</b> فقط پیام می‌فرستند و بدون توقف عبور می‌شوند. <b>همهٔ گره‌ها باید در یک زنجیرهٔ پیوسته باشند.</b> نرخ ارز در «تنظیمات ← تارگت و کمیسیون» تنظیم می‌شود.
+    💡 ترتیب اجرا از گرهٔ <b>«ثبت استعلام»</b> شروع و از یک خروجی به ورودی گرهٔ بعد وصل می‌شود. گره‌های <b>«اعلان»</b> فقط پیام می‌فرستند و بدون توقف عبور می‌شوند. <b>همهٔ گره‌ها باید در یک زنجیرهٔ پیوسته باشند.</b> برای اتصال مجدد، از خروجی سمت راست یک گره به ورودی سمت چپ گرهٔ بعد بکشید؛ برای حذف اتصال، گره را انتخاب کنید. مدیر فروش هر تیم از <a href="index.php?page=crm_teams">تیم‌های فروش</a> تعیین می‌شود. نرخ ارز در «تنظیمات ← تارگت و کمیسیون» تنظیم می‌شود.
 </div>
 
 <div class="flow-shell animate-in">
@@ -125,6 +138,7 @@ include 'includes/header.php';
             <div class="form-group" id="userWrap" style="display:none"><label class="form-label" for="edUser">کاربر</label>
                 <select id="edUser" class="form-control"><?php foreach ($users as $u): ?><option value="<?= (int)$u['id'] ?>"><?= htmlspecialchars($u['full_name']) ?></option><?php endforeach; ?></select></div>
             <div class="form-group" id="notifyWrap" style="display:none"><label class="form-label" for="edNotify">متن اعلان (اختیاری)</label><textarea id="edNotify" class="form-control" rows="3" placeholder="مثلاً: استعلام جدید برای بررسی ارسال شد…"></textarea></div>
+            <button type="button" class="btn btn-ghost" id="edDisconnect">قطع اتصال‌های این گره</button>
             <button class="btn btn-outline-danger" id="edDelete"><i data-lucide="trash-2"></i> حذف این گره</button>
         </div>
     </div>
@@ -211,8 +225,11 @@ include 'includes/header.php';
         var nodeEl = canvas.querySelector('.drawflow-node[id="node-' + id + '"]');
         if (!nodeEl) return;
         var d = nodeData[id];
-        nodeEl.innerHTML = nodeHtml(d);
+        var content = nodeEl.querySelector('.drawflow_content_node');
+        if (!content) return;
+        content.innerHTML = nodeHtml(d);
         if (window.lucide) lucide.createIcons();
+        editor.updateConnectionNodes('node-' + id);
         bindPorts(nodeEl, d);
     }
     var nodeData = {};
@@ -338,8 +355,7 @@ include 'includes/header.php';
     document.getElementById('edTitle').addEventListener('input', function (ev) {
         if (!selectedId || !nodeData[selectedId]) return;
         nodeData[selectedId].title = ev.target.value;
-        var nodeEl = canvas.querySelector('.drawflow-node[id="node-' + selectedId + '"]');
-        if (nodeEl) { nodeEl.innerHTML = nodeHtml(nodeData[selectedId]); if (window.lucide) lucide.createIcons(); }
+        refreshNode(selectedId);
     });
     document.getElementById('edKind').addEventListener('change', function (ev) {
         if (!selectedId || !nodeData[selectedId]) return;
@@ -348,6 +364,17 @@ include 'includes/header.php';
     document.getElementById('edRole').addEventListener('change', function (ev) { if (selectedId && nodeData[selectedId]) { nodeData[selectedId].role = ev.target.value; refreshNode(selectedId); } });
     document.getElementById('edUser').addEventListener('change', function (ev) { if (selectedId && nodeData[selectedId]) { nodeData[selectedId].userId = parseInt(ev.target.value, 10) || 0; refreshNode(selectedId); } });
     document.getElementById('edNotify').addEventListener('input', function (ev) { if (selectedId && nodeData[selectedId]) nodeData[selectedId].notifyText = ev.target.value; });
+    document.getElementById('edDisconnect').addEventListener('click', function () {
+        if (!selectedId) return;
+        var n = editor.getNodeFromId(selectedId);
+        Object.keys(n.outputs || {}).forEach(function (port) {
+            (n.outputs[port].connections || []).slice().forEach(function (c) { editor.removeSingleConnection(String(selectedId), String(c.node), port, c.output); });
+        });
+        Object.keys(n.inputs || {}).forEach(function (port) {
+            (n.inputs[port].connections || []).slice().forEach(function (c) { editor.removeSingleConnection(String(c.node), String(selectedId), c.input, port); });
+        });
+        updateChainStatus();
+    });
     document.getElementById('edDelete').addEventListener('click', function () { if (selectedId) removeNode(selectedId); });
 
     // زوم
