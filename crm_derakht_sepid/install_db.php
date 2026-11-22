@@ -56,6 +56,8 @@ function schema_statements(): array {
     $S = [];
     require_once __DIR__ . '/includes/crm_resources.php';
     $S = array_merge($S, crm_resource_schema());
+    require_once __DIR__ . '/includes/deal_process.php';
+    $S = array_merge($S, deal_process_schema());
 
     // ── هستهٔ کاربران و دسترسی ───────────────────────────────
     $S['users'] = "CREATE TABLE IF NOT EXISTS `users` (

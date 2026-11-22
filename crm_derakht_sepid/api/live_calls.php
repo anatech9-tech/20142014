@@ -71,7 +71,15 @@ function sp_customer_details(PDO $pdo, int $customerId): ?array {
             $st=$pdo->prepare("SELECT t.title,t.due_date,u.full_name FROM crm_tasks t LEFT JOIN users u ON u.id=t.user_id WHERE t.customer_id=? AND t.status='pending' ORDER BY t.due_date IS NULL,t.due_date,t.id DESC LIMIT 5"); $st->execute([$customerId]);
             foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $t) $result['tasks'][]=['title'=>$t['title'],'user'=>$t['full_name'],'date'=>$t['due_date'] ? to_jalali($t['due_date']) : ''];
         } catch (Throwable $e) {}
-        try { $st=$pdo->prepare("SELECT d.title,d.status,s.name AS stage FROM crm_deals d LEFT JOIN crm_deal_stages s ON s.id=d.stage_id WHERE d.customer_id=? ORDER BY d.id DESC LIMIT 3"); $st->execute([$customerId]); $result['deals']=$st->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) {}
+        try {
+            require_once __DIR__ . '/../includes/deal_process.php';
+            $st=$pdo->prepare("SELECT d.title,d.status,s.name AS stage,dp.stage_key AS process_stage FROM crm_deals d LEFT JOIN crm_deal_stages s ON s.id=d.stage_id LEFT JOIN crm_deal_process dp ON dp.deal_id=d.id WHERE d.customer_id=? ORDER BY d.id DESC LIMIT 3");
+            $st->execute([$customerId]); $result['deals']=$st->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($result['deals'] as &$deal) $deal['stage']=deal_process_stages()[$deal['process_stage'] ?? ''][0] ?? $deal['stage']; unset($deal);
+        } catch (Throwable $e) {
+            // نصب قدیمی که جدول پرونده‌ها هنوز ساخته نشده است.
+            try { $st=$pdo->prepare("SELECT d.title,d.status,s.name AS stage FROM crm_deals d LEFT JOIN crm_deal_stages s ON s.id=d.stage_id WHERE d.customer_id=? ORDER BY d.id DESC LIMIT 3"); $st->execute([$customerId]); $result['deals']=$st->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e2) {}
+        }
         return $result;
     } catch (Throwable $e) { error_log('Screenpop customer: '.$e->getMessage()); return null; }
 }

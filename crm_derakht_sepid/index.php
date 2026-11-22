@@ -264,6 +264,10 @@ switch ($page) {
         require_login();
         include 'pages/crm_leads.php';
         break;
+    case 'crm_deal_process':
+        require_login();
+        include 'pages/crm_deal_process.php';
+        break;
     case 'crm_deals':
         require_login();
         include 'pages/crm_deals.php';

@@ -6,6 +6,9 @@
 $pageTitle = 'پایپ‌لاین واردات';
 
 require_login();
+require_once __DIR__ . '/../includes/deal_process.php';
+if (!ensure_deal_process_schema($pdo)) { include 'includes/header.php'; echo '<div class="alert alert-danger">جدول پرونده‌ها در دسترس نیست.</div>'; include 'includes/footer.php'; return; }
+$processStages = deal_process_stages();
 $me      = (int)($_SESSION['user_id'] ?? 0);
 $myTeam  = current_team_id($pdo);
 $canAll  = is_strict_admin() || is_finance_officer();
@@ -66,10 +69,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ->execute([$cust, $title, trim((string)($_POST['product_name'] ?? '')), $value, $currency, $stageId, $closeDate, $owner, $team ?: null, trim((string)($_POST['notes'] ?? '')), $id]);
             showToast('معامله به‌روزرسانی شد.');
         } else {
-            $pdo->prepare("INSERT INTO crm_deals (customer_id, title, product_name, estimated_value, currency, stage_id, expected_close_date, owner_user_id, team_id, notes, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
-                ->execute([$cust, $title, trim((string)($_POST['product_name'] ?? '')), $value, $currency, $stageId, $closeDate, $owner, $team ?: null, trim((string)($_POST['notes'] ?? '')), $me]);
-            operations_audit($pdo, $me, 'crm_deal_create', 'crm_deal', (int)$pdo->lastInsertId(), $title);
-            showToast('معامله ثبت شد.');
+            try {
+                $pdo->beginTransaction();
+                $pdo->prepare("INSERT INTO crm_deals (customer_id, title, product_name, estimated_value, currency, stage_id, expected_close_date, owner_user_id, team_id, notes, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+                    ->execute([$cust, $title, trim((string)($_POST['product_name'] ?? '')), $value, $currency, $stageId, $closeDate, $owner, $team ?: null, trim((string)($_POST['notes'] ?? '')), $me]);
+                $newId=(int)$pdo->lastInsertId();
+                $pdo->prepare("INSERT INTO crm_deal_process (deal_id,stage_key,created_by,updated_by) VALUES (?,'contact',?,?)")->execute([$newId,$me,$me]);
+                deal_process_add_event($pdo,$newId,null,'contact','start',$me);
+                $pdo->commit(); operations_audit($pdo, $me, 'crm_deal_create', 'crm_deal', $newId, $title);
+                showToast('معامله و پروندهٔ مرحله‌ای ثبت شد.');
+                redirect('index.php?page=crm_deal_process&id='.$newId);
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                error_log('Deal create: '.$e->getMessage()); showToast('ثبت معامله انجام نشد.', 'error');
+            }
         }
         redirect('index.php?page=crm_deals');
     }
@@ -80,6 +93,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $st = $pdo->prepare("SELECT * FROM crm_deals WHERE id = ?");
         $st->execute([$id]);
         $row = $st->fetch();
+        $pst=$pdo->prepare('SELECT 1 FROM crm_deal_process WHERE deal_id=?'); $pst->execute([$id]);
+        if ($pst->fetchColumn()) { showToast('مرحلهٔ پرونده را از صفحهٔ پرونده تغییر دهید.', 'error'); redirect('index.php?page=crm_deals'); }
         if ($row && in_array($stageId, $stageIds, true) && crm_deal_can_edit($row, $canAll, $managed, $me)) {
             $pdo->prepare("UPDATE crm_deals SET stage_id = ? WHERE id = ?")->execute([$stageId, $id]);
             showToast('مرحله تغییر کرد.');
@@ -109,27 +124,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 [$scopeSql, $scopeParams] = crm_scope_where($pdo, 'd');
 
 // مشتری‌های در دامنهٔ دید (برای دراپ‌دان فرم)
-[$custScope, $custParams] = crm_scope_where($pdo, 'c2');
+[$custScope, $custParams] = ['1=1', []];
 $stCust = $pdo->prepare("SELECT c2.id, c2.name FROM crm_customers c2 WHERE c2.deleted_at IS NULL AND ($custScope) ORDER BY c2.name LIMIT 500");
 $stCust->execute($custParams);
 $customerOptions = $stCust->fetchAll();
 
-$st = $pdo->prepare("SELECT d.*, c.name AS customer_name, u.full_name AS owner_name FROM crm_deals d LEFT JOIN crm_customers c ON c.id = d.customer_id LEFT JOIN users u ON u.id = d.owner_user_id WHERE ($scopeSql) ORDER BY d.id DESC");
+$st = $pdo->prepare("SELECT d.*, c.name AS customer_name, u.full_name AS owner_name, dp.stage_key AS process_stage FROM crm_deals d LEFT JOIN crm_customers c ON c.id = d.customer_id LEFT JOIN users u ON u.id = d.owner_user_id LEFT JOIN crm_deal_process dp ON dp.deal_id=d.id WHERE ($scopeSql) ORDER BY d.id DESC");
 $st->execute($scopeParams);
 $deals = $st->fetchAll();
 
-$dealsByStage = [];
-$stageTotals  = [];
-foreach ($stages as $s) { $dealsByStage[(int)$s['id']] = []; $stageTotals[(int)$s['id']] = 0.0; }
-$openCount = 0; $wonCount = 0; $pipelineValue = 0.0;
+$dealsByStage = ['legacy'=>[]];
+foreach ($processStages as $key=>$meta) $dealsByStage[$key]=[];
+$openCount=0; $wonCount=0; $pipelineValue=0.0;
 foreach ($deals as $d) {
-    $sid = (int)($d['stage_id'] ?? 0);
-    if (isset($dealsByStage[$sid])) { $dealsByStage[$sid][] = $d; $stageTotals[$sid] += (float)$d['estimated_value']; }
-    if ($d['status'] === 'open') { $openCount++; $pipelineValue += (float)$d['estimated_value']; }
-    if ($d['status'] === 'won') { $wonCount++; }
+    $key=(string)($d['process_stage'] ?? 'legacy');
+    if (!isset($dealsByStage[$key])) $key='legacy';
+    $dealsByStage[$key][]=$d;
+    if ($d['status']==='open') { $openCount++; $pipelineValue+=(float)$d['estimated_value']; }
+    if ($d['status']==='won') $wonCount++;
 }
-
-$filterStatus = (string)($_GET['status'] ?? 'open');
+$filterStatus=(string)($_GET['status'] ?? 'all');
 include 'includes/header.php';
 ?>
 
@@ -149,29 +163,22 @@ include 'includes/header.php';
     <div class="stat-card glass-gradient-3"><div class="stat-info"><h3><?= $wonCount ?></h3><p>برنده‌شده</p></div></div>
 </div>
 
+<p class="text-muted" style="font-size:12px">مرحلهٔ جاری هر معامله از پروندهٔ آن خوانده می‌شود. پرونده‌های قدیمی بدون تغییر حفظ شده‌اند و می‌توان آن‌ها را جداگانه شروع کرد.</p>
 <div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:12px;align-items:flex-start" class="animate-in">
-    <?php foreach ($stages as $stage): $sid = (int)$stage['id']; ?>
-        <div style="flex:0 0 270px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:10px">
-            <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid <?= htmlspecialchars($stage['color']) ?>;padding-bottom:8px;margin-bottom:8px">
-                <div><strong style="font-size:12px"><?= htmlspecialchars($stage['name']) ?></strong><br>
-                    <span class="text-muted" style="font-size:10px">احتمال <?= (int)$stage['probability'] ?>٪ • <?= count($dealsByStage[$sid] ?? []) ?> معامله</span></div>
-                <span dir="ltr" style="font-size:10px;color:var(--text-secondary)"><?= number_format($stageTotals[$sid] ?? 0, 0, '.', '،') ?></span>
-            </div>
+    <?php foreach (array_merge(['legacy'=>['پرونده‌های قدیمی / شروع‌نشده',false]],$processStages) as $stageKey=>$stage): ?>
+        <div style="flex:0 0 260px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:10px">
+            <div style="border-bottom:2px solid var(--primary);padding-bottom:8px;margin-bottom:8px"><strong style="font-size:12px"><?= htmlspecialchars($stage[0],ENT_QUOTES,'UTF-8') ?></strong><br><span class="text-muted" style="font-size:10px"><?= count($dealsByStage[$stageKey]) ?> پرونده</span></div>
             <div style="display:flex;flex-direction:column;gap:8px;max-height:62vh;overflow-y:auto">
-                <?php foreach ($dealsByStage[$sid] ?? [] as $d): if ($filterStatus !== 'all' && $d['status'] !== $filterStatus) continue; ?>
-                    <div style="border:1px solid var(--border);border-radius:10px;padding:9px;background:var(--bg);font-size:12px">
-                        <div style="font-weight:700;line-height:1.7"><?= htmlspecialchars($d['title']) ?></div>
-                        <div class="text-muted" style="font-size:11px"><?= $d['customer_name'] ? htmlspecialchars($d['customer_name']) : 'بدون مشتری' ?> • <?= htmlspecialchars($d['owner_name'] ?? '') ?></div>
-                        <div dir="ltr" style="font-weight:800;color:var(--primary-light);margin:6px 0;font-size:12px"><?= number_format((float)$d['estimated_value'], 0, '.', '،') ?> <?= htmlspecialchars($d['currency']) ?></div>
-                        <form method="post" style="margin:2px 0"><?= get_csrf_field() ?><input type="hidden" name="action" value="move_stage"><input type="hidden" name="id" value="<?= (int)$d['id'] ?>">
-                            <select name="stage_id" class="form-control" style="font-size:11px;padding:3px" onchange="this.form.submit()">
-                                <?php foreach ($stages as $s2): ?><option value="<?= (int)$s2['id'] ?>" <?= (int)$s2['id'] === $sid ? 'selected' : '' ?>><?= htmlspecialchars($s2['name']) ?></option><?php endforeach; ?>
-                            </select></form>
-                        <div style="display:flex;gap:4px;margin-top:6px;align-items:center">
-                            <form method="post" action="index.php?page=quotes&new=1&deal_id=<?= (int)$d['id'] ?>" style="margin:0"><?= get_csrf_field() ?><button type="submit" class="btn btn-outline-primary btn-sm" style="font-size:10px;padding:4px 8px" title="ثبت/پیگیری استعلام قیمت این معامله">🧾 استعلام قیمت</button></form>
-                            <?php if ($d['status'] !== 'won'): ?><form method="post" style="flex:1"><?= get_csrf_field() ?><input type="hidden" name="action" value="set_status"><input type="hidden" name="id" value="<?= (int)$d['id'] ?>"><input type="hidden" name="status" value="won"><button class="btn btn-success btn-sm" style="width:100%;font-size:10px;padding:4px">✔ برنده</button></form><?php endif; ?>
-                            <?php if ($d['status'] !== 'lost'): ?><form method="post" style="flex:1"><?= get_csrf_field() ?><input type="hidden" name="action" value="set_status"><input type="hidden" name="id" value="<?= (int)$d['id'] ?>"><input type="hidden" name="status" value="lost"><button class="btn btn-ghost btn-sm" style="width:100%;font-size:10px;padding:4px">✘ باخته</button></form><?php endif; ?>
-                        </div>
+                <?php foreach ($dealsByStage[$stageKey] as $d): if ($filterStatus!=='all' && $d['status']!==$filterStatus) continue; ?>
+                    <div style="border:1px solid var(--border);border-radius:10px;padding:10px;background:var(--bg);font-size:12px">
+                        <div style="font-weight:700;line-height:1.7"><?= htmlspecialchars($d['title'],ENT_QUOTES,'UTF-8') ?></div>
+                        <div class="text-muted" style="font-size:11px"><?= htmlspecialchars($d['customer_name'] ?: 'بدون مشتری',ENT_QUOTES,'UTF-8') ?> • <?= htmlspecialchars($d['owner_name'] ?? '',ENT_QUOTES,'UTF-8') ?></div>
+                        <div dir="ltr" style="font-weight:800;color:var(--primary-light);margin:6px 0;font-size:12px"><?= number_format((float)$d['estimated_value'],0,'.','،') ?> <?= htmlspecialchars($d['currency'],ENT_QUOTES,'UTF-8') ?></div>
+                        <div class="text-muted" style="font-size:11px"><?= $d['status']==='won'?'فروش برنده':($d['status']==='lost'?'باخته':'باز') ?></div>
+                        <a href="index.php?page=crm_deal_process&amp;id=<?= (int)$d['id'] ?>" class="btn btn-primary btn-sm" style="margin-top:6px;font-size:11px"><?= $stageKey==='legacy'?'شروع پرونده':'باز کردن پرونده' ?></a>
+                        <?php if(access_mode('crm_deals')!=='viewer' && !is_nazer_kol()): ?>
+                        <form method="post" style="margin-top:8px"><?= get_csrf_field() ?><input type="hidden" name="action" value="set_status"><input type="hidden" name="id" value="<?= (int)$d['id'] ?>"><select name="status" class="form-control" style="font-size:11px" onchange="this.form.submit()"><option value="open" <?= $d['status']==='open'?'selected':'' ?>>فروش باز</option><option value="won" <?= $d['status']==='won'?'selected':'' ?>>فروش برنده (پرونده ادامه دارد)</option><option value="lost" <?= $d['status']==='lost'?'selected':'' ?>>باخته / توقف</option></select></form>
+                        <?php endif ?>
                     </div>
                 <?php endforeach; ?>
             </div>
@@ -194,9 +201,6 @@ include 'includes/header.php';
                 <div class="form-group"><label class="form-label">ارز</label><select name="currency" class="form-control"><option>USD</option><option>EUR</option><option>CNY</option><option>AED</option><option>IRR</option></select></div>
                 <div class="form-group"><label class="form-label">موعد تحویل احتمالی</label><input name="expected_close_date" class="form-control jalali-date" placeholder="۱۴۰۵/۰۸/۳۰"></div>
             </div>
-            <div class="form-group"><label class="form-label">مرحلهٔ شروع</label><select name="stage_id" class="form-control">
-                <?php foreach ($stages as $s): ?><option value="<?= (int)$s['id'] ?>"><?= htmlspecialchars($s['name']) ?></option><?php endforeach; ?>
-            </select></div>
             <?php if ($isMgr): ?>
             <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
                 <div class="form-group"><label class="form-label">مسئول پیگیری</label><select name="owner_user_id" class="form-control">

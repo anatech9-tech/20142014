@@ -185,7 +185,12 @@ if ($viewId > 0) {
         $activities->execute([$viewId]);
         $customer['activities'] = $activities->fetchAll();
 
-        $deals = $pdo->prepare("SELECT d.*, s.name AS stage_name FROM crm_deals d LEFT JOIN crm_deal_stages s ON s.id = d.stage_id WHERE d.customer_id = ? ORDER BY d.id DESC");
+        require_once __DIR__ . '/../includes/deal_process.php';
+        $hasProcessSchema = ensure_deal_process_schema($pdo);
+        $dealSql = $hasProcessSchema
+            ? "SELECT d.*, s.name AS stage_name, dp.stage_key AS process_stage FROM crm_deals d LEFT JOIN crm_deal_stages s ON s.id = d.stage_id LEFT JOIN crm_deal_process dp ON dp.deal_id=d.id WHERE d.customer_id = ? ORDER BY d.id DESC"
+            : "SELECT d.*, s.name AS stage_name FROM crm_deals d LEFT JOIN crm_deal_stages s ON s.id = d.stage_id WHERE d.customer_id = ? ORDER BY d.id DESC";
+        $deals = $pdo->prepare($dealSql);
         $deals->execute([$viewId]);
         $customer['deals'] = $deals->fetchAll();
     }
@@ -305,8 +310,8 @@ include 'includes/header.php';
         <div class="table-container"><table><thead><tr><th>عنوان</th><th>مرحله</th><th>ارزش</th><th>وضعیت</th></tr></thead><tbody>
         <?php foreach ($customer['deals'] as $d): ?>
             <tr>
-                <td><?= htmlspecialchars($d['title']) ?></td>
-                <td><?= htmlspecialchars($d['stage_name'] ?? '—') ?></td>
+                <td><?php if ($canAll || (int)($d['owner_user_id'] ?? 0)===$me || (!empty($managed) && in_array((int)($d['team_id'] ?? 0),$managed,true))): ?><a href="index.php?page=crm_deal_process&amp;id=<?= (int)$d['id'] ?>"><?= htmlspecialchars($d['title'], ENT_QUOTES, 'UTF-8') ?></a><?php else: ?><?= htmlspecialchars($d['title'], ENT_QUOTES, 'UTF-8') ?><?php endif; ?></td>
+                <td><?= htmlspecialchars((deal_process_stages()[$d['process_stage'] ?? ''][0] ?? ($d['stage_name'] ?? '—')), ENT_QUOTES, 'UTF-8') ?></td>
                 <td dir="ltr"><?= number_format((float)$d['estimated_value'], 0, '.', '،') ?> <?= htmlspecialchars($d['currency']) ?></td>
                 <td><?= $d['status'] === 'open' ? '🟡 باز' : ($d['status'] === 'won' ? '🟢 برنده' : '🔴 باخته') ?></td>
             </tr>
