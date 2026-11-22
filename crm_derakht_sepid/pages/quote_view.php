@@ -188,7 +188,7 @@ include 'includes/header.php';
     <form method="post" style="padding:12px 14px"><?= get_csrf_field() ?><input type="hidden" name="action" value="save_info">
         <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
             <div class="form-group"><label class="form-label">عنوان استعلام *</label><input name="title" class="form-control" value="<?= htmlspecialchars((string)$q['title']) ?>" <?= $editableInfo ? '' : 'readonly' ?> required></div>
-            <div class="form-group"><label class="form-label">کالا / شرح</label><input name="product_name" class="form-control" value="<?= htmlspecialchars((string)($q['product_name'] ?? '')) ?>" <?= $editableInfo ? '' : 'readonly' ?> placeholder="نام کالا، کد فنی…"></div>
+            <div class="form-group"><label class="form-label">کالا / شرح</label><input name="product_name" class="form-control" value="<?= htmlspecialchars((string)($q['product_name'] ?? '')) ?>" <?= $editableInfo ? '' : 'readonly' ?> placeholder="نام کالا، کد فنی…"><a target="_blank" rel="noopener" href="index.php?page=crm_products&amp;q=<?= urlencode((string)($q['product_name'] ?? '')) ?>" style="font-size:11px">جست‌وجو در بانک کالا ↗</a></div>
         </div>
         <div class="grid-2" style="display:grid;grid-template-columns:1fr 120px 120px;gap:10px">
             <div class="form-group"><label class="form-label">مشخصات فنی</label><textarea name="specs" class="form-control" rows="2" <?= $editableInfo ? '' : 'readonly' ?> placeholder="توان، ابعاد، وزن، برند، استاندارد…"><?= htmlspecialchars((string)($q['specs'] ?? '')) ?></textarea></div>

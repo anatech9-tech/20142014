@@ -54,6 +54,8 @@ function pdo_from(string $host, string $name, string $user, string $pass): PDO {
 function schema_statements(): array {
     $T = "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
     $S = [];
+    require_once __DIR__ . '/includes/crm_resources.php';
+    $S = array_merge($S, crm_resource_schema());
 
     // ── هستهٔ کاربران و دسترسی ───────────────────────────────
     $S['users'] = "CREATE TABLE IF NOT EXISTS `users` (
