@@ -22,7 +22,7 @@ declare(strict_types=1);
 const MAIL_TO         = 'info@sepidtrade.com';      // ایمیل مقصد
 const MAIL_FROM       = 'noreply@sepidtrade.com';    // ایمیل فرستنده (همان دامنه)
 const MAIL_SUBJECT_PREFIX = '[وبسایت درخت سپید] ';
-const SITE_NAME       = 'درخت سپید تجارت پارس';
+const CONTACT_SITE_NAME = 'درخت سپید تجارت پارس';
 
 // === تنظیمات Rate Limiting ===
 const RATE_LIMIT_WINDOW = 300;  // ۵ دقیقه
@@ -95,7 +95,7 @@ function check_rate_limit(): bool {
 if (($_GET['action'] ?? '') === 'csrf') {
     json_response(200, [
         'token'      => csrf_token(),
-        'site_name'  => SITE_NAME,
+        'site_name'  => CONTACT_SITE_NAME,
     ]);
 }
 
@@ -174,6 +174,28 @@ if (!empty($errors)) {
     ]);
 }
 
+// When enabled, persist the request before acknowledging it. If no private
+// configuration exists, preserve the current mail-only behavior.
+$bridgeQueued = false;
+$privateBridge = dirname(__DIR__) . '/site-crm.local.php';
+if (is_file($privateBridge)) {
+    require_once $privateBridge;
+    if (defined('SITE_CRM_BRIDGE_ENABLED') && SITE_CRM_BRIDGE_ENABLED === true) {
+        try {
+            require_once __DIR__ . '/config.php';
+            require_once __DIR__ . '/includes/SiteCrmBridge.php';
+            if (!site_bridge_configured()) throw new RuntimeException('Bridge not configured');
+            $bridgePdo = site_bridge_pdo(); site_bridge_ensure($bridgePdo);
+            site_bridge_queue($bridgePdo, compact('name','email','phone','subject','message'));
+            $bridgeQueued = true;
+            try { site_bridge_pump($bridgePdo, 1); } catch (Throwable $e) { error_log('Site bridge delivery deferred'); }
+        } catch (Throwable $e) {
+            error_log('Site bridge enqueue failed');
+            json_response(503, ['status'=>'error','message'=>'ثبت درخواست موقتاً ممکن نیست؛ لطفاً دوباره تلاش کنید.']);
+        }
+    }
+}
+
 // === ساخت محتوای ایمیل ===
 $mailSubject = MAIL_SUBJECT_PREFIX;
 if ($subject !== '') {
@@ -182,7 +204,7 @@ if ($subject !== '') {
     $mailSubject .= 'پیام جدید از ' . $name;
 }
 
-$mailBody = "پیام جدید از وبسایت " . SITE_NAME . "\n"
+$mailBody = "پیام جدید از وبسایت " . CONTACT_SITE_NAME . "\n"
           . "تاریخ: " . date('Y-m-d H:i:s') . "\n"
           . "IP: " . ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . "\n"
           . str_repeat('─', 50) . "\n\n"
@@ -192,7 +214,7 @@ $mailBody = "پیام جدید از وبسایت " . SITE_NAME . "\n"
           . "پیام:\n$message\n";
 
 $headers = [
-    'From: ' . SITE_NAME . ' <' . MAIL_FROM . '>',
+    'From: ' . CONTACT_SITE_NAME . ' <' . MAIL_FROM . '>',
     'Reply-To: ' . $name . ' <' . $email . '>',
     'Content-Type: text/plain; charset=UTF-8',
     'Content-Transfer-Encoding: 8bit',
@@ -203,7 +225,7 @@ $headers = [
 // === ارسال ایمیل ===
 $sent = @mail(MAIL_TO, $mailSubject, $mailBody, implode("\r\n", $headers));
 
-if ($sent) {
+if ($sent || $bridgeQueued) {
     json_response(200, [
         'status'  => 'ok',
         'message' => 'پیام شما با موفقیت ارسال شد. به‌زودی پاسخ می‌دهیم.',

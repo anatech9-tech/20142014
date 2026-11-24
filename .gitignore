@@ -72,3 +72,5 @@ website/uploads/*
 website/logs/*
 
 /deploy-packages/
+
+site-crm.local.php

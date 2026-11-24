@@ -570,6 +570,7 @@ function access_gate_page_map() {
         'crm_products'    => 'crm_customers',
         'crm_cold_numbers' => 'crm_leads',
         'crm_leads'       => 'crm_leads',
+        'site_inquiries'  => 'crm_leads',
         'crm_deals'       => 'crm_deals',
         'crm_deal_process'=> 'crm_deals',
         'quotes'          => 'quotes',
