@@ -180,6 +180,7 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = generate_token()
                 'crm_cold_numbers' => ['crm_cold_numbers', 'phone-outgoing', 'شماره‌های سرد', true],
                 'crm_leads'      => ['crm_leads', 'magnet', t('nav_crm_leads'), true],
                 'site_inquiries' => ['site_inquiries', 'inbox', 'درخواست‌های سایت', true],
+                'shop_orders' => ['shop_orders', 'shopping-bag', 'سفارش‌های فروشگاه', is_strict_admin()],
                 'crm_deals'      => ['crm_deals', 'trending-up', t('nav_crm_deals'), true],
                 'quotes'         => ['quotes', 'receipt-text', t('nav_quotes'), true],
                 'crm_tasks'      => ['crm_tasks', 'list-todo', t('nav_crm_tasks'), true],
@@ -207,7 +208,7 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = generate_token()
                 'finance' => ['label' => t('nav_grp_finance'), 'icon' => 'wallet',         'items' => ['work_hours', 'salary', 'advances', 'petty_cash', 'reports']],
                 'hr'      => ['label' => t('nav_grp_hr'),      'icon' => 'users',          'items' => ['personnel', 'leaves', 'contracts']],
                 'ops'     => ['label' => t('nav_grp_ops'),     'icon' => 'package',        'items' => ['forms', 'inventory', 'workshops']],
-                'crm'     => ['label' => t('nav_grp_crm'),     'icon' => 'trending-up',    'items' => ['crm_customers', 'crm_products', 'crm_cold_numbers', 'crm_leads', 'site_inquiries', 'crm_deals', 'quotes', 'crm_tasks', 'crm_teams', 'calls']],
+                'crm'     => ['label' => t('nav_grp_crm'),     'icon' => 'trending-up',    'items' => ['crm_customers', 'crm_products', 'crm_cold_numbers', 'crm_leads', 'site_inquiries', 'shop_orders', 'crm_deals', 'quotes', 'crm_tasks', 'crm_teams', 'calls']],
                 'comms'   => ['label' => t('nav_grp_comms'),   'icon' => 'message-circle', 'items' => ['chat', 'notifications', 'archive']],
                 'mgmt'    => ['label' => t('nav_grp_mgmt'),    'icon' => 'settings',       'items' => ['audit', 'settings', 'profile']],
             ];

@@ -260,6 +260,10 @@ switch ($page) {
         require_login();
         include 'pages/crm_customers.php';
         break;
+    case 'shop_orders':
+        require_login();
+        include 'pages/shop_orders.php';
+        break;
     case 'site_inquiries':
         require_login();
         include 'pages/site_inquiries.php';
