@@ -212,6 +212,24 @@ if ($viewId > 0) {
         $deals = $pdo->prepare($dealSql);
         $deals->execute([$viewId]);
         $customer['deals'] = $deals->fetchAll();
+
+        // A customer page never widens the visibility of linked shop orders.
+        $customer['shop_orders'] = [];
+        $shopPageAllowed = !is_karfarma() && (($_SESSION['username'] ?? '') !== 'javidhse')
+            && (access_is_special_account() || access_mode('crm_leads') !== null || in_array('crm_leads', access_default_allow_keys(), true));
+        if ($shopPageAllowed) {
+            try {
+                require_once __DIR__ . '/../includes/shop_order_work.php';
+                $shopActor = $pdo->prepare('SELECT status,role FROM users WHERE id=?');
+                $shopActor->execute([$me]); $shopUser = $shopActor->fetch(PDO::FETCH_ASSOC);
+                if (!$shopUser || ($shopUser['status'] ?? '') !== 'active' || ($shopUser['role'] ?? '') === 'karfarma') throw new RuntimeException('Inactive account');
+                $shopAdmin = $canAll && ($shopUser['role'] ?? '') === 'admin';
+                [$shopScope, $shopArgs] = shop_work_scope($me, $shopAdmin, $managed);
+                $stShop = $pdo->prepare("SELECT r.id,r.payload,r.received_at FROM crm_shop_orders r JOIN crm_shop_order_work w ON w.replica_id=r.id WHERE w.crm_customer_id=? AND ($shopScope) ORDER BY r.id DESC LIMIT 50");
+                $stShop->execute(array_merge([$viewId],$shopArgs));
+                $customer['shop_orders'] = $stShop->fetchAll();
+            } catch (Throwable $e) { /* Optional module may not be installed yet. */ }
+        }
     }
 }
 
@@ -334,6 +352,16 @@ include 'includes/header.php';
         <?php if (!$customer['contacts']): ?><tr><td colspan="7" class="text-center text-muted" style="padding:18px">هنوز مخاطبی ثبت نشده است.</td></tr><?php endif; ?>
         </tbody></table></div>
     </div>
+
+    <?php if ($shopPageAllowed && !empty($customer['shop_orders'])): ?>
+    <div class="card animate-in"><div class="card-header"><h3 class="card-title">🛍️ سفارش‌های فروشگاه در محدوده دسترسی شما</h3></div>
+        <p class="text-muted">نمایش فقط‌خواندنی و با تأخیر؛ این اتصال هویت مشتری را خودکار تأیید نمی‌کند.</p>
+        <div class="table-container"><table><thead><tr><th>شماره سفارش</th><th>مبلغ (تومان)</th><th>آخرین دریافت</th><th></th></tr></thead><tbody>
+        <?php foreach ($customer['shop_orders'] as $shopOrder): $shopData=json_decode((string)$shopOrder['payload'],true); if (!is_array($shopData)) continue; ?>
+        <tr><td><?= htmlspecialchars((string)($shopData['order_no'] ?? ''), ENT_QUOTES, 'UTF-8') ?></td><td><?= number_format((int)($shopData['total_toman'] ?? 0)) ?></td><td><?= htmlspecialchars(to_jalali(substr($shopOrder['received_at'],0,10)), ENT_QUOTES, 'UTF-8') ?></td><td><a class="btn btn-sm btn-ghost" href="index.php?page=shop_orders&amp;view=<?= (int)$shopOrder['id'] ?>">جزئیات</a></td></tr>
+        <?php endforeach; ?></tbody></table></div>
+    </div>
+    <?php endif; ?>
 
     <div class="card animate-in">
         <div class="card-header d-flex justify-between align-center"><h3 class="card-title">🤝 معاملات (<?= count($customer['deals']) ?>)</h3>

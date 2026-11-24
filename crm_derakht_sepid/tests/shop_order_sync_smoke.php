@@ -11,9 +11,12 @@ class ReplicaTestPDO extends PDO {
     }
 }
 require_once __DIR__.'/../includes/shop_order_sync.php';
+require_once __DIR__.'/../includes/shop_order_work.php';
 function check($ok,$label) { if (!$ok) { fwrite(STDERR,"FAIL $label\n"); exit(1); } echo "PASS $label\n"; }
 $pdo=new ReplicaTestPDO('sqlite::memory:'); $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
 $pdo->exec('CREATE TABLE crm_shop_orders(id INTEGER PRIMARY KEY,source_id TEXT,shop_order_id INTEGER,revision INTEGER,event_id TEXT,payload_hash TEXT,payload TEXT,received_at TEXT,UNIQUE(source_id,shop_order_id))');
+$pdo->exec('CREATE TABLE users(id INTEGER PRIMARY KEY,status TEXT,role TEXT,team_id INTEGER,username TEXT); CREATE TABLE teams(id INTEGER PRIMARY KEY,manager_user_id INTEGER); CREATE TABLE crm_shop_order_work(replica_id INTEGER PRIMARY KEY,owner_user_id INTEGER,team_id INTEGER,crm_customer_id INTEGER,version INTEGER,updated_by INTEGER,updated_at TEXT); CREATE TABLE crm_shop_order_work_events(id INTEGER PRIMARY KEY,replica_id INTEGER,actor_id INTEGER,action TEXT,old_value INTEGER,new_value INTEGER,created_at TEXT)');
+$pdo->exec("INSERT INTO users VALUES(99,'active','admin',NULL,'admin'),(2,'active','user',10,'a')");
 $source=str_repeat('a',32);
 $data=['type'=>'shop_order','source_id'=>$source,'event_id'=>str_repeat('b',32),'revision'=>1,'order'=>[
  'id'=>1,'order_no'=>'W-1','customer_id'=>null,'customer_name'=>'Test','customer_phone'=>'09120000000','customer_email'=>'a@example.com',
@@ -25,6 +28,7 @@ $bad=$data; $bad['order']['success_token']='secret'; check(!crm_shop_order_valid
 $bad=$data; $bad['order']['total_toman']=-1; check(!crm_shop_order_validate($bad,$source),'invalid amount denied');
 $hash=hash('sha256',json_encode($data)); check(crm_shop_order_store($pdo,$data,$hash)==='updated','first event stored');
 check(crm_shop_order_store($pdo,$data,$hash)==='duplicate','retry idempotent');
+shop_work_apply($pdo,1,99,true,[],'assign',2,0);
 check(crm_shop_order_store($pdo,$data,str_repeat('f',64))==='conflict','revision conflict rejected');
 $new=$data; $new['revision']=3; $new['event_id']=str_repeat('c',32); $new['order']['order_status']='cancelled';
 check(crm_shop_order_store($pdo,$new,hash('sha256',json_encode($new)))==='updated','newer revision applied');
@@ -32,3 +36,4 @@ check(crm_shop_order_store($pdo,$data,$hash)==='stale','older snapshot ignored')
 $row=$pdo->query('SELECT * FROM crm_shop_orders')->fetch(PDO::FETCH_ASSOC);
 check((int)$row['revision']===3 && json_decode($row['payload'],true)['order_status']==='cancelled','newer state preserved');
 check((int)$pdo->query('SELECT COUNT(*) FROM crm_shop_orders')->fetchColumn()===1,'single replica row');
+check((int)$pdo->query('SELECT owner_user_id FROM crm_shop_order_work WHERE replica_id=1')->fetchColumn()===2,'replication preserves local assignment');
