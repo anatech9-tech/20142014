@@ -17,7 +17,7 @@ out = pathlib.Path(args.output)
 out.mkdir(parents=True, exist_ok=True)
 packages = {'crm.zip': [], 'website.zip': [], 'shop.zip': []}
 shop_dirs = ('shop/', 'cart/', 'checkout/', 'account/', 'includes/shop/', 'assets/shop/')
-shop_shared = {'css/shop-home.css','cli/shop_crm_sync.php','includes/db.php','includes/Auth.php','includes/Settings.php','admin/includes/layout.php','admin/api/upload.php','admin/assets/css/admin.css','admin/assets/js/admin.js','css/shop.css','js/shop.js'}
+shop_shared = {'css/shop-home.css','cli/shop_crm_sync.php','cli/shop_catalog_sync.php','includes/db.php','includes/Auth.php','includes/Settings.php','admin/includes/layout.php','admin/api/upload.php','admin/assets/css/admin.css','admin/assets/js/admin.js','css/shop.css','js/shop.js'}
 with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
     for f in tar.getmembers():
         if not f.isfile(): continue

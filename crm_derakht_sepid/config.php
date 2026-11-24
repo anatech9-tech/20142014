@@ -568,6 +568,7 @@ function access_gate_page_map() {
         'personnel_profile'=> 'personnel',
         'crm_customers'   => 'crm_customers',
         'crm_products'    => 'crm_customers',
+        'shop_catalog'    => 'crm_customers',
         'crm_cold_numbers' => 'crm_leads',
         'crm_leads'       => 'crm_leads',
         'site_inquiries'  => 'crm_leads',

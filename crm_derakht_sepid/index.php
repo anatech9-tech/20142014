@@ -248,6 +248,10 @@ switch ($page) {
         require_login();
         include 'pages/inventory_count_print.php';
         break;
+    case 'shop_catalog':
+        require_login();
+        include 'pages/shop_catalog.php';
+        break;
     case 'crm_products':
         require_login();
         include 'pages/crm_products.php';
