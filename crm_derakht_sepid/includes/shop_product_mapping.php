@@ -93,3 +93,41 @@ function shop_product_unlink_from_bank(PDO $pdo, int $actorId, bool $sessionAdmi
         $pdo->commit();
     } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
 }
+
+/**
+ * Manual identity mapping from a catalogue replica, including products never ordered.
+ * A replica is not proof that the source still exists; the operator must verify it.
+ */
+function shop_catalog_product_mapping_apply(PDO $pdo, int $replicaId, int $actorId, bool $sessionAdmin, int $crmProductId, int $expectedVersion, int $expectedRevision): void {
+    if (!$sessionAdmin || $actorId<=0 || $replicaId<=0 || $crmProductId<0 || $expectedVersion<0 || $expectedRevision<=0) throw new DomainException('درخواست یا دسترسی نامعتبر است.');
+    if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME)==='mysql') {
+        $eng=$pdo->prepare('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?');
+        foreach (['users','crm_products','crm_shop_catalog','crm_shop_product_links','crm_shop_product_link_events'] as $table) {
+            $eng->execute([$table]); if (strtoupper((string)$eng->fetchColumn())!=='INNODB') throw new DomainException('جدول‌های اتصال باید تراکنشی و InnoDB باشند.');
+        }
+    }
+    $pdo->beginTransaction();
+    try {
+        $st=$pdo->prepare('SELECT status,role FROM users WHERE id=? FOR UPDATE'); $st->execute([$actorId]); $actor=$st->fetch(PDO::FETCH_ASSOC);
+        if (!$actor || ($actor['status'] ?? '')!=='active' || ($actor['role'] ?? '')!=='admin') throw new DomainException('فقط مدیر کل فعال می‌تواند اتصال کالا را تغییر دهد.');
+        $st=$pdo->prepare('SELECT source_id,shop_product_id,revision,payload FROM crm_shop_catalog WHERE id=? FOR UPDATE'); $st->execute([$replicaId]); $replica=$st->fetch(PDO::FETCH_ASSOC);
+        $snapshot=$replica ? json_decode((string)$replica['payload'],true) : null;
+        if (!$replica || !is_array($snapshot) || !preg_match('/^[a-f0-9]{32}$/D',(string)$replica['source_id'])
+            || !is_int($snapshot['id'] ?? null) || $snapshot['id']<=0 || $snapshot['id']!==(int)$replica['shop_product_id'] || (int)$replica['revision']!==$expectedRevision) throw new DomainException('نسخه کالای فروشگاه تغییر کرده است؛ صفحه را دوباره بارگذاری کنید.');
+        $source=(string)$replica['source_id']; $shopId=(int)$replica['shop_product_id'];
+        $st=$pdo->prepare('SELECT * FROM crm_shop_product_links WHERE source_id=? AND shop_product_id=? FOR UPDATE'); $st->execute([$source,$shopId]); $row=$st->fetch(PDO::FETCH_ASSOC);
+        if ((int)($row['version'] ?? 0)!==$expectedVersion) throw new DomainException('اتصال کالا تغییر کرده است؛ صفحه را دوباره بارگذاری کنید.');
+        $old=(int)($row['crm_product_id'] ?? 0) ?: null; $new=$crmProductId ?: null;
+        if ($old===$new) throw new DomainException('اتصال انتخاب‌شده تغییری ندارد.');
+        if ($new!==null) {
+            $st=$pdo->prepare('SELECT id FROM crm_products WHERE id=? FOR UPDATE'); $st->execute([$new]);
+            if (!$st->fetchColumn()) throw new DomainException('کالای CRM یافت نشد.');
+        }
+        $now=date('Y-m-d H:i:s');
+        if ($row) $pdo->prepare('UPDATE crm_shop_product_links SET crm_product_id=?,version=version+1,updated_by=?,updated_at=? WHERE source_id=? AND shop_product_id=?')->execute([$new,$actorId,$now,$source,$shopId]);
+        else $pdo->prepare('INSERT INTO crm_shop_product_links(source_id,shop_product_id,crm_product_id,version,updated_by,updated_at) VALUES (?,?,?,1,?,?)')->execute([$source,$shopId,$new,$actorId,$now]);
+        // replica_id=0 means this event did not originate from an order.
+        $pdo->prepare('INSERT INTO crm_shop_product_link_events(source_id,shop_product_id,replica_id,actor_id,old_crm_product_id,new_crm_product_id,created_at) VALUES (?,?,0,?,?,?,?)')->execute([$source,$shopId,$actorId,$old,$new,$now]);
+        $pdo->commit();
+    } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
+}

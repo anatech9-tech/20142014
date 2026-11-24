@@ -52,3 +52,39 @@ shop_product_unlink_from_bank($pdo,99,true,$a,7,1,4);
 $row=$pdo->query('SELECT * FROM crm_shop_product_links')->fetch(PDO::FETCH_ASSOC);
 check($row['crm_product_id']===null && (int)$row['version']===5,'admin can unlink after order deletion');
 check((int)$pdo->query('SELECT replica_id FROM crm_shop_product_link_events ORDER BY id DESC LIMIT 1')->fetchColumn()===0,'bank unlink is audited without an order');
+
+// Catalogue-based mapping also works without any order and uses both revisions.
+$pdo->exec('CREATE TABLE crm_shop_catalog(id INTEGER PRIMARY KEY,source_id TEXT,shop_product_id INTEGER,revision INTEGER,payload TEXT)');
+$st=$pdo->prepare('INSERT INTO crm_shop_catalog VALUES(?,?,?,?,?)');
+$st->execute([11,$a,8,3,json_encode(['id'=>8,'name_fa'=>'New shop item'])]);
+$st->execute([12,$b,8,1,json_encode(['id'=>8,'name_fa'=>'Other shop'])]);
+denied(fn()=>shop_catalog_product_mapping_apply($pdo,11,2,false,1,0,3),'catalogue mapping denies non-admin');
+denied(fn()=>shop_catalog_product_mapping_apply($pdo,11,98,true,1,0,3),'catalogue mapping denies inactive admin');
+denied(fn()=>shop_catalog_product_mapping_apply($pdo,11,99,true,1,0,2),'catalogue mapping rejects stale snapshot');
+denied(fn()=>shop_catalog_product_mapping_apply($pdo,11,99,true,999,0,3),'catalogue mapping rejects missing CRM product');
+shop_catalog_product_mapping_apply($pdo,11,99,true,1,0,3);
+$st=$pdo->prepare('SELECT * FROM crm_shop_product_links WHERE source_id=? AND shop_product_id=8'); $st->execute([$a]); $link=$st->fetch(PDO::FETCH_ASSOC);
+check((int)$link['crm_product_id']===1 && (int)$link['version']===1,'catalogue product without orders mapped');
+check((int)shop_product_links_for_order($pdo,$a,['items'=>[['product_id'=>8]]])[8]['crm_product_id']===1,'catalogue mapping shared with orders from same source');
+check(shop_product_links_for_order($pdo,$b,['items'=>[['product_id'=>8]]])===[],'catalogue mapping isolates sources');
+denied(fn()=>shop_catalog_product_mapping_apply($pdo,11,99,true,2,0,3),'stale link version rejected');
+denied(fn()=>shop_catalog_product_mapping_apply($pdo,11,99,true,1,1,3),'unchanged mapping rejected');
+$pdo->exec("CREATE TRIGGER fail_catalog_map BEFORE INSERT ON crm_shop_product_link_events BEGIN SELECT RAISE(ABORT,'fail'); END");
+try { shop_catalog_product_mapping_apply($pdo,11,99,true,2,1,3); check(false,'catalogue audit failure'); } catch (PDOException $e) {}
+$st->execute([$a]); $link=$st->fetch(PDO::FETCH_ASSOC);
+check((int)$link['crm_product_id']===1 && (int)$link['version']===1,'catalogue audit failure rolls back');
+$pdo->exec('DROP TRIGGER fail_catalog_map');
+shop_catalog_product_mapping_apply($pdo,11,99,true,0,1,3);
+$st->execute([$a]); $link=$st->fetch(PDO::FETCH_ASSOC);
+check($link['crm_product_id']===null && (int)$link['version']===2,'catalogue unlink preserves version');
+shop_catalog_product_mapping_apply($pdo,12,99,true,2,0,1);
+check((int)$pdo->query('SELECT COUNT(*) FROM crm_shop_product_links WHERE shop_product_id=8 AND crm_product_id IS NOT NULL')->fetchColumn()===1,'second source maps independently');
+check((int)$pdo->query('SELECT replica_id FROM crm_shop_product_link_events ORDER BY id DESC LIMIT 1')->fetchColumn()===0,'catalogue mapping audit denotes no order');
+// The same optimistic version protects mappings edited from the order and catalogue paths.
+$st=$pdo->prepare('INSERT INTO crm_shop_orders(id,source_id,payload) VALUES (?,?,?)'); $st->execute([4,$a,json_encode(['items'=>[['product_id'=>8]]])]);
+shop_product_mapping_apply($pdo,4,99,true,8,2,2);
+denied(fn()=>shop_catalog_product_mapping_apply($pdo,11,99,true,1,2,3),'stale catalogue form rejected after order mapping changes');
+shop_catalog_product_mapping_apply($pdo,11,99,true,1,3,3);
+denied(fn()=>shop_product_mapping_apply($pdo,4,99,true,8,2,3),'stale order form rejected after catalogue mapping changes');
+$pdo->prepare('UPDATE crm_shop_catalog SET payload=? WHERE id=11')->execute([json_encode(['id'=>0])]);
+denied(fn()=>shop_catalog_product_mapping_apply($pdo,11,99,true,2,4,3),'invalid catalogue snapshot rejected');
