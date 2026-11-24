@@ -61,3 +61,14 @@ Thumbs.db
 # پکیج آمادهٔ آپلود هاست (ساختهٔ دستی)
 /derakht-sepid-crm-host.zip
 /derakht-sepid-crm-host-*.zip
+
+!website/DATABASE-SCHEMA.sql
+!website/SHOP-SCHEMA.sql
+website/config.php
+website/config.local.php
+website/uploads/*
+!website/uploads/.gitkeep
+!website/uploads/.htaccess
+website/logs/*
+
+/deploy-packages/

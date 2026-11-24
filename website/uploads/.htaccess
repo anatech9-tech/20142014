@@ -1,0 +1,8 @@
+# جلوگیری از اجرای هر نوع فایل PHP در uploads
+<FilesMatch "\.(php|phtml|php3|php4|php5|phps|phar)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+# فقط نمایش فایل‌های استاتیک
+RemoveHandler .php .phtml .php3 .php4 .php5
+RemoveType .php .phtml .php3 .php4 .php5

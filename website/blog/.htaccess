@@ -1,0 +1,5 @@
+# Route /blog/{slug} → /blog/post.php?slug={slug}
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^([a-zA-Z0-9\-_]+)/?$ post.php?slug=$1 [L,QSA]

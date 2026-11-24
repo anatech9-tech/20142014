@@ -1,0 +1,7 @@
+# فروشگاه — URLهای خوانا
+RewriteEngine On
+
+# /shop/{slug} → product.php?slug={slug} (فقط اگر فایل/دایرکتوری نباشد)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^([a-z0-9][a-z0-9\-_]+)/?$ product.php?slug=$1 [L,QSA]
