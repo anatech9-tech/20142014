@@ -4,6 +4,7 @@ require_login();
 require_once __DIR__.'/../includes/shop_order_sync.php';
 require_once __DIR__.'/../includes/shop_order_work.php';
 require_once __DIR__.'/../includes/shop_product_mapping.php';
+require_once __DIR__.'/../includes/shop_order_requests.php';
 function shop_replica_h($v): string { return htmlspecialchars((string)$v,ENT_QUOTES | ENT_SUBSTITUTE,'UTF-8'); }
 $me=(int)$_SESSION['user_id'];
 // A deactivated or demoted account's existing session must not expose order data.
@@ -18,11 +19,22 @@ $statusLabels=['pending'=>'در انتظار','confirmed'=>'تأیید شده','
 $payLabels=['pending'=>'در انتظار','paid'=>'ثبت دستی پرداخت‌شده','failed'=>'ناموفق','refunded'=>'ثبت دستی بازپرداخت'];
 $ready=crm_shop_orders_ensure($pdo) && shop_work_ensure($pdo);
 $view=(int)($_GET['view'] ?? 0); $detail=null; $rows=[]; $next=0; $assignees=[]; $linkedCustomer=null; $customerOptions=[]; $history=[];
+$requestsReady=$ready && $admin && shop_status_request_ensure($pdo); $statusRequests=[]; $openRequests=[]; $nextRequest=0;
 $productReady=false; $productLinks=[]; $productOptions=[]; $productHistory=[]; $selectedProduct=0; $productSearch='';
 if ($_SERVER['REQUEST_METHOD']==='POST') {
     $id=(int)($_POST['id'] ?? 0); $action=(string)($_POST['action'] ?? '');
     try {
         if (!$ready || $readonly) throw new DomainException('دسترسی برای تغییر مجاز نیست.');
+        if (in_array($action,['request_status','close_status_request'],true)) {
+            if (!$admin || !$requestsReady) throw new DomainException('ثبت درخواست وضعیت مجاز یا آماده نیست.');
+            $num=(string)($_POST['request_number'] ?? '');
+            if (!preg_match('/^[1-9][0-9]{0,17}$/D',$num)) throw new DomainException('صفحه را دوباره بارگذاری کنید.');
+            if ($action==='request_status') shop_status_request_create($pdo,$id,$me,$admin,(int)$num,(string)($_POST['target_status'] ?? ''));
+            else shop_status_request_close($pdo,$id,(int)$num,$me,$admin);
+            try { operations_audit($pdo,$me,'shop_order_'.$action,'shop_order',$id,'درخواست داخلی وضعیت سفارش'); } catch (Throwable $e) { error_log('Shop request global audit failed'); }
+            showToast($action==='request_status' ? 'درخواست داخلی ثبت شد؛ وضعیت فروشگاه تغییر نکرد.' : 'درخواست بسته شد؛ این کار انجام شدن آن را تأیید نمی‌کند.');
+            redirect('index.php?page=shop_orders&view='.$id);
+        }
         $version=(string)($_POST['version'] ?? '');
         if (!preg_match('/^(0|[1-9][0-9]{0,9})$/D',$version)) throw new DomainException('صفحه را دوباره بارگذاری کنید.');
         $raw=(string)($_POST['value'] ?? '');
@@ -46,6 +58,10 @@ $select='SELECT r.*,w.owner_user_id,w.team_id,w.crm_customer_id,w.version,u.full
 if ($ready && $view>0) {
     $st=$pdo->prepare("$select WHERE r.id=? AND ($scope)"); $st->execute(array_merge([$view],$scopeArgs)); $detail=$st->fetch() ?: null;
     if ($detail) {
+        if ($requestsReady) {
+            $st=$pdo->prepare("SELECT q.*,u.full_name AS creator_name,c.full_name AS closer_name FROM crm_shop_status_requests q LEFT JOIN users u ON u.id=q.created_by LEFT JOIN users c ON c.id=q.closed_by WHERE q.replica_id=? ORDER BY CASE WHEN q.state='open' THEN 0 ELSE 1 END,q.id DESC LIMIT 20");
+            $st->execute([$view]); $statusRequests=$st->fetchAll();
+        }
         $canAssign=$admin || in_array((int)$detail['team_id'],$managed,true);
         if ($canAssign && !$readonly) {
             if ($admin) $assignees=$pdo->query("SELECT id,full_name FROM users WHERE status='active' AND role<>'karfarma' AND username NOT IN ('yaser','javidhse') ORDER BY full_name")->fetchAll();
@@ -80,6 +96,12 @@ if ($ready && $view>0) {
         }
     }
 } elseif ($ready) {
+    if ($requestsReady) {
+        $requestBefore=max(0,(int)($_GET['request_before'] ?? 0));
+        $requestQuery="SELECT q.id,q.replica_id,q.requested_status,q.created_at,r.payload FROM crm_shop_status_requests q JOIN crm_shop_orders r ON r.id=q.replica_id WHERE q.state='open'".($requestBefore>0 ? ' AND q.id<?' : '').' ORDER BY q.id DESC LIMIT 31';
+        $st=$pdo->prepare($requestQuery); $st->execute($requestBefore>0 ? [$requestBefore] : []); $openRequests=$st->fetchAll();
+        if (count($openRequests)>30) { array_pop($openRequests); $nextRequest=(int)end($openRequests)['id']; }
+    }
     $before=(int)($_GET['before'] ?? 0); $condition=$before>0 ? ' AND r.id<?' : '';
     $st=$pdo->prepare("$select WHERE ($scope)$condition ORDER BY r.id DESC LIMIT 51");
     $st->execute($before>0 ? array_merge($scopeArgs,[$before]) : $scopeArgs);
@@ -108,6 +130,23 @@ include 'includes/header.php';
   <p>جمع کالاها: <?= number_format((int)($o['subtotal_toman'] ?? 0)) ?> | تخفیف: <?= number_format((int)($o['discount_toman'] ?? 0)) ?> | ارسال: <?= number_format((int)($o['shipping_fee'] ?? 0)) ?> | مبلغ کل: <strong><?= number_format((int)($o['total_toman'] ?? 0)) ?> تومان</strong></p>
   <p>آدرس، یادداشت مشتری و توکن سفارش منتقل نمی‌شوند. تغییر وضعیت و مرجوعی همچنان در فروشگاه انجام می‌شود.</p>
 </div>
+<?php if ($admin): ?>
+<div class="card" style="padding:18px;margin-top:14px"><h3>درخواست داخلی تغییر وضعیت</h3>
+<p><strong>این بخش فقط ثبت پیگیری در CRM است و هیچ تغییری در فروشگاه ایجاد نمی‌کند یا به آن ارسال نمی‌شود.</strong> قبل از اقدام دستی در پنل فروشگاه، وضعیت و پرداخت فعلی را همان‌جا بررسی کنید؛ اطلاعات این صفحه ممکن است با تأخیر باشد. بستن درخواست هم تأیید انجام یا وصول وجه نیست.</p>
+<?php if (!$requestsReady): ?><p>جدول درخواست‌ها آماده نیست؛ مجوز دیتابیس را بررسی کنید.</p>
+<?php else: $hasOpen=false; foreach ($statusRequests as $request): if ($request['state']==='open') $hasOpen=true; ?>
+<div style="border-top:1px solid #ddd;padding:12px 0">
+<strong><?= $request['state']==='open'?'درخواست باز':'درخواست بسته' ?> #<?= (int)$request['id'] ?></strong> — از <?= shop_replica_h($statusLabels[$request['expected_status']] ?? 'نامشخص') ?> به <?= shop_replica_h($statusLabels[$request['requested_status']] ?? 'نامشخص') ?>؛ پرداخت در زمان درخواست: <?= shop_replica_h($payLabels[$request['expected_payment']] ?? 'نامشخص') ?><br>
+<small>ثبت‌کننده: <?= shop_replica_h($request['creator_name'] ?: 'کاربر حذف‌شده') ?> | ثبت: <?= shop_replica_h($request['created_at']) ?> | نسخه مبنا: <?= (int)$request['replica_revision'] ?> | نسخه فعلی CRM: <?= (int)$detail['revision'] ?></small>
+<?php if ((int)$request['replica_revision']!==(int)$detail['revision']): ?><p>نسخهٔ دریافتی پس از ثبت درخواست تغییر کرده است؛ پیش از اقدام دستی، وضعیت را مجدداً تطبیق دهید. تطابق وضعیت اثبات انجام این درخواست نیست.</p><?php endif; ?>
+<?php if ($request['state']==='closed'): ?><p>بسته‌شده توسط <?= shop_replica_h($request['closer_name'] ?: 'کاربر حذف‌شده') ?> در <?= shop_replica_h($request['closed_at']) ?>؛ انجام سفارش تأیید نشده است.</p>
+<?php elseif (!$readonly): ?><form method="post" onsubmit="return confirm('درخواست صرفاً در CRM بسته شود؟ این کار انجام شدن آن را تأیید نمی‌کند.');"><?= get_csrf_field() ?><input type="hidden" name="id" value="<?= $view ?>"><input type="hidden" name="action" value="close_status_request"><input type="hidden" name="request_number" value="<?= (int)$request['id'] ?>"><button class="btn" type="submit">بستن درخواست داخلی</button></form><?php endif; ?>
+</div><?php endforeach; ?>
+<?php $targets=shop_status_request_targets((string)($o['order_status'] ?? '')); if (!$readonly && !$hasOpen && $targets): ?>
+<form method="post" onsubmit="return confirm('درخواست فقط در CRM ثبت می‌شود و وضعیت فروشگاه تغییر نمی‌کند. ادامه می‌دهید؟');"><?= get_csrf_field() ?><input type="hidden" name="id" value="<?= $view ?>"><input type="hidden" name="action" value="request_status"><input type="hidden" name="request_number" value="<?= (int)$detail['revision'] ?>"><label>وضعیت درخواستی <select name="target_status" required><?php foreach ($targets as $target): ?><option value="<?= shop_replica_h($target) ?>"><?= shop_replica_h($statusLabels[$target]) ?></option><?php endforeach; ?></select></label> <button class="btn btn-primary" type="submit">ثبت درخواست داخلی</button></form>
+<p>لغو در پنل فروشگاه ممکن است موجودی را بازگرداند و مصرف کوپن را بازنمی‌گرداند؛ سفارش ارسال‌شده یا تحویل‌شده از این مسیر لغو نمی‌شود.</p>
+<?php elseif ($hasOpen): ?><p>برای ثبت درخواست جدید، ابتدا درخواست باز را بررسی و ببندید.</p><?php else: ?><p>برای این وضعیت، گام بعدی در این بخش تعریف نشده است.</p><?php endif; ?>
+<?php endif; ?></div><?php endif; ?>
 <?php if ($admin && !$productReady): ?><div class="card" style="padding:16px;margin-top:14px">اتصال کالا آماده نیست؛ ابتدا بانک کالا و مجوز ساخت جدول را بررسی کنید.</div><?php endif; ?>
 <?php if ($selectedProduct && $productReady && $admin && !$readonly): $mapping=$productLinks[$selectedProduct] ?? null; $mapVersion=(int)($mapping['version'] ?? 0); ?>
 <div class="card" style="padding:18px;margin-top:14px"><h3>اتصال کالای فروشگاه #<?= $selectedProduct ?> به بانک کالا</h3>
@@ -133,6 +172,7 @@ include 'includes/header.php';
 <?php if ($history): ?><div class="card" style="padding:18px;margin-top:14px"><h3>تاریخچه پیگیری در CRM</h3><?php foreach ($history as $event): ?><p><?= $event['action']==='assign'?'ارجاع تغییر کرد':'اتصال مشتری تغییر کرد' ?> — <?= shop_replica_h($event['full_name'] ?: 'کاربر حذف‌شده') ?> — <?= shop_replica_h(to_jalali(substr($event['created_at'],0,10))) ?> <?= shop_replica_h(substr($event['created_at'],11,5)) ?></p><?php endforeach; ?></div><?php endif; ?>
 <?php endif; ?>
 <?php else: ?>
+<?php if ($requestsReady && $openRequests): ?><div class="card" style="padding:16px;margin-bottom:14px"><h3>درخواست‌های داخلی باز (حداکثر ۳۰ مورد اخیر)</h3><p>این درخواست‌ها به فروشگاه ارسال نشده‌اند و به‌تنهایی وضعیتی را تغییر نمی‌دهند.</p><?php foreach ($openRequests as $req): $reqOrder=json_decode((string)$req['payload'],true); ?><p><a href="index.php?page=shop_orders&amp;view=<?= (int)$req['replica_id'] ?>"><?= shop_replica_h(is_array($reqOrder) ? ($reqOrder['order_no'] ?? '') : '') ?></a> — درخواست <?= shop_replica_h($statusLabels[$req['requested_status']] ?? 'نامشخص') ?> — <?= shop_replica_h($req['created_at']) ?></p><?php endforeach; ?><?php if ($nextRequest): ?><a class="btn" href="index.php?page=shop_orders&amp;request_before=<?= $nextRequest ?>">درخواست‌های باز قدیمی‌تر</a><?php endif; ?><?php if (!empty($_GET['request_before'])): ?> <a href="index.php?page=shop_orders">بازگشت به درخواست‌های جدیدتر</a><?php endif; ?></div><?php endif; ?>
 <?php if (!$rows): ?><div class="card" style="padding:16px">سفارشی در محدوده دسترسی شما همگام نشده است.</div><?php endif; ?>
 <div style="display:grid;gap:12px"><?php foreach ($rows as $r): $o=json_decode((string)$r['payload'],true); if (!is_array($o)) continue; ?>
 <div class="card" style="padding:16px;overflow-wrap:anywhere"><strong><?= shop_replica_h($o['order_no'] ?? '') ?></strong> — <?= shop_replica_h($o['customer_name'] ?? '') ?> | <?= shop_replica_h($statusLabels[$o['order_status'] ?? ''] ?? 'نامشخص') ?> | <?= number_format((int)($o['total_toman'] ?? 0)) ?> تومان | مسئول: <?= shop_replica_h($r['owner_name'] ?: 'تعیین نشده') ?> | آخرین دریافت: <?= shop_replica_h(to_jalali(substr($r['received_at'],0,10))) ?> <?= shop_replica_h(substr($r['received_at'],11,5)) ?> <a class="btn" href="index.php?page=shop_orders&amp;view=<?= (int)$r['id'] ?>">جزئیات</a></div>
