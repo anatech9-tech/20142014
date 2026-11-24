@@ -16,7 +16,13 @@ class Coupons
             'SELECT * FROM discount_codes WHERE code = ? AND is_active = 1 LIMIT 1',
             [trim($code)]
         );
-        if (!$coupon) {
+        return self::validateRow($coupon, $subtotal);
+    }
+
+    /** Validate the same locked coupon row used by checkout. */
+    public static function validateRow(?array $coupon, int $subtotal): array
+    {
+        if (!$coupon || !(int)$coupon['is_active']) {
             return ['valid' => false, 'error' => 'کد تخفیف معتبر نیست.'];
         }
         if ($coupon['expires_at'] && strtotime($coupon['expires_at']) < time()) {
@@ -35,7 +41,7 @@ class Coupons
             $pct = min(100, max(0, (float)$coupon['value']));
             $discount = (int)round($subtotal * $pct / 100);
         } else {
-            $discount = min($subtotal, (int)$coupon['value']);
+            $discount = min($subtotal, max(0, (int)$coupon['value']));
         }
 
         return ['valid' => true, 'discount' => $discount, 'coupon' => $coupon];

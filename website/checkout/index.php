@@ -93,7 +93,7 @@ $prefill = [
             ثبت نهایی سفارش — <?= Price::tomanLabel($summary['total']) ?>
         </button>
         <p style="color:var(--shop-muted); font-size:.8rem; margin-top:12px; text-align:center;">
-            با ثبت سفارش، اطلاعات شما فقط برای ارسال کالا استفاده می‌شود. پرداخت پس از تأیید سفارش توسط تیم ما انجام می‌شود (کارت به‌صورت حضوری/واریز — درگاه بانکی در نسخه بعدی).
+            قیمت و موجودی در لحظه ثبت دوباره بررسی می‌شوند؛ اگر مبلغ تغییر کرده باشد لازم است صفحه را بازخوانی و مبلغ جدید را تأیید کنید. با ثبت سفارش، اطلاعات شما فقط برای ارسال کالا استفاده می‌شود. پرداخت پس از تأیید سفارش توسط تیم ما انجام می‌شود (کارت به‌صورت حضوری/واریز — درگاه بانکی در نسخه بعدی).
         </p>
     </form>
 
@@ -132,7 +132,8 @@ document.getElementById('checkoutForm').addEventListener('submit', async functio
     btn.textContent = 'در حال ثبت...';
     try {
         const data = Object.fromEntries(new FormData(this).entries());
-        const res = await fetch('api/checkout.php', {
+        data.expected_total = <?= json_encode((string)$summary['total']) ?>;
+        const res = await fetch('/shop/api/checkout.php', {
             method: 'POST',
             credentials: 'same-origin',
             headers: {

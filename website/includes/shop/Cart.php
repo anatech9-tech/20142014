@@ -26,6 +26,20 @@ class Cart
         $_SESSION[self::KEY] = $cart;
     }
 
+    /** Requested quantities, not silently clamped to current stock. */
+    public static function requested(): array
+    {
+        $out = [];
+        foreach (self::raw() as $id => $qty) {
+            if ((int)$id <= 0 || !is_numeric($qty) || (int)$qty < 1 || (int)$qty > 999) {
+                throw new \DomainException('سبد خرید نامعتبر است؛ لطفاً آن را اصلاح کنید.');
+            }
+            $out[(int)$id] = (int)$qty;
+        }
+        ksort($out, SORT_NUMERIC);
+        return $out;
+    }
+
     public static function add(int $productId, int $qty = 1): array
     {
         $product = Products::byId($productId);
@@ -99,10 +113,16 @@ class Cart
         foreach ($rows as $r) $byId[(int)$r['id']] = Products::decode($r);
 
         $items = [];
+        $usdRate = null;
         foreach ($cart as $pid => $qty) {
             if (!isset($byId[(int)$pid])) continue;
             $p = $byId[(int)$pid];
-            $unit = Price::productToman($p);
+            if (($p['currency'] ?? 'toman') === 'usd') {
+                if ($usdRate === null) $usdRate = Rates::getUsd();
+                $unit = Price::usdToToman((float)($p['price_usd'] ?? 0), $usdRate);
+            } else {
+                $unit = (int)($p['price_toman'] ?? 0);
+            }
             $items[] = [
                 'product'      => $p,
                 'qty'          => min((int)$qty, (int)$p['stock']),
@@ -169,8 +189,10 @@ class Cart
     public static function summary(): array
     {
         $items = self::items();
-        $subtotal = self::subtotal();
-        $discount = self::discount();
+        $subtotal = array_sum(array_column($items, 'line_total'));
+        $code = self::couponCode();
+        $result = $code ? Coupons::validate($code, $subtotal) : ['valid'=>false];
+        $discount = $result['valid'] ? (int)$result['discount'] : 0;
         $shipping = self::shippingFee($subtotal - $discount);
         return [
             'items'      => $items,

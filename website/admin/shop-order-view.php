@@ -41,7 +41,7 @@ $activeMenu = 'shop-orders';
                 <div>📞 <span dir="ltr"><?= htmlspecialchars($order['customer_phone']) ?></span></div>
                 <?php if ($order['customer_email']): ?><div>✉️ <span dir="ltr"><?= htmlspecialchars($order['customer_email']) ?></span></div><?php endif; ?>
                 <div>🏠 <?= htmlspecialchars($order['address']) ?></div>
-                <?php if ($order['city'] || $order['province']): ?><div>📌 <?= htmlspecialchars(trim($order['province'] . '، ' . $order['city'])) ?> — کد پستی: <?= $order['postal_code'] ?: '—' ?></div><?php endif; ?>
+                <?php if ($order['city'] || $order['province']): ?><div>📌 <?= htmlspecialchars(trim($order['province'] . '، ' . $order['city'])) ?> — کد پستی: <?= htmlspecialchars($order['postal_code'] ?: '—', ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
                 <?php if ($order['notes']): ?><div style="background:rgba(136,146,176,.1); border-radius:8px; padding:10px 14px; margin-top:8px;">📝 <?= htmlspecialchars($order['notes']) ?></div><?php endif; ?>
             </div>
             <?php if ($order['customer_id']): ?>
@@ -56,6 +56,7 @@ $activeMenu = 'shop-orders';
 
         <div>
             <h3 style="color:var(--text-strong);">⚙️ مدیریت وضعیت</h3>
+            <p>پرداخت و استرداد اینجا دستی ثبت می‌شوند؛ درگاه یا بازپرداخت خودکار وجود ندارد. سفارش ارسال‌شده برای مرجوعی نیاز به بررسی دستی دارد.</p>
             <div class="form-field" style="margin-bottom:12px;">
                 <label>وضعیت سفارش</label>
                 <select id="orderStatus">
@@ -131,7 +132,9 @@ async function updateOrder() {
         action: 'update', id: <?= $id ?>,
         order_status: document.getElementById('orderStatus').value,
         payment_status: document.getElementById('payStatus').value,
-        note: document.getElementById('statusNote').value
+        note: document.getElementById('statusNote').value,
+        expected_status: <?= json_encode($order['order_status']) ?>,
+        expected_payment: <?= json_encode($order['payment_status']) ?>
     });
     const res = await fetch('api/shop-orders.php', {
         method: 'POST',
@@ -148,7 +151,7 @@ async function cancelOrder() {
     const res = await fetch('api/shop-orders.php', {
         method: 'POST',
         headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'action=update&id=<?= $id ?>&order_status=cancelled&payment_status=pending&note=' + encodeURIComponent('سفارش توسط ادمین لغو شد')
+        body: new URLSearchParams({action:'update', id:<?= $id ?>, order_status:'cancelled', expected_status:<?= json_encode($order['order_status']) ?>, expected_payment:<?= json_encode($order['payment_status']) ?>, note:'سفارش توسط ادمین لغو شد'})
     });
     const r = await res.json();
     if (r.success) location.reload();

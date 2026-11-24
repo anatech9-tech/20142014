@@ -32,7 +32,7 @@ $stats = [
     <div class="stat-card" style="border-color:rgba(243,156,18,.4);"><div class="stat-value"><?= Shop\Jalali::toPersianDigits($stats['pending']) ?></div><div class="stat-label">در انتظار بررسی</div></div>
     <div class="stat-card"><div class="stat-value"><?= Shop\Jalali::toPersianDigits($stats['shipped']) ?></div><div class="stat-label">ارسال شده</div></div>
     <div class="stat-card"><div class="stat-value"><?= Shop\Jalali::toPersianDigits($stats['delivered']) ?></div><div class="stat-label">تحویل شده</div></div>
-    <div class="stat-card" style="border-color:rgba(212,175,55,.5);"><div class="stat-value" style="font-size:1.2rem;"><?= Shop\Price::faNumber($stats['revenue']) ?></div><div class="stat-label">درآمد (تومان)</div></div>
+    <div class="stat-card" style="border-color:rgba(212,175,55,.5);"><div class="stat-value" style="font-size:1.2rem;"><?= Shop\Price::faNumber($stats['revenue']) ?></div><div class="stat-label">جمع سفارش‌های لغونشده؛ شامل پرداخت‌نشده (تومان)</div></div>
 </div>
 
 <div class="card">
