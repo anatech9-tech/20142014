@@ -13,7 +13,7 @@ if (!defined('BASE_PATH')) {
 use Shop\Jalali, Shop\Price, Shop\Customers, Shop\Orders;
 
 if (!Customers::isLoggedIn()) {
-    header('Location: /account/login');
+    header('Location: /account/login.php');
     exit;
 }
 $shopUser = Customers::user();
@@ -30,7 +30,7 @@ $orders = Customers::orders((int)$shopUser['id']);
     <h1>سلام <?= htmlspecialchars($shopUser['full_name']) ?> 👋</h1>
     <p>لیست سفارش‌های شما</p>
     <div style="margin-top:14px; display:flex; gap:10px; flex-wrap:wrap;">
-        <a href="/account/profile" class="btn btn-ghost btn-sm">⚙️ ویرایش اطلاعات</a>
+        <a href="/account/profile.php" class="btn btn-ghost btn-sm">⚙️ ویرایش اطلاعات</a>
         <a href="/shop/" class="btn btn-gold btn-sm">🛍️ ادامه خرید</a>
     </div>
 </div>

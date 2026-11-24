@@ -52,7 +52,7 @@ $avgRating = count($reviews) ? round(array_sum(array_map(fn($r) => (int)$r['rati
 <div class="page-head">
     <div class="breadcrumb">
         <a href="/">خانه</a> / <a href="/shop/">فروشگاه</a> /
-        <?php if ($product['category_slug']): ?><a href="/shop/index.php?category=<?= $product['category_slug'] ?>"><?= htmlspecialchars($product['category_name']) ?></a> / <?php endif; ?>
+        <?php if ($product['category_slug']): ?><a href="/shop/index.php?category=<?= rawurlencode($product['category_slug']) ?>"><?= htmlspecialchars($product['category_name']) ?></a> / <?php endif; ?>
         <?= htmlspecialchars($product['name_fa']) ?>
     </div>
 </div>
@@ -60,7 +60,7 @@ $avgRating = count($reviews) ? round(array_sum(array_map(fn($r) => (int)$r['rati
 <div class="product-page">
     <div class="gallery">
         <div class="main-img">
-            <img id="galleryMain" src="<?= htmlspecialchars($product['images'][0] ?? '/assets/placeholder.webp') ?>" alt="<?= htmlspecialchars($product['name_fa']) ?>">
+            <img id="galleryMain" src="<?= htmlspecialchars($product['images'][0] ?? '/assets/shop/product-placeholder.svg') ?>" alt="<?= htmlspecialchars($product['name_fa']) ?>">
         </div>
         <?php if (count($product['images']) > 1): ?>
             <div class="thumbs">
@@ -83,18 +83,18 @@ $avgRating = count($reviews) ? round(array_sum(array_map(fn($r) => (int)$r['rati
         <?php if ($product['short_desc_fa']): ?><p style="color:var(--shop-muted); line-height:1.9; margin-bottom:16px;"><?= htmlspecialchars($product['short_desc_fa']) ?></p><?php endif; ?>
 
         <div class="price-block">
-            <?php if ($oldPrice && $oldPrice > $price): ?>
+            <?php if ($price > 0 && $oldPrice && $oldPrice > $price): ?>
                 <div class="old">قبل: <?= Price::tomanLabel($oldPrice) ?> <span class="sale-tag"><?= Price::faNumber((int)(100 - $price * 100 / $oldPrice)) ?>٪ تخفیف</span></div>
             <?php endif; ?>
-            <div class="now"><?= Price::faNumber($price) ?> <small>تومان</small></div>
+            <div class="now"><?= $price > 0 ? Price::faNumber($price) . ' <small>تومان</small>' : 'استعلام قیمت' ?></div>
             <?php if ($usdProduct): ?>
-                <div class="rate-note">💵 قیمت بر اساس نرخ لحظه‌ای دلار (<?= Price::faNumber($rate) ?> تومان) — مبلغ نهایی در زمان ثبت سفارش محاسبه می‌شود</div>
+                <div class="rate-note">💵 قیمت بر اساس نرخ دلار فروشگاه (<?= Price::faNumber($rate) ?> تومان) — مبلغ نهایی در زمان ثبت سفارش محاسبه می‌شود</div>
             <?php endif; ?>
         </div>
 
         <div style="font-size:.92rem; margin-bottom:4px;">
             <?php if ($out): ?>
-                <span style="color:var(--shop-red); font-weight:700;">❌ ناموجود — به‌زودی شارژ می‌شود</span>
+                <span style="color:var(--shop-red); font-weight:700;">❌ ناموجود</span>
             <?php elseif ((int)$product['stock'] <= 10): ?>
                 <span style="color:var(--shop-red); font-weight:700;">⏳ فقط <?= Price::faNumber((int)$product['stock']) ?> عدد باقی مانده</span>
             <?php else: ?>
@@ -103,24 +103,22 @@ $avgRating = count($reviews) ? round(array_sum(array_map(fn($r) => (int)$r['rati
         </div>
 
         <div class="buy-row">
-            <?php if (!$out): ?>
+            <?php if (!$out && $price > 0): ?>
                 <div class="qty-box">
                     <button type="button" data-qty-plus aria-label="افزایش">+</button>
                     <input type="number" id="qtyInput" value="1" min="1" max="<?= (int)$product['stock'] ?>">
                     <button type="button" data-qty-minus aria-label="کاهش">−</button>
                 </div>
                 <button class="btn btn-gold" data-add-cart="<?= $product['id'] ?>">افزودن به سبد خرید 🛒</button>
-                <a href="/cart/" class="btn btn-outline" id="buyNow" onclick="setTimeout(()=>{location.href='/checkout/'},600)">خرید فوری ⚡</a>
+                <button type="button" class="btn btn-outline" data-buy-now="<?= (int)$product['id'] ?>">خرید فوری ⚡</button>
             <?php else: ?>
-                <a href="/contact.php" class="btn btn-gold btn-block">موجودی را از ما بپرسید ✉️</a>
+                <a href="/#contact" class="btn btn-gold btn-block">قیمت و موجودی را از ما بپرسید ✉️</a>
             <?php endif; ?>
         </div>
 
         <ul class="p-features">
-            <li>سورس‌شده مستقیم از کارخانه در چین</li>
-            <li>ضمانت تعویض در صورت مشکل کارخانه‌ای</li>
-            <li>امکان ارسال به سراسر کشور</li>
-            <li><?= $usdProduct ? 'قیمت دلاری — محاسبه لحظه‌ای به تومان' : 'قیمت به تومان — بدون تورم نرخ ارز' ?></li>
+            <li>برای پرسش درباره مشخصات و شرایط سفارش، با تیم ما تماس بگیرید.</li>
+            <li><?= $usdProduct ? 'قیمت ارزی با نرخ فروشگاه به تومان محاسبه می‌شود.' : 'قیمت به تومان نمایش داده می‌شود.' ?></li>
         </ul>
     </div>
 </div>
@@ -155,7 +153,7 @@ $avgRating = count($reviews) ? round(array_sum(array_map(fn($r) => (int)$r['rati
                 <button type="submit" class="btn btn-gold btn-sm">ثبت نظر</button>
             </form>
         <?php else: ?>
-            <div class="alert info">برای ثبت نظر، ابتدا <a href="/account/login">وارد حساب کاربری</a> شوید.</div>
+            <div class="alert info">برای ثبت نظر، ابتدا <a href="/account/login.php">وارد حساب کاربری</a> شوید.</div>
         <?php endif; ?>
 
         <?php if ($reviews): ?>
@@ -182,14 +180,14 @@ $avgRating = count($reviews) ? round(array_sum(array_map(fn($r) => (int)$r['rati
         <div class="products-grid">
             <?php foreach ($related as $rp): $rpPrice = Price::productToman($rp); ?>
                 <div class="p-card">
-                    <a href="product.php?slug=<?= $rp['slug'] ?>">
+                    <a href="/shop/product.php?slug=<?= rawurlencode($rp['slug']) ?>">
                         <div class="img-wrap"><img src="<?= htmlspecialchars($rp['first_image']) ?>" alt="<?= htmlspecialchars($rp['name_fa']) ?>" loading="lazy"></div>
                     </a>
                     <div class="p-body">
-                        <div class="p-name"><a href="product.php?slug=<?= $rp['slug'] ?>"><?= htmlspecialchars($rp['name_fa']) ?></a></div>
-                        <div class="p-price-row"><span class="p-price"><?= Price::faNumber($rpPrice) ?> <small>تومان</small></span></div>
+                        <div class="p-name"><a href="/shop/product.php?slug=<?= rawurlencode($rp['slug']) ?>"><?= htmlspecialchars($rp['name_fa']) ?></a></div>
+                        <div class="p-price-row"><span class="p-price"><?= $rpPrice > 0 ? Price::faNumber($rpPrice) . ' <small>تومان</small>' : 'استعلام قیمت' ?></span></div>
                         <div class="p-actions">
-                            <?php if ((int)$rp['stock'] > 0): ?>
+                            <?php if ((int)$rp['stock'] > 0 && $rpPrice > 0): ?>
                                 <button class="btn btn-gold btn-sm" data-add-cart="<?= $rp['id'] ?>">سبد خرید 🛒</button>
                             <?php endif; ?>
                         </div>

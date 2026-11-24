@@ -13,7 +13,7 @@ if (!defined('BASE_PATH')) {
 use Shop\Customers;
 
 if (!Customers::isLoggedIn()) {
-    header('Location: /account/login');
+    header('Location: /account/login.php');
     exit;
 }
 $shopUser = Customers::user();
@@ -30,7 +30,7 @@ require __DIR__ . '/../shop/_header.php';
 
 <div style="max-width:680px; margin-bottom:50px;">
     <div id="formErrors"></div>
-    <form class="form-card" data-ajax-submit="api/auth.php" data-errors-into="formErrors" style="margin-bottom:20px;">
+    <form class="form-card" data-ajax-submit="/shop/api/auth.php" data-errors-into="formErrors" style="margin-bottom:20px;">
         <h3 style="color:#fff; margin-top:0;">📇 اطلاعات</h3>
         <input type="hidden" name="mode" value="profile">
         <div class="form-grid">
@@ -66,7 +66,7 @@ require __DIR__ . '/../shop/_header.php';
         <button type="submit" class="btn btn-gold" style="margin-top:18px;">ذخیره اطلاعات</button>
     </form>
 
-    <form class="form-card" data-ajax-submit="api/auth.php" data-errors-into="formErrors">
+    <form class="form-card" data-ajax-submit="/shop/api/auth.php" data-errors-into="formErrors">
         <h3 style="color:#fff; margin-top:0;">🔐 تغییر رمز عبور</h3>
         <input type="hidden" name="mode" value="password">
         <div class="form-grid">
@@ -83,8 +83,8 @@ require __DIR__ . '/../shop/_header.php';
     </form>
 
     <div style="margin-top:20px; display:flex; gap:10px; flex-wrap:wrap;">
-        <a href="/account/orders" class="btn btn-ghost">📦 سفارش‌های من</a>
-        <form data-ajax-submit="api/auth.php" id="logoutForm">
+        <a href="/account/orders.php" class="btn btn-ghost">📦 سفارش‌های من</a>
+        <form data-ajax-submit="/shop/api/auth.php" id="logoutForm">
             <input type="hidden" name="mode" value="logout">
             <button type="submit" class="btn btn-ghost" style="color:var(--shop-red);">خروج از حساب</button>
         </form>

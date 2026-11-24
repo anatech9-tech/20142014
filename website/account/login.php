@@ -29,7 +29,7 @@ require __DIR__ . '/../shop/_header.php';
 
 <div style="max-width:480px; margin:20px auto 50px;">
     <div id="formErrors"></div>
-    <form class="form-card" data-ajax-submit="api/auth.php" data-errors-into="formErrors">
+    <form class="form-card" data-ajax-submit="/shop/api/auth.php" data-errors-into="formErrors">
         <div class="field" style="margin-bottom:16px;">
             <label>نام کاربری یا ایمیل <span class="req">*</span></label>
             <input type="text" name="login" required autofocus maxlength="200">
@@ -41,7 +41,7 @@ require __DIR__ . '/../shop/_header.php';
         <button type="submit" class="btn btn-gold btn-block">ورود</button>
     </form>
     <p style="text-align:center; margin-top:18px; color:var(--shop-muted);">
-        حساب ندارید؟ <a href="/account/register">ثبت‌نام کنید</a>
+        حساب ندارید؟ <a href="/account/register.php">ثبت‌نام کنید</a>
     </p>
 </div>
 

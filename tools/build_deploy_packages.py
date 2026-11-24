@@ -16,8 +16,8 @@ archive = subprocess.check_output(['git', 'archive', '--format=tar', sha, 'websi
 out = pathlib.Path(args.output)
 out.mkdir(parents=True, exist_ok=True)
 packages = {'crm.zip': [], 'website.zip': [], 'shop.zip': []}
-shop_dirs = ('shop/', 'cart/', 'checkout/', 'account/', 'includes/shop/')
-shop_shared = {'cli/shop_crm_sync.php','includes/db.php','includes/Auth.php','includes/Settings.php','admin/includes/layout.php','admin/api/upload.php','admin/assets/css/admin.css','admin/assets/js/admin.js','css/shop.css','js/shop.js'}
+shop_dirs = ('shop/', 'cart/', 'checkout/', 'account/', 'includes/shop/', 'assets/shop/')
+shop_shared = {'css/shop-home.css','cli/shop_crm_sync.php','includes/db.php','includes/Auth.php','includes/Settings.php','admin/includes/layout.php','admin/api/upload.php','admin/assets/css/admin.css','admin/assets/js/admin.js','css/shop.css','js/shop.js'}
 with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
     for f in tar.getmembers():
         if not f.isfile(): continue
@@ -33,7 +33,7 @@ with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
             if rel.startswith(('uploads/','logs/','tests/')): continue
             is_shop = rel.startswith(shop_dirs) or rel.startswith(('admin/shop-', 'admin/api/shop-'))
             data = tar.extractfile(f).read()
-            if not is_shop or rel.startswith('includes/shop/'):
+            if not is_shop or rel.startswith(('includes/shop/', 'assets/shop/')):
                 packages['website.zip'].append((rel,data))
             if is_shop or rel in shop_shared:
                 packages['shop.zip'].append((rel,data))

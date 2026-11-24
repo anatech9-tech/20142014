@@ -302,7 +302,7 @@ function e(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8')
                                     <?php if (!$pOut): ?>
                                         <a href="/shop/product.php?slug=<?= $p['slug'] ?>" class="btn btn-gold btn-sm" style="flex:1;">مشاهده و خرید</a>
                                     <?php else: ?>
-                                        <a href="/contact.php" class="btn btn-ghost btn-sm" style="flex:1;">استعلام موجودی</a>
+                                        <a href="/#contact" class="btn btn-ghost btn-sm" style="flex:1;">استعلام موجودی</a>
                                     <?php endif; ?>
                                 </div>
                             </div>
@@ -337,7 +337,7 @@ function e(string $s): string { return htmlspecialchars($s, ENT_QUOTES, 'UTF-8')
                                     <?php if (!$pOut): ?>
                                         <a href="/shop/product.php?slug=<?= $p['slug'] ?>" class="btn btn-gold btn-sm" style="flex:1;">مشاهده و خرید</a>
                                     <?php else: ?>
-                                        <a href="/contact.php" class="btn btn-ghost btn-sm" style="flex:1;">استعلام موجودی</a>
+                                        <a href="/#contact" class="btn btn-ghost btn-sm" style="flex:1;">استعلام موجودی</a>
                                     <?php endif; ?>
                                 </div>
                             </div>

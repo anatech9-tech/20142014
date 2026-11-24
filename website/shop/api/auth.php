@@ -27,7 +27,7 @@ switch ($mode) {
     case 'register':
         $r = Customers::register($_POST);
         if ($r['success']) {
-            echo json_encode(['success' => true, 'redirect' => '/account/orders'], JSON_UNESCAPED_UNICODE);
+            echo json_encode(['success' => true, 'redirect' => '/account/orders.php'], JSON_UNESCAPED_UNICODE);
         } else {
             http_response_code(422);
             echo json_encode(['success' => false, 'errors' => $r['errors']], JSON_UNESCAPED_UNICODE);
@@ -37,7 +37,7 @@ switch ($mode) {
     case 'login':
         $r = Customers::login((string)($_POST['login'] ?? ''), (string)($_POST['password'] ?? ''));
         if ($r['success']) {
-            echo json_encode(['success' => true, 'redirect' => '/account/orders'], JSON_UNESCAPED_UNICODE);
+            echo json_encode(['success' => true, 'redirect' => '/account/orders.php'], JSON_UNESCAPED_UNICODE);
         } else {
             http_response_code(422);
             echo json_encode(['success' => false, 'errors' => [$r['error']]], JSON_UNESCAPED_UNICODE);
@@ -72,7 +72,7 @@ switch ($mode) {
 
     case 'logout':
         Customers::logout();
-        echo json_encode(['success' => true, 'redirect' => '/account/login']);
+        echo json_encode(['success' => true, 'redirect' => '/account/login.php']);
         break;
 
     default:

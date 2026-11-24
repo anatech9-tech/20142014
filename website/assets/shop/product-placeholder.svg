@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" role="img" aria-label="تصویر کالا موجود نیست">
+  <rect width="480" height="480" fill="#f2f3ef"/>
+  <circle cx="240" cy="220" r="112" fill="#e5eae3"/>
+  <g fill="none" stroke="#809287" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="158" y="152" width="164" height="136" rx="18"/>
+    <path d="m174 269 39-42 26 26 28-33 40 49M265 191h.1"/>
+  </g>
+  <path fill="#96a79b" d="M151 330h178v7H151z"/>
+</svg>

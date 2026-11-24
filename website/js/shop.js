@@ -20,17 +20,22 @@
     };
 
     async function api(url, data) {
-        const res = await fetch(url, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-Token': CSRF,
-                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            },
-            body: new URLSearchParams(data).toString(),
-        });
-        return res.json().catch(() => ({}));
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-Token': CSRF,
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                },
+                body: new URLSearchParams(data).toString(),
+            });
+            const result = await res.json().catch(() => ({}));
+            return res.ok ? result : { ...result, success: false };
+        } catch (_) {
+            return { success: false, error: 'ارتباط با سرور برقرار نشد. لطفاً دوباره تلاش کنید.' };
+        }
     }
 
     function refreshCartCount() {
@@ -42,17 +47,18 @@
     }
 
     // ---------- افزودن به سبد ----------
-    document.querySelectorAll('[data-add-cart]').forEach(btn => {
+    document.querySelectorAll('[data-add-cart], [data-buy-now]').forEach(btn => {
         btn.addEventListener('click', async () => {
-            const pid = btn.dataset.addCart;
+            const pid = btn.dataset.addCart || btn.dataset.buyNow;
             const qty = parseInt(document.getElementById('qtyInput')?.value || '1', 10) || 1;
             btn.disabled = true;
-            const r = await api('api/cart.php', { action: 'add', id: pid, qty });
+            const r = await api('/shop/api/cart.php', { action: 'add', id: pid, qty });
             btn.disabled = false;
             if (r.success) {
                 document.querySelectorAll('.cart-count').forEach(el => el.dataset.count = r.count);
                 refreshCartCount();
-                showToast('✅ به سبد خرید اضافه شد');
+                if (btn.dataset.buyNow) window.location.href = '/checkout/';
+                else showToast('✅ به سبد خرید اضافه شد');
             } else {
                 showToast(r.error || 'خطا در افزودن به سبد', true);
             }
@@ -112,7 +118,7 @@
             const data = Object.fromEntries(new FormData(reviewForm).entries());
             const btn = reviewForm.querySelector('button[type="submit"]');
             btn.disabled = true;
-            const r = await api('api/reviews.php', data);
+            const r = await api('/shop/api/reviews.php', data);
             btn.disabled = false;
             if (r.success) {
                 window.location.reload();
@@ -126,14 +132,16 @@
     document.querySelectorAll('[data-cart-qty]').forEach(inp => {
         inp.addEventListener('change', async () => {
             const pid = inp.dataset.cartQty;
-            const r = await api('api/cart.php', { action: 'set', id: pid, qty: inp.value });
+            const r = await api('/shop/api/cart.php', { action: 'set', id: pid, qty: inp.value });
             if (r.success) window.location.reload();
+            else showToast(r.error || 'خطا در به‌روزرسانی سبد', true);
         });
     });
     document.querySelectorAll('[data-cart-remove]').forEach(btn => {
         btn.addEventListener('click', async () => {
-            const r = await api('api/cart.php', { action: 'remove', id: btn.dataset.cartRemove });
+            const r = await api('/shop/api/cart.php', { action: 'remove', id: btn.dataset.cartRemove });
             if (r.success) window.location.reload();
+            else showToast(r.error || 'خطا در به‌روزرسانی سبد', true);
         });
     });
 
@@ -143,7 +151,7 @@
         couponForm.addEventListener('submit', async e => {
             e.preventDefault();
             const code = couponForm.querySelector('input[name="code"]').value;
-            const r = await api('api/cart.php', { action: 'coupon', code });
+            const r = await api('/shop/api/cart.php', { action: 'coupon', code });
             if (r.success) window.location.reload();
             else showToast(r.error || 'کد معتبر نیست', true);
         });
@@ -151,8 +159,9 @@
     const couponRemove = document.getElementById('couponRemove');
     if (couponRemove) {
         couponRemove.addEventListener('click', async () => {
-            await api('api/cart.php', { action: 'coupon_remove' });
-            window.location.reload();
+            const r = await api('/shop/api/cart.php', { action: 'coupon_remove' });
+            if (r.success) window.location.reload();
+            else showToast(r.error || 'خطا در حذف کد تخفیف', true);
         });
     }
 
@@ -171,7 +180,12 @@
             } else {
                 const box = document.getElementById(form.dataset.errorsInto || 'formErrors');
                 if (box) {
-                    box.innerHTML = (r.errors || [r.error || 'خطا']).map(x => `<div class="alert error">${x}</div>`).join('');
+                    box.replaceChildren(...(r.errors || [r.error || 'خطا']).map(x => {
+                        const item = document.createElement('div');
+                        item.className = 'alert error';
+                        item.textContent = x;
+                        return item;
+                    }));
                     box.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 } else {
                     showToast(r.error || 'خطا', true);

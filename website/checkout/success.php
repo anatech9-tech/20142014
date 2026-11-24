@@ -37,7 +37,7 @@ if (!$order) {
         شماره تماس ثبت‌شده: <strong style="color:#fff;"><?= htmlspecialchars($order['customer_phone']) ?></strong>
     </p>
     <div style="margin-top:26px; display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
-        <a href="/account/orders" class="btn btn-gold">پیگیری سفارش‌هایم</a>
+        <a href="/account/orders.php" class="btn btn-gold">پیگیری سفارش‌هایم</a>
         <a href="/shop/" class="btn btn-ghost">ادامه خرید</a>
     </div>
 </div>

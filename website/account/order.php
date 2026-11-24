@@ -13,7 +13,7 @@ if (!defined('BASE_PATH')) {
 use Shop\Jalali, Shop\Price, Shop\Customers, Shop\Orders;
 
 if (!Customers::isLoggedIn()) {
-    header('Location: /account/login');
+    header('Location: /account/login.php');
     exit;
 }
 $shopUser = Customers::user();
@@ -22,7 +22,7 @@ $order    = Orders::byId($orderId);
 
 // فقط مالک می‌تواند ببیند
 if (!$order || (int)$order['customer_id'] !== (int)$shopUser['id']) {
-    header('Location: /account/orders');
+    header('Location: /account/orders.php');
     exit;
 }
 

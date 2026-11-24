@@ -30,7 +30,7 @@ require __DIR__ . '/../shop/_header.php';
 
 <div style="max-width:560px; margin:20px auto 50px;">
     <div id="formErrors"></div>
-    <form class="form-card" data-ajax-submit="api/auth.php" data-errors-into="formErrors">
+    <form class="form-card" data-ajax-submit="/shop/api/auth.php" data-errors-into="formErrors">
         <input type="hidden" name="mode" value="register">
         <div class="form-grid">
             <div class="field">
@@ -53,7 +53,7 @@ require __DIR__ . '/../shop/_header.php';
         <button type="submit" class="btn btn-gold btn-block" style="margin-top:20px;">ثبت‌نام و ورود</button>
     </form>
     <p style="text-align:center; margin-top:18px; color:var(--shop-muted);">
-        قبلاً ثبت‌نام کرده‌اید؟ <a href="/account/login">وارد شوید</a>
+        قبلاً ثبت‌نام کرده‌اید؟ <a href="/account/login.php">وارد شوید</a>
     </p>
 </div>
 

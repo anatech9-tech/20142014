@@ -200,7 +200,7 @@ class Products
             $imgs = json_decode((string)$row['images'], true);
             $row['images'] = is_array($imgs) ? array_values($imgs) : [];
         }
-        $row['first_image'] = $row['images'] ? $row['images'][0] : '/assets/placeholder.webp';
+        $row['first_image'] = $row['images'] ? $row['images'][0] : '/assets/shop/product-placeholder.svg';
         return $row;
     }
 

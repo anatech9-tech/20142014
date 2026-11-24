@@ -13,8 +13,8 @@ if (!defined('BASE_PATH')) {
 use Shop\Customers;
 
 if (!Customers::isLoggedIn()) {
-    header('Location: /account/login');
+    header('Location: /account/login.php');
     exit;
 }
-header('Location: /account/orders');
+header('Location: /account/orders.php');
 exit;
