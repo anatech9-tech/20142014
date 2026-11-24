@@ -129,7 +129,9 @@ class Orders
 
     public static function byId(int $id): ?array
     {
-        $order = \DB::fetch('SELECT * FROM orders WHERE id = ? LIMIT 1', [$id]);
+        // Read the order and its latest event in one statement so the edit token
+        // belongs to the same committed snapshot as the displayed status.
+        $order = \DB::fetch('SELECT o.*, (SELECT COALESCE(MAX(e.id), 0) FROM order_events e WHERE e.order_id = o.id) AS event_version FROM orders o WHERE o.id = ? LIMIT 1', [$id]);
         if (!$order) return null;
         $order['items'] = \DB::fetchAll('SELECT * FROM order_items WHERE order_id = ?', [$id]);
         $order['events'] = \DB::fetchAll(
@@ -155,7 +157,7 @@ class Orders
     }
 
     /** Update order/payment atomically; cancellation is terminal and stock is returned once. */
-    public static function update(int $id, ?string $status, ?string $payment, string $note = '', ?string $expectedStatus = null, ?string $expectedPayment = null): array
+    public static function update(int $id, ?string $status, ?string $payment, string $note = '', ?string $expectedStatus = null, ?string $expectedPayment = null, ?int $expectedEventId = null): array
     {
         if (($status !== null && !array_key_exists($status, self::STATUS_LABELS)) || ($payment !== null && !array_key_exists($payment, self::PAYMENT_LABELS)) || mb_strlen($note) > 5000) return ['success'=>false,'error'=>'اطلاعات وضعیت نامعتبر است.'];
         $pdo=\DB::pdo();
@@ -164,6 +166,12 @@ class Orders
             $order=\DB::fetch('SELECT * FROM orders WHERE id = ? FOR UPDATE', [$id]);
             if (!$order) throw new \DomainException('سفارش یافت نشد.');
             if (($expectedStatus !== null && $expectedStatus !== $order['order_status']) || ($expectedPayment !== null && $expectedPayment !== $order['payment_status'])) throw new \DomainException('سفارش تغییر کرده است؛ صفحه را دوباره بارگذاری کنید.');
+            // All application status and payment writers lock this order and append an
+            // event. The token catches an A→B→A change that a status comparison misses.
+            if ($expectedEventId !== null) {
+                $event=(int)(\DB::fetchColumn('SELECT COALESCE(MAX(id), 0) FROM order_events WHERE order_id = ?', [$id]));
+                if ($event !== $expectedEventId) throw new \DomainException('تاریخچه سفارش تغییر کرده است؛ صفحه را دوباره بارگذاری کنید.');
+            }
             $old=$order['order_status'];
             if ($old === 'cancelled' && $status !== null && $status !== 'cancelled') throw new \DomainException('سفارش لغوشده قابل فعال‌سازی مجدد نیست؛ سفارش جدید ثبت کنید.');
             if ($status !== null && ($status !== $old || $note !== '')) {
@@ -178,7 +186,11 @@ class Orders
                 \DB::execute('UPDATE orders SET order_status = ?, status_note = ? WHERE id = ?', [$status,$note,$id]);
                 \DB::insert('order_events', ['order_id'=>$id,'status'=>$status,'note'=>$note]);
             }
-            if ($payment !== null && $payment !== $order['payment_status']) \DB::execute('UPDATE orders SET payment_status = ? WHERE id = ?', [$payment,$id]);
+            if ($payment !== null && $payment !== $order['payment_status']) {
+                \DB::execute('UPDATE orders SET payment_status = ? WHERE id = ?', [$payment,$id]);
+                // This is only a manually recorded label, not proof of receipt/refund.
+                \DB::insert('order_events', ['order_id'=>$id,'status'=>'payment_changed','note'=>'وضعیت پرداخت به صورت دستی تغییر کرد.']);
+            }
             $pdo->commit();
             return ['success'=>true];
         } catch (\Throwable $e) {
@@ -196,6 +208,8 @@ class Orders
     {
         return self::update($id, null, $status)['success'];
     }
+
+    public const EVENT_LABELS = ['payment_changed' => 'تغییر ثبت دستی وضعیت پرداخت'];
 
     public const STATUS_LABELS = [
         'pending'    => 'در انتظار بررسی',

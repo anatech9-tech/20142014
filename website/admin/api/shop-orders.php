@@ -24,8 +24,9 @@ $payStatus = (string)($_POST['payment_status'] ?? '');
 $note = trim((string)($_POST['note'] ?? ''));
 $expectedStatus = (string)($_POST['expected_status'] ?? '');
 $expectedPayment = (string)($_POST['expected_payment'] ?? '');
-if (!array_key_exists($expectedStatus, Orders::STATUS_LABELS) || !array_key_exists($expectedPayment, Orders::PAYMENT_LABELS)
+$expectedEvent = (string)($_POST['expected_event_id'] ?? '');
+if (!preg_match('/^(0|[1-9][0-9]{0,9})$/D', $expectedEvent) || !array_key_exists($expectedStatus, Orders::STATUS_LABELS) || !array_key_exists($expectedPayment, Orders::PAYMENT_LABELS)
     || ($orderStatus === '' && $payStatus === '')) sts_json(400, ['success'=>false,'error'=>'صفحه را دوباره بارگذاری کنید.']);
-$result = Orders::update($id, $orderStatus !== '' ? $orderStatus : null, $payStatus !== '' ? $payStatus : null, $note, $expectedStatus, $expectedPayment);
+$result = Orders::update($id, $orderStatus !== '' ? $orderStatus : null, $payStatus !== '' ? $payStatus : null, $note, $expectedStatus, $expectedPayment, (int)$expectedEvent);
 if (!$result['success']) sts_json(409, $result);
 sts_json(200, $result);

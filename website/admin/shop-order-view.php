@@ -117,7 +117,7 @@ $activeMenu = 'shop-orders';
         <?php foreach ($order['events'] as $i => $ev): ?>
             <li style="position:relative; padding:0 0 18px 26px; border-right:2px solid rgba(136,146,176,.25); margin-right:6px;">
                 <span style="position:absolute; right:-7px; top:3px; width:12px; height:12px; border-radius:50%; background:<?= $i === 0 ? '#d4af37' : '#3a4358' ?>;"></span>
-                <div style="font-weight:700;"><?= Shop\Orders::STATUS_LABELS[$ev['status']] ?? $ev['status'] ?></div>
+                <div style="font-weight:700;"><?= htmlspecialchars(Shop\Orders::STATUS_LABELS[$ev['status']] ?? Shop\Orders::EVENT_LABELS[$ev['status']] ?? $ev['status'], ENT_QUOTES, 'UTF-8') ?></div>
                 <div style="color:var(--text-2); font-size:.8rem;"><?= Shop\Jalali::dateTime($ev['created_at']) ?></div>
                 <?php if ($ev['note']): ?><div style="font-size:.88rem;"><?= htmlspecialchars($ev['note']) ?></div><?php endif; ?>
             </li>
@@ -134,7 +134,8 @@ async function updateOrder() {
         payment_status: document.getElementById('payStatus').value,
         note: document.getElementById('statusNote').value,
         expected_status: <?= json_encode($order['order_status']) ?>,
-        expected_payment: <?= json_encode($order['payment_status']) ?>
+        expected_payment: <?= json_encode($order['payment_status']) ?>,
+        expected_event_id: <?= (int)$order['event_version'] ?>
     });
     const res = await fetch('api/shop-orders.php', {
         method: 'POST',
@@ -151,7 +152,7 @@ async function cancelOrder() {
     const res = await fetch('api/shop-orders.php', {
         method: 'POST',
         headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({action:'update', id:<?= $id ?>, order_status:'cancelled', expected_status:<?= json_encode($order['order_status']) ?>, expected_payment:<?= json_encode($order['payment_status']) ?>, note:'سفارش توسط ادمین لغو شد'})
+        body: new URLSearchParams({action:'update', id:<?= $id ?>, order_status:'cancelled', expected_status:<?= json_encode($order['order_status']) ?>, expected_payment:<?= json_encode($order['payment_status']) ?>, expected_event_id:<?= (int)$order['event_version'] ?>, note:'سفارش توسط ادمین لغو شد'})
     });
     const r = await res.json();
     if (r.success) location.reload();

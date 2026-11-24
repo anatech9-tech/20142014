@@ -21,7 +21,7 @@ function crm_shop_order_validate($data, string $expectedSource): bool {
     if (array_diff(array_keys($data), ['type','source_id','event_id','revision','order'])) return false;
     $o=$data['order'] ?? null;
     if (!is_array($o) || !is_int($o['id'] ?? null) || $o['id'] <= 0) return false;
-    if (array_diff(array_keys($o), ['id','order_no','customer_id','customer_name','customer_phone','customer_email','subtotal_toman','discount_toman','shipping_fee','total_toman','order_status','payment_status','created_at','items'])) return false;
+    if (array_diff(array_keys($o), ['id','order_no','customer_id','customer_name','customer_phone','customer_email','subtotal_toman','discount_toman','shipping_fee','total_toman','order_status','payment_status','created_at','order_event_id','items'])) return false;
     foreach (['order_no'=>30,'customer_name'=>100,'customer_phone'=>30,'customer_email'=>200] as $field=>$max) {
         if (!is_string($o[$field] ?? null) || mb_strlen($o[$field], 'UTF-8') > $max || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $o[$field])) return false;
     }
@@ -31,6 +31,8 @@ function crm_shop_order_validate($data, string $expectedSource): bool {
     foreach (['subtotal_toman','discount_toman','shipping_fee','total_toman'] as $field) {
         if (!is_int($o[$field] ?? null) || $o[$field] < 0) return false;
     }
+    // Optional for queued events from older shop code; zero means no source event yet.
+    if (array_key_exists('order_event_id',$o) && (!is_int($o['order_event_id']) || $o['order_event_id'] < 0)) return false;
     if (!array_key_exists('customer_id', $o) || ($o['customer_id'] !== null && (!is_int($o['customer_id']) || $o['customer_id'] <= 0))) return false;
     if (!isset($o['items']) || !is_array($o['items']) || !array_is_list($o['items']) || count($o['items']) > 1000) return false;
     foreach ($o['items'] as $item) {

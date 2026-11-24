@@ -33,7 +33,8 @@ function shop_crm_snapshot(array $o, array $items): array {
         'customer_name'=>(string)$o['customer_name'],'customer_phone'=>(string)$o['customer_phone'], 'customer_email'=>(string)$o['customer_email'],
         'subtotal_toman'=>shop_crm_uint($o['subtotal_toman']), 'discount_toman'=>shop_crm_uint($o['discount_toman']),
         'shipping_fee'=>shop_crm_uint($o['shipping_fee']), 'total_toman'=>shop_crm_uint($o['total_toman']),
-        'order_status'=>(string)$o['order_status'], 'payment_status'=>(string)$o['payment_status'], 'created_at'=>(string)$o['created_at'], 'items'=>[]];
+        'order_status'=>(string)$o['order_status'], 'payment_status'=>(string)$o['payment_status'], 'created_at'=>(string)$o['created_at'],
+        'order_event_id'=>shop_crm_uint($o['order_event_id']), 'items'=>[]];
     foreach ($items as $i) $data['items'][]=['product_id'=>$i['product_id'] === null ? null : shop_crm_uint($i['product_id'],false),
         'product_name'=>(string)$i['product_name'], 'qty'=>shop_crm_uint($i['qty']), 'price_toman'=>shop_crm_uint($i['price_toman']), 'total_toman'=>shop_crm_uint($i['total_toman'])];
     return $data;
@@ -48,6 +49,9 @@ function shop_crm_capture(PDO $pdo, string $source, int $id): bool {
             $pdo->prepare('UPDATE shop_crm_cursor SET last_order_id=? WHERE source_id=?')->execute([$id,$source]);
             $pdo->commit(); return false;
         }
+        // The row lock serializes all application writers that append order events.
+        $st=$pdo->prepare('SELECT COALESCE(MAX(id),0) FROM order_events WHERE order_id=?');
+        $st->execute([$id]); $order['order_event_id']=shop_crm_uint($st->fetchColumn());
         $st=$pdo->prepare('SELECT product_id,product_name,qty,price_toman,total_toman FROM order_items WHERE order_id=? ORDER BY id LIMIT 1001 FOR UPDATE');
         $st->execute([$id]); $snapshot=shop_crm_snapshot($order,$st->fetchAll(PDO::FETCH_ASSOC));
         $payload=json_encode($snapshot,JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

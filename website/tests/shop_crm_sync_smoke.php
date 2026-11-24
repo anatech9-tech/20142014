@@ -15,6 +15,7 @@ $pdo=new SyncTestPDO('sqlite::memory:'); $pdo->setAttribute(PDO::ATTR_ERRMODE,PD
 foreach ([
     'CREATE TABLE orders (id INTEGER PRIMARY KEY,order_no TEXT,customer_id INTEGER,customer_name TEXT,customer_phone TEXT,customer_email TEXT,subtotal_toman INTEGER,discount_toman INTEGER,shipping_fee INTEGER,total_toman INTEGER,order_status TEXT,payment_status TEXT,created_at TEXT,address TEXT,success_token TEXT,notes TEXT)',
     'CREATE TABLE order_items (id INTEGER PRIMARY KEY,order_id INTEGER,product_id INTEGER,product_name TEXT,qty INTEGER,price_toman INTEGER,total_toman INTEGER)',
+    'CREATE TABLE order_events (id INTEGER PRIMARY KEY AUTOINCREMENT,order_id INTEGER,status TEXT,note TEXT)',
     'CREATE TABLE shop_crm_cursor(source_id TEXT PRIMARY KEY,last_order_id INTEGER)',
     'CREATE TABLE shop_crm_sync_state(source_id TEXT,shop_order_id INTEGER,snapshot_hash TEXT,latest_revision INTEGER,PRIMARY KEY(source_id,shop_order_id))',
     'CREATE TABLE shop_crm_outbox(id INTEGER PRIMARY KEY AUTOINCREMENT,source_id TEXT,shop_order_id INTEGER,event_id TEXT UNIQUE,snapshot TEXT,attempts INTEGER DEFAULT 0,next_attempt_at TEXT,delivered_at TEXT,created_at TEXT)'
@@ -25,6 +26,7 @@ $source=str_repeat('a',32);
 $r=shop_crm_scan($pdo,$source,1); check($r['scanned']===1 && $r['queued']===1,'incremental backfill starts');
 $payload=$pdo->query('SELECT snapshot FROM shop_crm_outbox WHERE id=1')->fetchColumn();
 check(strpos($payload,'PRIVATE')===false && strpos($payload,'SECRET')===false && json_decode($payload,true)['id']===1,'snapshot excludes sensitive fields');
+check(json_decode($payload,true)['order_event_id']===0,'legacy order with no event has zero token');
 $r=shop_crm_scan($pdo,$source,1); check($r['queued']===1 && $r['scanned']===1,'second order queued');
 check(shop_crm_scan($pdo,$source,1)['sweep_complete'],'sweep resets');
 $r=shop_crm_scan($pdo,$source,2); check($r['queued']===0 && (int)$pdo->query('SELECT COUNT(*) FROM shop_crm_outbox')->fetchColumn()===2,'unchanged orders deduplicated');
@@ -74,3 +76,10 @@ foreach ([4,1,4] as $index=>$revision) {
 }
 $replica=$crm->query('SELECT * FROM crm_shop_orders')->fetch(PDO::FETCH_ASSOC);
 check((int)$replica['revision']===4 && json_decode($replica['payload'],true)['order_status']==='shipped','out-of-order transfer preserves latest snapshot');
+
+// A change event alone changes the snapshot, even if status and payment return to their old values.
+$pdo->exec("INSERT INTO order_events(order_id,status,note) VALUES(1,'pending','PRIVATE NOTE')");
+check(shop_crm_capture($pdo,$source,1),'event-only change queues a new replica version');
+$eventPayload=$pdo->query('SELECT snapshot FROM shop_crm_outbox ORDER BY id DESC LIMIT 1')->fetchColumn();
+check(json_decode($eventPayload,true)['order_event_id']===1 && strpos($eventPayload,'PRIVATE NOTE')===false,'event token replicated without event notes');
+check(!shop_crm_capture($pdo,$source,1),'unchanged event token does not requeue');

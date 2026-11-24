@@ -26,6 +26,9 @@ $data=['type'=>'shop_order','source_id'=>$source,'event_id'=>str_repeat('b',32),
  'subtotal_toman'=>100,'discount_toman'=>0,'shipping_fee'=>0,'total_toman'=>100,'order_status'=>'pending','payment_status'=>'pending',
  'created_at'=>'2025-01-01 10:00:00','items'=>[['product_id'=>7,'product_name'=>'Test','qty'=>1,'price_toman'=>100,'total_toman'=>100]]]];
 check(crm_shop_order_validate($data,$source),'valid minimal order');
+$versioned=$data; $versioned['order']['order_event_id']=42; check(crm_shop_order_validate($versioned,$source),'new source event token accepted');
+$versioned['order']['order_event_id']='42'; check(!crm_shop_order_validate($versioned,$source),'event token must be an integer');
+$versioned['order']['order_event_id']=-1; check(!crm_shop_order_validate($versioned,$source),'negative event token rejected');
 $bad=$data; $bad['source_id']=str_repeat('c',32); check(!crm_shop_order_validate($bad,$source),'untrusted source denied');
 $bad=$data; $bad['order']['success_token']='secret'; check(!crm_shop_order_validate($bad,$source),'extra sensitive data denied');
 $bad=$data; $bad['order']['total_toman']=-1; check(!crm_shop_order_validate($bad,$source),'invalid amount denied');

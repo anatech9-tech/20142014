@@ -65,7 +65,7 @@ require __DIR__ . '/../shop/_header.php';
             <ul class="timeline">
                 <?php foreach ($order['events'] as $i => $ev): ?>
                     <li class="<?= $i > 0 ? 'old' : '' ?>">
-                        <div class="tl-status"><?= Orders::STATUS_LABELS[$ev['status']] ?? $ev['status'] ?></div>
+                        <div class="tl-status"><?= htmlspecialchars(Orders::STATUS_LABELS[$ev['status']] ?? Orders::EVENT_LABELS[$ev['status']] ?? $ev['status'], ENT_QUOTES, 'UTF-8') ?></div>
                         <div class="tl-date"><?= Jalali::dateTime($ev['created_at']) ?></div>
                         <?php if ($ev['note']): ?><div class="tl-note"><?= htmlspecialchars($ev['note']) ?></div><?php endif; ?>
                     </li>

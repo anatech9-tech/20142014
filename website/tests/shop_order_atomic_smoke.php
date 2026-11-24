@@ -16,6 +16,7 @@ namespace {
         public static function pdo(): PDO { return self::$connection; }
         public static function fetch(string $sql,array $params=[]): ?array { $s=self::pdo()->prepare($sql); $s->execute($params); return $s->fetch(PDO::FETCH_ASSOC) ?: null; }
         public static function fetchAll(string $sql,array $params=[]): array { $s=self::pdo()->prepare($sql); $s->execute($params); return $s->fetchAll(PDO::FETCH_ASSOC); }
+        public static function fetchColumn(string $sql,array $params=[],int $column=0) { $s=self::pdo()->prepare($sql); $s->execute($params); return $s->fetchColumn($column); }
         public static function execute(string $sql,array $params=[]): int { $s=self::pdo()->prepare($sql); $s->execute($params); return $s->rowCount(); }
         public static function insert(string $table,array $data): int { $cols=array_keys($data); $sql='INSERT INTO '.$table.' ('.implode(',',$cols).') VALUES ('.implode(',',array_fill(0,count($cols),'?')).')'; self::execute($sql,array_values($data)); return (int)self::pdo()->lastInsertId(); }
     }
@@ -33,7 +34,7 @@ namespace {
         'CREATE TABLE discount_codes(id INTEGER PRIMARY KEY,code TEXT UNIQUE,is_active INTEGER,expires_at TEXT,max_uses INTEGER,used_count INTEGER,min_amount INTEGER,type TEXT,value REAL)',
         'CREATE TABLE orders(id INTEGER PRIMARY KEY AUTOINCREMENT,order_no TEXT UNIQUE,customer_id INTEGER,customer_name TEXT,customer_phone TEXT,customer_email TEXT,province TEXT,city TEXT,postal_code TEXT,address TEXT,notes TEXT,subtotal_toman INTEGER,shipping_fee INTEGER,discount_toman INTEGER,coupon_code TEXT,total_toman INTEGER,usd_rate INTEGER,payment_status TEXT,order_status TEXT,status_note TEXT,success_token TEXT)',
         'CREATE TABLE order_items(id INTEGER PRIMARY KEY AUTOINCREMENT,order_id INTEGER,product_id INTEGER,product_name TEXT,product_image TEXT,price_toman INTEGER,qty INTEGER,total_toman INTEGER)',
-        'CREATE TABLE order_events(id INTEGER PRIMARY KEY AUTOINCREMENT,order_id INTEGER,status TEXT,note TEXT)'
+        'CREATE TABLE order_events(id INTEGER PRIMARY KEY AUTOINCREMENT,order_id INTEGER,status TEXT,note TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP)'
     ] as $sql) $pdo->exec($sql);
     $pdo->exec("INSERT INTO products VALUES (1,'one','[]','toman',100,NULL,3,0,1),(2,'two','[]','usd',NULL,2,2,0,1),(3,'out','[]','toman',20,NULL,0,0,1)");
     $pdo->exec("INSERT INTO discount_codes VALUES (1,'ONE',1,NULL,1,0,0,'percent',10)");
@@ -60,6 +61,23 @@ namespace {
     $r=\Shop\Orders::create($attempt); check(!$r['success'] && ($r['error'] ?? '')==='خطا در ثبت سفارش. لطفاً دوباره تلاش کنید.' && (int)$pdo->query('SELECT COUNT(*) FROM orders')->fetchColumn()===1 && (int)$pdo->query('SELECT stock FROM products WHERE id=1')->fetchColumn()===1,'event failure rolls back order and stock');
     $pdo->exec('DROP TRIGGER fail_event'); $id=(int)$o['id'];
     $r=\Shop\Orders::update($id,null,'paid','', 'pending','pending'); check($r['success'],'payment update');
+    $ev=(int)$pdo->query('SELECT MAX(id) FROM order_events WHERE order_id='.$id)->fetchColumn();
+    check($pdo->query('SELECT status FROM order_events WHERE id='.$ev)->fetchColumn()==='payment_changed' && (int)\Shop\Orders::byId($id)['event_version']===$ev,'payment label creates source event and detail shows version');
+    $noop=\Shop\Orders::update($id,'pending','paid','','pending','paid',$ev);
+    check($noop['success'] && (int)$pdo->query('SELECT MAX(id) FROM order_events WHERE order_id='.$id)->fetchColumn()===$ev,'no-op does not advance version');
+    $noteUpdate=\Shop\Orders::update($id,'pending',null,'admin note','pending','paid',$ev);
+    check($noteUpdate['success'] && (int)$pdo->query('SELECT MAX(id) FROM order_events WHERE order_id='.$id)->fetchColumn()>$ev,'status note advances version');
+    $ev=(int)$pdo->query('SELECT MAX(id) FROM order_events WHERE order_id='.$id)->fetchColumn();
+    $r=\Shop\Orders::update($id,'confirmed',null,'','pending','paid',$ev); check($r['success'],'forward status change with current event version');
+    $r=\Shop\Orders::update($id,'pending',null,'','confirmed','paid'); check($r['success'],'status returns to original for ABA test');
+    $r=\Shop\Orders::update($id,'packed',null,'','pending','paid',$ev); check(!$r['success'] && $pdo->query('SELECT order_status FROM orders')->fetchColumn()==='pending','old event token detects status ABA');
+    $payVersion=(int)$pdo->query('SELECT MAX(id) FROM order_events WHERE order_id='.$id)->fetchColumn();
+    \Shop\Orders::update($id,null,'failed','','pending','paid'); \Shop\Orders::update($id,null,'paid','','pending','failed');
+    $r=\Shop\Orders::update($id,'packed',null,'','pending','paid',$payVersion); check(!$r['success'],'old event token detects payment ABA');
+    $pdo->exec("CREATE TRIGGER fail_payment_event BEFORE INSERT ON order_events BEGIN SELECT RAISE(ABORT,'failed payment event'); END");
+    $r=\Shop\Orders::update($id,null,'failed','','pending','paid');
+    check(!$r['success'] && $pdo->query('SELECT payment_status FROM orders')->fetchColumn()==='paid','payment event failure rolls back payment');
+    $pdo->exec('DROP TRIGGER fail_payment_event');
     $r=\Shop\Orders::update($id,'cancelled',null,'cancel','pending','pending'); check(!$r['success'],'stale update rejected');
     $pdo->exec("CREATE TRIGGER fail_cancel BEFORE INSERT ON order_events BEGIN SELECT RAISE(ABORT,'failed event'); END");
     $r=\Shop\Orders::update($id,'cancelled',null,'cancel','pending','paid');
