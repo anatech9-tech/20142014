@@ -650,10 +650,11 @@ include 'includes/header.php';
 <?php if (!empty($__commission_rows)): ?>
 <!-- بند ۱۰: پلهٔ پویا — کمیسیون این ماه بر اساس تحقق تا امروز، خودکار بروز می‌شود -->
 <div class="card animate-in" style="margin-bottom:14px;border-right:4px solid #8b5cf6">
-    <div class="card-header"><h3 class="card-title" style="font-size:15px">🎯 کمیسیون تارگتی — <?= htmlspecialchars(jalali_month_from_key($__comm_month_key)['label']) ?> (محاسبهٔ زنده)</h3></div>
+    <div class="card-header"><h3 class="card-title" style="font-size:15px">🎯 کمیسیون تارگتی — <?= htmlspecialchars(jalali_month_from_key($__comm_month_key)['label']) ?> (تخمینی)</h3></div>
+    <div class="alert alert-warning" style="margin:12px 16px">این اعداد مبنای قطعی پرداخت نیستند: وصول واقعی ثبت نشده، نرخ فعلی ارز به کار می‌رود و فروش مدیر فروش فعلاً مجموع همهٔ کارشناسان فروش است، نه صرفاً تیم او. پیش از پرداخت بررسی دستی لازم است.</div>
     <div class="table-container">
         <table>
-            <thead><tr><th>نام</th><th>سِمت</th><th>فروش این ماه</th><th>تارگت</th><th>تحقق</th><th>پلهٔ فعلی</th><th>کمیسیون تعلق‌گرفته</th><th>شروع حقوق</th></tr></thead>
+            <thead><tr><th>نام</th><th>سِمت</th><th>فروش این ماه</th><th>تارگت</th><th>تحقق</th><th>پلهٔ فعلی</th><th>کمیسیون تخمینی</th><th>شروع حقوق</th></tr></thead>
             <tbody>
             <?php foreach ($__commission_rows as $cr): ?>
                 <?php
@@ -680,7 +681,7 @@ include 'includes/header.php';
     <?php if ($__missing): ?>
     <p class="text-muted" style="font-size:10.5px;padding:0 16px 4px;margin:0;color:#b45309">⚠️ نرخ ارز <?= htmlspecialchars(implode('، ', array_keys($__missing))) ?> در تنظیمات وارد نشده — فروش با آن ارز در محاسبه صفر منظور شده است. از «تنظیمات → 🎯 تارگت و کمیسیون» نرخ را وارد کنید.</p>
     <?php endif; ?>
-    <p class="text-muted" style="font-size:10.5px;padding:0 16px 12px;margin:0;line-height:1.9">مبنا: معاملات «برنده» (won) همین ماه × حاشیهٔ سود ناخالصِ تنظیم‌شده در تنظیمات (پیش‌فرض ۲۵٪ طبق سند). درصدها و تارگت‌ها از تنظیمات → «🎯 تارگت و کمیسیون» خوانده می‌شوند. این مبلغ «محاسبه‌ای» است و سند پرداخت جداگانهٔ تسویه دارد؛ با ثبت وصولِ واقعی در نسخهٔ بعد دقیق می‌شود.</p>
+    <p class="text-muted" style="font-size:10.5px;padding:0 16px 12px;margin:0;line-height:1.9">مبنا: معاملات «برنده» (won) با تاریخ آخرین تغییر در همین ماه؛ سود استعلام فیکس‌شده در صورت وجود و در غیر این صورت حاشیهٔ پیش‌فرض تنظیمات. درصدها و تارگت‌ها از تنظیمات → «🎯 تارگت و کمیسیون» خوانده می‌شوند. این مبلغ «محاسبه‌ای» است و سند پرداخت جداگانهٔ تسویه دارد؛ با ثبت وصولِ واقعی در نسخهٔ بعد دقیق می‌شود.</p>
 </div>
 <?php endif; ?>
 

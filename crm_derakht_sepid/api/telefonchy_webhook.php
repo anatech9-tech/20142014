@@ -12,8 +12,7 @@
  *        تلفنچی طبق مستندات رسمی («دریافت ایونت تماس») توکن را در ریشهٔ بدنه با کلید
  *        webservice_token می‌فرستد. در این حالت، توکن با hash_equals مقایسه می‌شود.
  *   ب) کلید وب‌هوک (Legacy / سازگاری): ثابت TELEFONCHY_WEBHOOK_KEY و ?key=<key> در آدرس ثبت‌شده.
- *   • اگر هیچ‌کدام تعریف نشده باشد، درخواست‌ها با برچسب source=nokey ذخیره می‌شوند
- *     (فقط برای تست اولیه؛ پس از تنظیم یکی، سایت را امن کنید).
+ *   • بدون تنظیم دست‌کم یکی از کلیدها درخواست POST رد می‌شود.
  *
  * راه‌اندازی (روی هاست جدید):
  *   ۱) config.local.php:  define('TELEFONCHY_WEBSERVICE_TOKEN', '<همان توکنی که در پنل نمایش داده می‌شود>');
@@ -70,9 +69,6 @@ if ($expectedToken !== '') {
 if (!$authorized && $expectedKey !== '') {
     $given = (string)($_GET['key'] ?? $_SERVER['HTTP_X_WEBHOOK_KEY'] ?? '');
     if ($given !== '' && hash_equals($expectedKey, $given)) { $authorized = true; $source = 'webhook'; }
-}
-if (!$authorized && $expectedToken === '' && $expectedKey === '') {
-    $authorized = true; // هیچ احراز هویت پیکربندی نشده — ذخیره با برچسب nokey (فقط تست اولیه)
 }
 if (!$authorized) {
     http_response_code(403);

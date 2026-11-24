@@ -47,9 +47,57 @@ function operations_dump_database(PDO $pdo): string {
                     $sql .= "INSERT INTO `$table` (".implode(',',$columns).") VALUES\n".implode(",\n",$values).";\n";
                 }
             }
-        } catch (Throwable $e) { $sql .= "-- skipped $table: " . str_replace("\n",' ',$e->getMessage()) . "\n"; }
+        } catch (Throwable $e) { throw new RuntimeException('Database backup failed for table ' . $table, 0, $e); }
     }
     return $sql . "\nSET FOREIGN_KEY_CHECKS=1;\n";
+}
+
+/** Stream a consistent DB snapshot to a temporary file; no partial file is published. */
+function operations_stream_database(PDO $pdo, string $path): void {
+    $out = fopen($path, 'xb');
+    if (!$out) throw new RuntimeException('Cannot create backup temporary file');
+    $transaction = false;
+    try {
+        $write = static function(string $data) use ($out): void {
+            $remaining = strlen($data); $offset = 0;
+            while ($remaining > 0) {
+                $n = fwrite($out, substr($data, $offset));
+                if ($n === false || $n === 0) throw new RuntimeException('Backup write failed');
+                $offset += $n; $remaining -= $n;
+            }
+        };
+        $pdo->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+        $pdo->exec('START TRANSACTION WITH CONSISTENT SNAPSHOT'); $transaction = true;
+        $tables = $pdo->query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'")->fetchAll(PDO::FETCH_COLUMN);
+        $write("-- Database backup " . date('c') . "\nSET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\n");
+        foreach ($tables as $table) {
+            $table = (string)$table; $safe = str_replace('`', '``', $table);
+            $create = $pdo->query("SHOW CREATE TABLE `$safe`")->fetch(PDO::FETCH_NUM);
+            if (!$create || empty($create[1])) throw new RuntimeException('Cannot read table schema: '.$table);
+            $write("\n-- Table: `$safe`\n" . $create[1] . ";\n");
+            // Unbuffered cursor avoids loading an entire table including BLOBs in memory.
+            $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, false);
+            try {
+                $rows = $pdo->query("SELECT * FROM `$safe`");
+                while ($row = $rows->fetch(PDO::FETCH_ASSOC)) {
+                    $columns = array_map(static fn($c) => '`'.str_replace('`','``',$c).'`', array_keys($row));
+                    $values = [];
+                    foreach ($row as $value) {
+                        if ($value === null) $values[] = 'NULL';
+                        else { $quoted = $pdo->quote((string)$value); if ($quoted === false) throw new RuntimeException('Cannot quote backup value'); $values[] = $quoted; }
+                    }
+                    $write("INSERT INTO `$safe` (".implode(',',$columns).") VALUES (".implode(',',$values).");\n");
+                }
+                $rows->closeCursor();
+            } finally { $pdo->setAttribute(PDO::MYSQL_ATTR_USE_BUFFERED_QUERY, true); }
+        }
+        $write("SET FOREIGN_KEY_CHECKS=1;\n");
+        if (!fflush($out)) throw new RuntimeException('Backup flush failed');
+        $pdo->commit(); $transaction = false;
+    } catch (Throwable $e) {
+        if ($transaction && $pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    } finally { fclose($out); }
 }
 
 function operations_backup_retention(string $dir, string $type, int $keep): void {
@@ -73,26 +121,33 @@ function operations_auto_backups(PDO $pdo): array {
     $daily=$dir.'auto_daily_'.$today.'.sql';
     $made=[];
     try {
-        if (!file_exists($daily)) {
-            $dump=operations_dump_database($pdo);
-            file_put_contents($daily,$dump,LOCK_EX);
-            $made[]='daily';
-        }
+        $lock = fopen($dir.'.backup.lock','c');
+        if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) return ['ok'=>false,'reason'=>'Backup already running or lock unavailable'];
+        try {
+            if (!file_exists($daily)) {
+                $tmp = $dir.'.backup_'.bin2hex(random_bytes(8)).'.tmp';
+                try {
+                    operations_stream_database($pdo, $tmp);
+                    if (!rename($tmp, $daily)) throw new RuntimeException('Cannot publish backup');
+                } finally { if (is_file($tmp)) @unlink($tmp); }
+                $made[]='daily';
+            }
+        } finally { flock($lock, LOCK_UN); fclose($lock); }
         // شنبه = شروع هفتهٔ کاری ایران
         if ((int)date('w')===6) {
             $week=$dir.'auto_weekly_'.date('o_W').'.sql';
-            if(!file_exists($week)){@copy($daily,$week);$made[]='weekly';}
+            if(!file_exists($week)){if (!copy($daily,$week)) throw new RuntimeException('Weekly backup copy failed'); $made[]='weekly';}
         }
         $j=gregorian_to_jalali((int)date('Y'),(int)date('m'),(int)date('d'));
         if ((int)$j[2]===1) {
             $month=$dir.'auto_monthly_'.$j[0].'_'.str_pad((string)$j[1],2,'0',STR_PAD_LEFT).'.sql';
-            if(!file_exists($month)){@copy($daily,$month);$made[]='monthly';}
+            if(!file_exists($month)){if (!copy($daily,$month)) throw new RuntimeException('Monthly backup copy failed'); $made[]='monthly';}
         }
         operations_backup_retention($dir,'daily',max(1,(int)operations_setting($pdo,'backup_daily_retention',7)));
         operations_backup_retention($dir,'weekly',max(1,(int)operations_setting($pdo,'backup_weekly_retention',4)));
         operations_backup_retention($dir,'monthly',max(1,(int)operations_setting($pdo,'backup_monthly_retention',12)));
         return ['ok'=>true,'made'=>$made,'latest'=>file_exists($daily)?$daily:null];
-    } catch(Throwable $e) { return ['ok'=>false,'reason'=>$e->getMessage()]; }
+    } catch(Throwable $e) { error_log('Auto backup failed: '.$e->getMessage()); return ['ok'=>false,'reason'=>'خطا در بکاپ؛ لاگ سرور را بررسی کنید']; }
 }
 
 function operations_backup_health(): array {

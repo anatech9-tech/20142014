@@ -101,6 +101,7 @@ try {
         $d=$pdo->prepare("SELECT u.full_name,pd.title,pd.expiry_date FROM personnel_documents pd JOIN users u ON u.id=pd.user_id WHERE pd.workshop_id=? AND pd.expiry_date IS NOT NULL AND pd.expiry_date<=DATE_ADD(CURDATE(),INTERVAL 30 DAY) ORDER BY pd.expiry_date LIMIT 6");$d->execute([$ws_id]);
         foreach($d->fetchAll() as $row)$smart_alerts[]=['type'=>'danger','icon'=>'file-warning','title'=>t('مدرک نزدیک انقضا'),'text'=>strtr(t('{title} برای {name} تا {date}'), ['{title}' => $row['title'], '{name}' => $row['full_name'], '{date}' => to_jalali($row['expiry_date'])]),'link'=>'index.php?page=personnel'];
     }
+    if (empty($auto_backup['ok'])) $smart_alerts[]=['type'=>'danger','icon'=>'database-zap','title'=>t('خطای بکاپ'),'text'=>t('آخرین تلاش بکاپ ناموفق بود؛ لاگ سرور و فضای دیسک را بررسی کنید.'),'link'=>'index.php?page=settings'];
     if(!$backup_health['healthy'])$smart_alerts[]=['type'=>'danger','icon'=>'database-zap','title'=>t('بکاپ قدیمی یا ناموجود'),'text'=>t('بکاپ خودکار ۲۴ ساعت اخیر پیدا نشد؛ دسترسی پوشه backups را بررسی کنید.'),'link'=>'index.php?page=settings'];
 }catch(Throwable $e){}
 try {

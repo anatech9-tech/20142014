@@ -50,7 +50,12 @@ if (!isset($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = generate_token();
     function row(label,value){return '<div class="sp-row"><span class="sp-muted">'+label+': </span>'+text(value)+'</div>';}
     function renderDetails(d){
         if(!d) return '<div class="sp-card" style="margin-top:14px">جزئیات پرونده در دسترس نیست.</div>';
-        var info=row('شهر',d.city)+row('آدرس',d.address)+row('ثبت‌کننده',d.creator)+row('کارشناس مسئول پیگیری',d.owner)+row('وضعیت کارشناس',d.owner_status);
+        function person(label,name,avatar){
+            var image = avatar && /^uploads\/avatars\/[A-Za-z0-9_.-]+$/.test(avatar) ? '<img src="'+esc(avatar)+'" alt="" style="width:30px;height:30px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-left:6px">' : '';
+            return '<div class="sp-row"><span class="sp-muted">'+label+': </span>'+image+text(name)+'</div>';
+        }
+        var info=row('شهر',d.city)+row('آدرس',d.address)+person('ثبت‌کننده',d.creator,d.creator_avatar)+person('کارشناس مسئول پیگیری',d.owner,d.owner_avatar)+row('داخلی کارشناس مسئول',d.owner_ext)+row('وضعیت کارشناس',d.owner_status);
+        if (!d.can_open) info += '<div class="sp-muted">نمایش کامل صفحهٔ مشتری فقط برای مسئول، ثبت‌کننده و مدیر مربوط مجاز است.</div>';
         var contacts=(d.contacts||[]).map(function(c){return '<div class="sp-row">'+text(c.name)+(c.position?' <span class="sp-muted">('+esc(c.position)+')</span>':'')+'</div>';}).join('') || '<div class="sp-muted">مخاطبی ثبت نشده است.</div>';
         var activities=(d.activities||[]).map(function(a){return '<div class="sp-row"><b>'+text(a.subject)+'</b><div class="sp-muted">'+esc(a.user||'نامشخص')+' • '+esc(a.date||'')+'</div>'+(a.body?'<div>'+esc(a.body)+'</div>':'')+(a.outcome?'<div class="sp-muted">نتیجه: '+esc(a.outcome)+'</div>':'')+'</div>';}).join('') || '<div class="sp-muted">فعالیتی ثبت نشده است.</div>';
         var tasks=(d.tasks||[]).map(function(t){return '<div class="sp-row">'+text(t.title)+'<div class="sp-muted">'+esc(t.user||'نامشخص')+(t.date?' • '+esc(t.date):'')+'</div></div>';}).join('') || '<div class="sp-muted">پیگیری باز ثبت نشده است.</div>';

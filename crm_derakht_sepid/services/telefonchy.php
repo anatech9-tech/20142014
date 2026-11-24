@@ -325,7 +325,15 @@ function tel_upsert_call(PDO $pdo, array $call): bool {
     $stmt = $pdo->prepare("SELECT id FROM phone_calls WHERE cuid = ? LIMIT 1");
     $stmt->execute([$cuid]);
     if ($stmt->fetchColumn()) {
-        return false; // از قبل داریم — نگهداری نسخهٔ قبلی
+        $status = isset($call['status']) && trim((string)$call['status']) !== '' ? substr(strtoupper((string)$call['status']), 0, 22) : null;
+        $end = tel_jalali_to_mysql($call['jalali_ended_at'] ?? $call['ended_at'] ?? null);
+        $file = $call['file_id'] ?? $call['record_id'] ?? null;
+        $file = ($file !== false && $file !== null && (string)$file !== '') ? substr((string)$file, 0, 128) : null;
+        $wait = isset($call['time_wait']) ? tel_to_int($call['time_wait']) : null;
+        $talk = isset($call['time_talk']) ? tel_to_int($call['time_talk']) : null;
+        $pdo->prepare("UPDATE phone_calls SET status=COALESCE(?,status), ended_at_tel=COALESCE(?,ended_at_tel), file_id=COALESCE(?,file_id), time_wait=COALESCE(?,time_wait), time_talk=COALESCE(?,time_talk) WHERE cuid=?")
+            ->execute([$status,$end,$file,$wait,$talk,$cuid]);
+        return false;
     }
 
     $cs = is_array($call['call_source'] ?? null) ? $call['call_source'] : [];

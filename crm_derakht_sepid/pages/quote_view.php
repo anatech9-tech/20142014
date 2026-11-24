@@ -380,7 +380,7 @@ $finalToman = $isFixed ? $fixedSell : $sell;
             <div class="price-chip price-chip-lg"><span>قیمت نهایی (دلار)</span><b dir="ltr"><?= ($v = quote_from_toman($finalToman, 'USD', $rates)) === null ? '—' : number_format($v, 0, '.', '،') ?></b></div>
             <div class="price-chip price-chip-lg"><span>قیمت نهایی (یوان)</span><b dir="ltr"><?= ($v = quote_from_toman($finalToman, 'CNY', $rates)) === null ? '—' : number_format($v, 0, '.', '،') ?></b></div>
         </div>
-        <p class="text-muted" style="font-size:11px;margin:10px 2px 0">کارشناسی که این قیمت را به مشتری اعلام می‌کند، باید <b>همان عدد را فیکس کند</b>؛ پورسانت او از سود همین فیکس محاسبه می‌شود (موتور کمیسیون — پله‌های سند نهایی).</p>
+        <p class="text-muted" style="font-size:11px;margin:10px 2px 0">کارشناسی که این قیمت را به مشتری اعلام می‌کند، باید <b>همان عدد را فیکس کند</b>؛ این سود در محاسبهٔ تخمینی پورسانت به کار می‌رود؛ پرداخت قطعی نیازمند بررسی وصول و هزینه‌های واقعی است.</p>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
             <?php if ($finalizeEditable): ?>
             <form method="post" onsubmit="return confirm('قیمت برای مشتری فیکس و مبلغ معامله در پایپ‌لاین به‌روز شود؟')"><?= get_csrf_field() ?><input type="hidden" name="action" value="fix_now">

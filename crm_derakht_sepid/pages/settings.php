@@ -190,14 +190,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // §fix: بکاپ دستی قبلاً بدون CREATE TABLE و با addslashes (فرار نادرست
         // کوتیشن) ساخته می‌شد؛ نتیجه روی دیتابیس خالی اصلاً ریستور نمی‌شد.
         // حالا از همان موتور بکاپ خودکار (SHOW CREATE TABLE + quote امن) استفاده می‌شود.
-        $sql = operations_dump_database($pdo);
-        
-        $sql .= "SET FOREIGN_KEY_CHECKS=1;\n";
-        
         if (!is_dir(BACKUP_DIR)) mkdir(BACKUP_DIR, 0755, true);
-        $filename = 'backup_' . date('Y-m-d_His') . '.sql';
+        $filename = 'backup_' . date('Y-m-d_His') . '_' . bin2hex(random_bytes(4)) . '.sql';
         $file = BACKUP_DIR . $filename;
-        file_put_contents($file, $sql);
+        $tmp = BACKUP_DIR . '.manual_' . bin2hex(random_bytes(8)) . '.tmp';
+        try {
+            operations_stream_database($pdo, $tmp);
+            if (!rename($tmp, $file)) throw new RuntimeException('Cannot publish backup');
+        } catch (Throwable $e) {
+            if (is_file($tmp)) @unlink($tmp);
+            error_log('Manual backup failed: ' . $e->getMessage());
+            showToast('بکاپ ناموفق بود؛ لاگ سرور را بررسی کنید.', 'error');
+            redirect('index.php?page=settings');
+        }
         
         header('Content-Type: application/octet-stream');
         header('Content-Disposition: attachment; filename="' . $filename . '"');

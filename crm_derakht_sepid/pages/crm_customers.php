@@ -1,14 +1,14 @@
 <?php
 /**
  * CRM — مشتریان (شرکت/شخص حقیقی)
- * همهٔ افراد دارای دسترسی به صفحه مشتریان را می‌بینند؛ ویرایش برای مدیر و ثبت‌کننده است.
+ * مشتریان خود کارشناس، اعضای تیم مدیر، یا همه برای مدیر کل.
  */
 $pageTitle = 'مشتریان';
 
 require_login();
 $me       = (int)($_SESSION['user_id'] ?? 0);
 $myTeam   = current_team_id($pdo);
-$canAll   = is_strict_admin() || is_finance_officer();
+$canAll   = is_strict_admin();
 $managed  = managed_team_ids($pdo);
 $isMgr    = $canAll || !empty($managed);
 $teams    = all_teams($pdo);
@@ -28,12 +28,17 @@ if ($isMgr) {
 
 // ── هلپر: آیا کاربر جاری می‌تواند این رکورد را ویرایش کند؟ ──
 function crm_can_edit_record(array $row, bool $canAll, array $managed, int $me): bool {
-    if (is_strict_admin() || is_project_manager() || !empty($managed)) return true;
+    global $pdo;
+    if ($canAll) return true;
     $creator = (int)($row['created_by'] ?? 0);
-    if ($creator > 0) return $creator === $me;
-    // رکوردهای قدیمی که ثبت‌کننده ندارند: مسئول قبلی را ملاک قرار بده.
-    if ((int)($row['owner_user_id'] ?? 0) === $me) return true;
-    return false;
+    $owner = (int)($row['owner_user_id'] ?? 0);
+    if ($creator === $me || ($creator === 0 && $owner === $me)) return true;
+    if (!$managed) return false;
+    if (in_array((int)($row['team_id'] ?? 0), $managed, true)) return true;
+    $ph = implode(',', array_fill(0, count($managed), '?'));
+    $st = $pdo->prepare("SELECT 1 FROM users WHERE id IN (?,?) AND team_id IN ($ph) LIMIT 1");
+    $st->execute(array_merge([$creator, $owner], $managed));
+    return (bool)$st->fetchColumn();
 }
 
 // ═══════════ اکشن‌ها (POST) ═══════════
@@ -53,6 +58,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($owner <= 0) $owner = $me;
         $team = (int)($_POST['team_id'] ?? 0);
         if (!$isMgr) { $team = $myTeam; }
+        if ($isMgr && !$canAll) {
+            $allowed = array_map('intval', array_column($staffOptions, 'id'));
+            if (!in_array($owner, $allowed, true) && $owner !== $me) { showToast('مسئول باید عضو تیم شما باشد.', 'error'); redirect('index.php?page=crm_customers'); }
+            if ($team && !in_array($team, $managed, true)) { showToast('تیم انتخاب‌شده مجاز نیست.', 'error'); redirect('index.php?page=crm_customers'); }
+        }
 
         $fields = [
             'type', 'name', 'economic_code', 'national_id', 'registration_no',
@@ -166,14 +176,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// این تغییر فقط دید مشتریان را باز می‌کند، نه معاملات، سرنخ‌ها یا وظایف.
-[$scopeSql, $scopeParams] = ['1=1', []];
+// صفحه مشتریان محدود است؛ پاپ‌آپ تماس سیاست جداگانه‌ای دارد.
+if ($canAll) { [$scopeSql, $scopeParams] = ['1=1', []]; }
+else {
+    $scopeSql = '(c.owner_user_id = ? OR c.created_by = ?)';
+    $scopeParams = [$me, $me];
+    if ($managed) {
+        $ph = implode(',', array_fill(0, count($managed), '?'));
+        $scopeSql = "($scopeSql OR c.team_id IN ($ph) OR EXISTS (SELECT 1 FROM users su WHERE su.id IN (c.owner_user_id,c.created_by) AND su.team_id IN ($ph)))";
+        $scopeParams = array_merge($scopeParams, $managed, $managed);
+    }
+}
 
 // ═══════════ نمایش تک‌رکورد ═══════════
 $viewId = (int)($_GET['view'] ?? 0);
 $customer = null;
 if ($viewId > 0) {
-    $st = $pdo->prepare("SELECT c.*, u.full_name AS owner_name, t.name AS team_name FROM crm_customers c LEFT JOIN users u ON u.id = c.owner_user_id LEFT JOIN teams t ON t.id = c.team_id WHERE c.id = ? AND c.deleted_at IS NULL AND ($scopeSql)");
+    $st = $pdo->prepare("SELECT c.*, u.full_name AS owner_name, t.name AS team_name, creator.full_name AS creator_name, creator.avatar AS creator_avatar FROM crm_customers c LEFT JOIN users u ON u.id = c.owner_user_id LEFT JOIN users creator ON creator.id=c.created_by LEFT JOIN teams t ON t.id = c.team_id WHERE c.id = ? AND c.deleted_at IS NULL AND ($scopeSql)");
     $st->execute(array_merge([$viewId], $scopeParams));
     $customer = $st->fetch() ?: null;
     if ($customer) {
@@ -200,7 +219,7 @@ if ($viewId > 0) {
 $editId = (int)($_GET['edit'] ?? 0);
 $editCustomer = null;
 if ($editId > 0) {
-    $st = $pdo->prepare("SELECT * FROM crm_customers WHERE id = ? AND deleted_at IS NULL AND ($scopeSql)");
+    $st = $pdo->prepare("SELECT c.* FROM crm_customers c WHERE c.id = ? AND c.deleted_at IS NULL AND ($scopeSql)");
     $st->execute(array_merge([$editId], $scopeParams));
     $editCustomer = $st->fetch() ?: null;
     if ($editCustomer && !crm_can_edit_record($editCustomer, $canAll, $managed, $me)) { $editCustomer = null; }
@@ -221,13 +240,26 @@ if (in_array($status, ['active', 'inactive'], true)) {
     $where .= " AND c.status = ?";
     $params[] = $status;
 }
-$st = $pdo->prepare("SELECT c.*, u.full_name AS owner_name, t.name AS team_name,
+$countSt = $pdo->prepare("SELECT COUNT(*) FROM crm_customers c WHERE $where");
+$countSt->execute($params); $customerCount = (int)$countSt->fetchColumn();
+$customerPages = max(1, (int)ceil($customerCount / 30));
+$customerPage = min($customerPages, max(1, (int)($_GET['p'] ?? 1)));
+$customerOffset = ($customerPage - 1) * 30;
+$st = $pdo->prepare("SELECT c.*, u.full_name AS owner_name, t.name AS team_name, creator.full_name AS creator_name, creator.avatar AS creator_avatar,
     (SELECT COUNT(*) FROM crm_deals d WHERE d.customer_id = c.id AND d.status = 'open') AS open_deals
-    FROM crm_customers c LEFT JOIN users u ON u.id = c.owner_user_id LEFT JOIN teams t ON t.id = c.team_id
-    WHERE $where ORDER BY c.id DESC LIMIT 300");
+    FROM crm_customers c LEFT JOIN users u ON u.id = c.owner_user_id LEFT JOIN users creator ON creator.id=c.created_by LEFT JOIN teams t ON t.id = c.team_id
+    WHERE $where ORDER BY c.id DESC LIMIT 30 OFFSET " . (int)$customerOffset);
 $st->execute($params);
 $customers = $st->fetchAll();
 
+function crm_creator_html(array $row): string {
+    $name = htmlspecialchars((string)($row['creator_name'] ?: 'نامشخص'), ENT_QUOTES, 'UTF-8');
+    $av = (string)($row['creator_avatar'] ?? '');
+    $img = preg_match('~^uploads/avatars/[A-Za-z0-9_.-]+$~', $av) && is_file(__DIR__ . '/../' . $av)
+        ? '<img src="' . htmlspecialchars($av, ENT_QUOTES, 'UTF-8') . '" alt="" style="width:28px;height:28px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-left:6px">'
+        : '<span style="display:inline-flex;width:28px;height:28px;align-items:center;justify-content:center;border-radius:50%;background:#d1fae5;vertical-align:middle;margin-left:6px">👤</span>';
+    return $img . $name;
+}
 include 'includes/header.php';
 ?>
 
@@ -238,7 +270,7 @@ include 'includes/header.php';
             <h2 style="margin:0"><?= htmlspecialchars($customer['name']) ?>
                 <span class="tag <?= $customer['type'] === 'company' ? 'tag-info' : 'tag-active' ?>" style="vertical-align:middle"><?= $customer['type'] === 'company' ? 'شخص حقوقی' : 'شخص حقیقی' ?></span></h2>
             <div class="text-muted" style="font-size:12px;margin-top:6px">
-                مسئول پیگیری: <?= htmlspecialchars($customer['owner_name'] ?? '—') ?><?= $customer['team_name'] ? ' • تیم: ' . htmlspecialchars($customer['team_name']) : '' ?>
+                ثبت‌کننده: <?= crm_creator_html($customer) ?> &nbsp; | &nbsp; مسئول پیگیری: <?= htmlspecialchars($customer['owner_name'] ?? '—') ?><?= $customer['team_name'] ? ' • تیم: ' . htmlspecialchars($customer['team_name']) : '' ?>
             </div>
         </div>
         <div class="btn-group">
@@ -424,7 +456,7 @@ include 'includes/header.php';
                         <?php foreach ($staffOptions as $su): ?><option value="<?= (int)$su['id'] ?>" <?= (int)($c['owner_user_id'] ?? $me) === (int)$su['id'] ? 'selected' : '' ?>><?= htmlspecialchars($su['full_name']) ?></option><?php endforeach; ?>
                     </select></div>
                     <div class="form-group"><label class="form-label">تیم</label><select name="team_id" class="form-control"><option value="">—</option>
-                        <?php foreach ($teams as $t): ?><option value="<?= (int)$t['id'] ?>" <?= (int)($c['team_id'] ?? $myTeam) === (int)$t['id'] ? 'selected' : '' ?>><?= htmlspecialchars($t['name']) ?></option><?php endforeach; ?>
+                        <?php foreach ($teams as $t): if (!$canAll && !in_array((int)$t['id'], $managed, true)) continue; ?><option value="<?= (int)$t['id'] ?>" <?= (int)($c['team_id'] ?? $myTeam) === (int)$t['id'] ? 'selected' : '' ?>><?= htmlspecialchars($t['name']) ?></option><?php endforeach; ?>
                     </select></div>
                     <?php endif; ?>
                 </div>
@@ -446,7 +478,7 @@ include 'includes/header.php';
     </form>
 
     <div class="card animate-in"><div class="table-container"><table>
-        <thead><tr><th>#</th><th>نام</th><th>نوع</th><th>تلفن/موبایل</th><th>شهر</th><th>مسئول</th><th>تیم</th><th>معاملات باز</th><th></th></tr></thead><tbody>
+        <thead><tr><th>#</th><th>نام</th><th>نوع</th><th>تلفن/موبایل</th><th>شهر</th><th>ثبت‌کننده</th><th>مسئول</th><th>تیم</th><th>معاملات باز</th><th></th></tr></thead><tbody>
         <?php foreach ($customers as $row): ?>
             <tr>
                 <td><?= (int)$row['id'] ?></td>
@@ -454,15 +486,22 @@ include 'includes/header.php';
                 <td><?= $row['type'] === 'company' ? 'حقوقی' : 'حقیقی' ?></td>
                 <td dir="ltr"><?= htmlspecialchars($row['mobile'] ?: $row['phone'] ?: '—') ?></td>
                 <td><?= htmlspecialchars($row['city'] ?: '—') ?></td>
+                <td><?= crm_creator_html($row) ?></td>
                 <td><?= htmlspecialchars($row['owner_name'] ?? '—') ?></td>
                 <td><?= htmlspecialchars($row['team_name'] ?? '—') ?></td>
                 <td><?= (int)$row['open_deals'] ?></td>
                 <td><a href="index.php?page=crm_customers&view=<?= (int)$row['id'] ?>" class="btn btn-ghost btn-sm"><i data-lucide="eye"></i></a></td>
             </tr>
         <?php endforeach; ?>
-        <?php if (!$customers): ?><tr><td colspan="9" class="text-center text-muted" style="padding:26px">هنوز مشتری‌ای ثبت نشده است. اولین رکورد را بسازید 👈</td></tr><?php endif; ?>
+        <?php if (!$customers): ?><tr><td colspan="10" class="text-center text-muted" style="padding:26px">هنوز مشتری‌ای ثبت نشده است. اولین رکورد را بسازید 👈</td></tr><?php endif; ?>
+
         </tbody>
-    </table></div></div>
+    </table></div><div style="padding:12px;display:flex;gap:10px;align-items:center">
+        <?php $customerBase = ['page'=>'crm_customers','q'=>$q,'status'=>$status]; ?>
+        <span>صفحه <?= $customerPage ?> از <?= $customerPages ?> (<?= $customerCount ?> مشتری)</span>
+        <?php if ($customerPage > 1): ?><a class="btn btn-ghost btn-sm" href="index.php?<?= htmlspecialchars(http_build_query($customerBase + ['p'=>$customerPage-1]), ENT_QUOTES, 'UTF-8') ?>">قبلی</a><?php endif; ?>
+        <?php if ($customerPage < $customerPages): ?><a class="btn btn-ghost btn-sm" href="index.php?<?= htmlspecialchars(http_build_query($customerBase + ['p'=>$customerPage+1]), ENT_QUOTES, 'UTF-8') ?>">بعدی</a><?php endif; ?>
+    </div></div>
 <?php endif; ?>
 
 <?php include 'includes/footer.php'; ?>

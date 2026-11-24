@@ -64,11 +64,11 @@ function fx_live_fetch(PDO $pdo): array {
             @curl_close($ch);
         }
     }
-    // تلاش ۲: allow_url_fopen (بدون TLS verification — اگر هاست مشکل CA داشته باشد)
+    // تلاش ۲: allow_url_fopen با تأیید گواهی TLS؛ در خطا از کش/نرخ دستی استفاده می‌شود.
     if ($raw === null) {
         $ctx = @stream_context_create([
             'http' => ['timeout' => 6, 'header' => "User-Agent: DerakhtSepid/1.0\r\nAccept: application/json\r\n"],
-            'ssl'  => ['verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true],
+            'ssl'  => ['verify_peer' => true, 'verify_peer_name' => true, 'allow_self_signed' => false],
         ]);
         $raw = @file_get_contents($url, false, $ctx) ?: null;
     }

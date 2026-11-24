@@ -73,8 +73,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// به‌روزرسانی خودکار وضعیت تحلیل‌های در انتظار (GET رایگان است؛ صفحهٔ تماس‌ها هر بار صدا می‌زند)
-$autoPollReport = tel_poll_pending_analyses($pdo, 5, 12);
+// فراخوانی شبکه در بارگذاری صفحه انجام نمی‌شود؛ بررسی خودکار در پس‌زمینه است.
+$autoPollReport = null;
 
 $configured      = tel_configured();
 $auto            = tel_setting($pdo, 'ai_analysis_auto', '1') === '1';
@@ -95,7 +95,14 @@ $where = '';
 $params = [];
 if ($fromG !== '') { $where .= ' AND COALESCE(pc.created_at_tel, pc.created_at) >= ?'; $params[] = $fromG . ' 00:00:00'; }
 if ($toG !== '')   { $where .= ' AND COALESCE(pc.created_at_tel, pc.created_at) <= ?'; $params[] = $toG . ' 23:59:59'; }
+$callsPage = max(1, (int)($_GET['p'] ?? 1));
+$totalCalls = 0; $totalPages = 1;
 try {
+    $countSt = $pdo->prepare("SELECT COUNT(*) FROM phone_calls pc WHERE 1=1" . $where);
+    $countSt->execute($params); $totalCalls = (int)$countSt->fetchColumn();
+    $totalPages = max(1, (int)ceil($totalCalls / 10));
+    $callsPage = min($callsPage, $totalPages);
+    $offset = ($callsPage - 1) * 10;
     $sql = "SELECT pc.*,
             ca.analysis_status AS a_status, ca.progress AS a_progress,
             COALESCE(cust.name, lead.name, lead.company) AS matched_name
@@ -105,7 +112,7 @@ try {
         LEFT JOIN crm_leads lead ON lead.id = pc.lead_id
         WHERE 1=1" . $where . "
         ORDER BY COALESCE(pc.created_at_tel, pc.created_at) DESC, pc.id DESC
-        LIMIT 500";
+        LIMIT 10 OFFSET " . (int)$offset;
     $stq = $pdo->prepare($sql);
     $stq->execute($params);
     $calls = $stq->fetchAll();
@@ -195,7 +202,7 @@ include 'includes/header.php';
     <form method="post" style="padding:0 14px 10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <?= get_csrf_field() ?><input type="hidden" name="action" value="poll_all">
         <button type="submit" class="btn btn-outline-primary btn-sm" title="بررسی وضعیت همهٔ تحلیل‌های در انتظار (بدون مصرف سهمیه)"><i data-lucide="radar"></i> بررسی همهٔ در انتظارها (<?= (int)$pendingAnalysis ?>)</button>
-        <span class="text-muted" style="font-size:11px">هر بار بارگذاری این صفحه، ۵ مورد از در‌انتظارها هم خودکار بررسی می‌شوند.</span>
+        <span class="text-muted" style="font-size:11px">تا وقتی این صفحه باز است، بررسی محدود در پس‌زمینه انجام می‌شود.</span>
     </form>
     <div style="padding:0 14px 10px">
         <form method="post" onsubmit="return confirm('درخواست تحلیل برای همهٔ تماس‌های صوت‌دارِ درخواست‌نشده تا سقف روزانه ارسال شود؟')">
@@ -205,9 +212,9 @@ include 'includes/header.php';
     </div>
 </div>
 
-<div class="card animate-in">
+<div class="card animate-in" id="callsList">
     <div class="card-header d-flex justify-between align-center" style="flex-wrap:wrap;gap:8px">
-        <h3 class="card-title">بازهٔ نمایش: <?= $fromJ !== '' || $toJ !== '' ? htmlspecialchars($fromJ ?: '…') . ' تا ' . htmlspecialchars($toJ ?: '…') : 'همیشه' ?> — <?= count($calls) ?> تماس</h3>
+        <h3 class="card-title">بازهٔ نمایش: <?= $fromJ !== '' || $toJ !== '' ? htmlspecialchars($fromJ ?: '…') . ' تا ' . htmlspecialchars($toJ ?: '…') : 'همیشه' ?> — <?= $totalCalls ?> تماس</h3>
         <form method="get" action="index.php" class="d-flex align-center gap-2" style="flex-wrap:wrap">
             <input type="hidden" name="page" value="calls">
             <input type="text" name="from" class="form-control form-control-sm" style="width:120px;direction:ltr" placeholder="از 1405/08/01" value="<?= htmlspecialchars($fromJ) ?>">
@@ -268,5 +275,34 @@ include 'includes/header.php';
             </tbody>
         </table>
     </div>
+    <div style="padding:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <?php $base = ['page'=>'calls', 'from'=>$fromJ, 'to'=>$toJ]; ?>
+        <span>صفحه <?= $callsPage ?> از <?= $totalPages ?></span>
+        <?php if ($callsPage > 1): ?><a class="btn btn-ghost btn-sm" href="index.php?<?= htmlspecialchars(http_build_query($base + ['p'=>$callsPage-1]), ENT_QUOTES, 'UTF-8') ?>">قبلی</a><?php endif; ?>
+        <?php if ($callsPage < $totalPages): ?><a class="btn btn-ghost btn-sm" href="index.php?<?= htmlspecialchars(http_build_query($base + ['p'=>$callsPage+1]), ENT_QUOTES, 'UTF-8') ?>">بعدی</a><?php endif; ?>
+        <span id="callsLiveStatus" class="text-muted" style="font-size:11px">همگام‌سازی پس‌زمینه هنگام باز بودن صفحه فعال است.</span>
+    </div>
 </div>
+<script>
+(function(){
+    var busy=false, timer;
+    function status(message){var el=document.getElementById('callsLiveStatus');if(el)el.textContent=message;}
+    async function tick(){
+        if(busy || document.hidden) return;
+        busy=true;
+        try {
+            var r=await fetch('api/calls_refresh.php',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':window.__CSRF||''},cache:'no-store'});
+            var data=await r.json();
+            if(!r.ok || !data.ok){status('همگام‌سازی خودکار ناموفق؛ اتصال تلفنچی را بررسی کنید.');return;}
+            if (!document.querySelector('#callsList input:focus')) {
+                var page=await fetch(location.href,{credentials:'same-origin',cache:'no-store'});
+                if(page.ok){var html=await page.text(), fresh=new DOMParser().parseFromString(html,'text/html').getElementById('callsList'), old=document.getElementById('callsList'); if(fresh&&old){old.replaceWith(fresh);if(window.lucide)lucide.createIcons();}}
+            }
+            status(data.throttled ? 'همگام‌سازی پس‌زمینه فعال است.' : 'آخرین بررسی: '+new Date().toLocaleTimeString('fa-IR')+'؛ تماس جدید: '+(data.inserted||0));
+        } catch(e){ status('ارتباط برای به‌روزرسانی برقرار نشد؛ دوباره تلاش می‌شود.'); }
+        finally {busy=false;}
+    }
+    timer=setInterval(tick,45000); setTimeout(tick,1500);
+})();
+</script>
 <?php include 'includes/footer.php'; ?>
