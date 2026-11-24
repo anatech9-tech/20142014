@@ -11,7 +11,8 @@ foreach ([
     'CREATE TABLE users(id INTEGER PRIMARY KEY,status TEXT,role TEXT,full_name TEXT)',
     'CREATE TABLE crm_shop_orders(id INTEGER PRIMARY KEY,source_id TEXT,shop_order_id INTEGER,revision INTEGER,payload TEXT)',
     'CREATE TABLE crm_shop_status_requests(id INTEGER PRIMARY KEY AUTOINCREMENT,replica_id INTEGER,source_id TEXT,shop_order_id INTEGER,replica_revision INTEGER,expected_status TEXT,expected_payment TEXT,requested_status TEXT,state TEXT,created_by INTEGER,created_at TEXT,closed_by INTEGER,closed_at TEXT)',
-    'CREATE TABLE crm_shop_status_request_events(id INTEGER PRIMARY KEY AUTOINCREMENT,request_id INTEGER,replica_id INTEGER,actor_id INTEGER,action TEXT,created_at TEXT)'
+    'CREATE TABLE crm_shop_status_request_events(id INTEGER PRIMARY KEY AUTOINCREMENT,request_id INTEGER,replica_id INTEGER,actor_id INTEGER,action TEXT,created_at TEXT)',
+    'CREATE TABLE crm_shop_order_commands(command_id TEXT PRIMARY KEY,request_id INTEGER,replica_id INTEGER,actor_id INTEGER,payload TEXT,state TEXT,attempts INTEGER,next_attempt_at TEXT,created_at TEXT,completed_at TEXT)'
 ] as $sql) $pdo->exec($sql);
 $pdo->exec("INSERT INTO users VALUES (1,'active','admin','admin'),(2,'active','user','user'),(3,'inactive','admin','inactive')");
 $payload=json_encode(['id'=>10,'order_status'=>'pending','payment_status'=>'paid']);

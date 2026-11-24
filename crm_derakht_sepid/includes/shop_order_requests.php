@@ -1,5 +1,6 @@
 <?php
-/** CRM-only handoff requests. These never mutate a shop order or trigger delivery. */
+/** Internal handoffs. Delivery requires a separate explicit command approval. */
+require_once __DIR__ . '/shop_order_commands.php';
 function shop_status_request_schema(): array {
     return [
         "CREATE TABLE IF NOT EXISTS crm_shop_status_requests (
@@ -73,6 +74,7 @@ function shop_status_request_create(PDO $pdo, int $replica, int $actor, bool $st
 /** Closing is an administrative acknowledgement, not proof of fulfilment. */
 function shop_status_request_close(PDO $pdo, int $replica, int $request, int $actor, bool $strictAdmin): void {
     if ($replica<=0 || $request<=0) throw new DomainException('درخواست نامعتبر است.');
+    if (!crm_shop_command_ensure($pdo)) throw new DomainException('بررسی صف فرمان ممکن نیست.');
     $pdo->beginTransaction();
     try {
         shop_status_request_check_admin($pdo,$actor,$strictAdmin);
@@ -80,6 +82,8 @@ function shop_status_request_close(PDO $pdo, int $replica, int $request, int $ac
         if (!$st->fetchColumn()) throw new DomainException('سفارش یافت نشد.');
         $st=$pdo->prepare('SELECT state FROM crm_shop_status_requests WHERE id=? AND replica_id=? FOR UPDATE'); $st->execute([$request,$replica]);
         if ($st->fetchColumn()!=='open') throw new DomainException('درخواست باز یافت نشد.');
+        $st=$pdo->prepare("SELECT command_id FROM crm_shop_order_commands WHERE request_id=? AND state='queued' LIMIT 1"); $st->execute([$request]);
+        if ($st->fetchColumn()) throw new DomainException('فرمان در صف است؛ پیش از بستن، نتیجه و وضعیت فروشگاه را بررسی کنید.');
         $now=date('Y-m-d H:i:s');
         $st=$pdo->prepare("UPDATE crm_shop_status_requests SET state='closed',closed_by=?,closed_at=? WHERE id=? AND state='open'");
         $st->execute([$actor,$now,$request]);
