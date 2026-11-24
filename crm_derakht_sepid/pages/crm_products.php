@@ -7,6 +7,23 @@ if (!ensure_crm_resources($pdo)) { include 'includes/header.php'; echo '<div cla
 $me = (int)($_SESSION['user_id'] ?? 0);
 $h = static fn($v) => htmlspecialchars((string)($v ?? ''), ENT_QUOTES, 'UTF-8');
 $currencies = ['USD'=>'دلار','CNY'=>'یوان','TOM'=>'تومان','EUR'=>'یورو','AED'=>'درهم','IRR'=>'ریال'];
+if ($_SERVER['REQUEST_METHOD']==='POST' && ($_POST['action'] ?? '')==='unlink_shop_product') {
+    $productId=(int)($_POST['id'] ?? 0);
+    try {
+        if (!is_strict_admin() || is_nazer_kol() || (!access_is_special_account() && access_mode('crm_customers')==='viewer')) throw new DomainException('دسترسی برای تغییر مجاز نیست.');
+        $source=(string)($_POST['source_id'] ?? ''); $shopId=(string)($_POST['shop_product_id'] ?? ''); $version=(string)($_POST['version'] ?? '');
+        if (!preg_match('/^[1-9][0-9]{0,9}$/D',$shopId) || !preg_match('/^[1-9][0-9]{0,9}$/D',$version)) throw new DomainException('درخواست نامعتبر است.');
+        require_once __DIR__.'/../includes/shop_product_mapping.php';
+        if (!shop_product_mapping_ensure($pdo)) throw new DomainException('اتصال کالا آماده نیست.');
+        shop_product_unlink_from_bank($pdo,$me,true,$source,(int)$shopId,$productId,(int)$version);
+        try { operations_audit($pdo,$me,'shop_product_unlink','crm_product',$productId,'قطع اتصال کالای فروشگاه'); } catch (Throwable $e) { error_log('Shop product audit failed'); }
+        showToast('اتصال کالا قطع شد.');
+    } catch (Throwable $e) {
+        error_log('Shop product unlink failed: '.get_class($e));
+        showToast($e instanceof DomainException ? $e->getMessage() : 'قطع اتصال ممکن نشد.','error');
+    }
+    redirect('index.php?page=crm_products&view='.$productId);
+}
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save') {
     $id = (int)($_POST['id'] ?? 0);
     $name = mb_substr(trim((string)($_POST['name'] ?? '')), 0, 200);
@@ -45,6 +62,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save'
 }
 $id = (int)($_GET['view'] ?? $_GET['edit'] ?? 0); $item = null;
 if ($id) { $st = $pdo->prepare('SELECT p.*, u.full_name AS creator_name FROM crm_products p LEFT JOIN users u ON u.id=p.created_by WHERE p.id=?'); $st->execute([$id]); $item=$st->fetch() ?: null; }
+// Only a current, active administrator sees cross-system mapping identifiers.
+$shopMappings=[]; $canSeeMappings=false;
+if ($item && is_strict_admin()) {
+    try {
+        $auth=$pdo->prepare('SELECT status,role FROM users WHERE id=?'); $auth->execute([$me]); $actor=$auth->fetch(PDO::FETCH_ASSOC);
+        if ($actor && $actor['status']==='active' && $actor['role']==='admin') {
+            $stMap=$pdo->prepare('SELECT shop_product_id,source_id,version,updated_at FROM crm_shop_product_links WHERE crm_product_id=? ORDER BY updated_at DESC LIMIT 50');
+            $stMap->execute([$id]); $shopMappings=$stMap->fetchAll(); $canSeeMappings=true;
+        }
+    } catch (Throwable $e) { /* Order mapping is an optional module. */ }
+}
 $q = trim((string)($_GET['q'] ?? '')); $where = '1=1'; $args=[];
 if ($q !== '') { $where='(p.name LIKE ? OR p.specs LIKE ? OR p.supplier LIKE ? OR p.notes LIKE ?)'; $args=array_fill(0,4,'%'.$q.'%'); }
 $st=$pdo->prepare("SELECT COUNT(*) FROM crm_products p WHERE $where"); $st->execute($args); $total=(int)$st->fetchColumn();
@@ -66,6 +94,8 @@ include 'includes/header.php';
 <div class="card" style="padding:18px"><div class="d-flex justify-between" style="gap:12px;flex-wrap:wrap"><h3><?= $h($item['name']) ?></h3><a href="index.php?page=crm_products&edit=<?= (int)$item['id'] ?>" class="btn btn-primary btn-sm">ویرایش</a></div>
 <?php if (!empty($item['image_path']) && preg_match('~^uploads/products/[a-f0-9]+\.(jpg|png|webp)$~', $item['image_path']) && is_file(__DIR__.'/../'.$item['image_path'])): ?><img src="<?= $h($item['image_path']) ?>" alt="عکس کالا" style="width:220px;max-width:100%;height:180px;object-fit:cover;border-radius:12px;margin:12px 0"><?php endif ?>
 <p>کارخانه / تأمین‌کننده: <?= $h($item['supplier'] ?: '—') ?> | تاریخ قیمت: <?= $h($item['price_date'] ? to_jalali($item['price_date']) : 'ثبت نشده') ?></p><p>قیمت درب کارخانه: <b><?= $h($item['factory_price'] ?? '—') ?></b> | قیمت مشتری: <b><?= $h($item['customer_price'] ?? '—') ?></b> <?= $h($currencies[$item['currency']] ?? $item['currency']) ?> / <?= $h($item['unit'] ?: '—') ?></p><p>مشخصات: <?= nl2br($h($item['specs'] ?: '—')) ?></p><p>یادداشت: <?= nl2br($h($item['notes'] ?: '—')) ?></p><small>ثبت‌کننده: <?= $h($item['creator_name'] ?: '—') ?></small></div>
+<?php if ($canSeeMappings): ?><div class="card" style="padding:16px;margin-top:12px"><h4>اتصال‌های فعلی به کالاهای فروشگاه</h4><p>فقط کالاهای دیده‌شده در سفارش و تأییدشده توسط مدیر؛ این ارتباط قیمت، موجودی یا انتشار فروشگاه را تغییر نمی‌دهد.</p><?php if (!$shopMappings): ?><p>اتصالی ثبت نشده است.</p><?php endif; ?><?php foreach ($shopMappings as $map): ?><div style="margin:8px 0">شناسه کالای فروشگاه: <?= (int)$map['shop_product_id'] ?> | منبع: <?= $h(substr((string)$map['source_id'],0,8)) ?>… | بروزرسانی: <?= !empty($map['updated_at']) ? $h(to_jalali(substr($map['updated_at'],0,10))) : '—' ?>
+<?php if (!is_nazer_kol()): ?><form method="post" style="display:inline" onsubmit="return confirm('اتصال فعلی این کالا برای همه سفارش‌ها قطع شود؟');"><?= get_csrf_field() ?><input type="hidden" name="action" value="unlink_shop_product"><input type="hidden" name="id" value="<?= (int)$item['id'] ?>"><input type="hidden" name="source_id" value="<?= $h($map['source_id']) ?>"><input type="hidden" name="shop_product_id" value="<?= (int)$map['shop_product_id'] ?>"><input type="hidden" name="version" value="<?= (int)$map['version'] ?>"><button type="submit" class="btn btn-sm">قطع اتصال</button></form><?php endif; ?></div><?php endforeach; ?></div><?php endif; ?>
 <?php endif ?>
 <form method="get" class="d-flex gap-2" style="margin:16px 0;flex-wrap:wrap"><input type="hidden" name="page" value="crm_products"><input name="q" class="form-control" style="max-width:400px" placeholder="جست‌وجوی نام، مشخصات یا تأمین‌کننده" value="<?= $h($q) ?>"><button class="btn btn-ghost">جست‌وجو</button></form>
 <div class="card overflow-x-auto"><table class="table"><thead><tr><th>کالا</th><th>تأمین‌کننده</th><th>قیمت کارخانه</th><th>قیمت مشتری</th><th>تاریخ قیمت</th><th></th></tr></thead><tbody><?php foreach ($items as $row): ?><tr><td><?= $h($row['name']) ?></td><td><?= $h($row['supplier'] ?: '—') ?></td><td dir="ltr"><?= $h($row['factory_price'] ?? '—') ?> <?= $h($row['currency']) ?></td><td dir="ltr"><?= $h($row['customer_price'] ?? '—') ?> <?= $h($row['currency']) ?></td><td><?= $h($row['price_date'] ? to_jalali($row['price_date']) : '—') ?></td><td><a href="index.php?page=crm_products&view=<?= (int)$row['id'] ?>" class="btn btn-ghost btn-sm">جزئیات</a></td></tr><?php endforeach ?><?php if (!$items): ?><tr><td colspan="6">کالایی پیدا نشد.</td></tr><?php endif ?></tbody></table></div>

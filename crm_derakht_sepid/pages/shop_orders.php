@@ -3,6 +3,7 @@ $pageTitle='سفارش‌های فروشگاه';
 require_login();
 require_once __DIR__.'/../includes/shop_order_sync.php';
 require_once __DIR__.'/../includes/shop_order_work.php';
+require_once __DIR__.'/../includes/shop_product_mapping.php';
 function shop_replica_h($v): string { return htmlspecialchars((string)$v,ENT_QUOTES | ENT_SUBSTITUTE,'UTF-8'); }
 $me=(int)$_SESSION['user_id'];
 // A deactivated or demoted account's existing session must not expose order data.
@@ -17,6 +18,7 @@ $statusLabels=['pending'=>'در انتظار','confirmed'=>'تأیید شده','
 $payLabels=['pending'=>'در انتظار','paid'=>'ثبت دستی پرداخت‌شده','failed'=>'ناموفق','refunded'=>'ثبت دستی بازپرداخت'];
 $ready=crm_shop_orders_ensure($pdo) && shop_work_ensure($pdo);
 $view=(int)($_GET['view'] ?? 0); $detail=null; $rows=[]; $next=0; $assignees=[]; $linkedCustomer=null; $customerOptions=[]; $history=[];
+$productReady=false; $productLinks=[]; $productOptions=[]; $productHistory=[]; $selectedProduct=0; $productSearch='';
 if ($_SERVER['REQUEST_METHOD']==='POST') {
     $id=(int)($_POST['id'] ?? 0); $action=(string)($_POST['action'] ?? '');
     try {
@@ -25,7 +27,13 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         if (!preg_match('/^(0|[1-9][0-9]{0,9})$/D',$version)) throw new DomainException('صفحه را دوباره بارگذاری کنید.');
         $raw=(string)($_POST['value'] ?? '');
         if (!preg_match('/^(0|[1-9][0-9]{0,9})$/D',$raw)) throw new DomainException('مقدار نامعتبر است.');
-        shop_work_apply($pdo,$id,$me,$admin,$managed,$action,(int)$raw,(int)$version);
+        if ($action==='map_product') {
+            $shopId=(string)($_POST['shop_product_id'] ?? '');
+            if (!$admin || !preg_match('/^[1-9][0-9]{0,9}$/D',$shopId) || !shop_product_mapping_ensure($pdo)) throw new DomainException('اتصال کالا مجاز یا آماده نیست.');
+            shop_product_mapping_apply($pdo,$id,$me,$admin,(int)$shopId,(int)$raw,(int)$version);
+        } else {
+            shop_work_apply($pdo,$id,$me,$admin,$managed,$action,(int)$raw,(int)$version);
+        }
         try { operations_audit($pdo,$me,'shop_order_'.$action,'shop_order',$id,'ثبت پیگیری سفارش فروشگاه'); } catch (Throwable $e) { error_log('Shop order global audit failed'); }
         showToast('تغییر ثبت شد.');
     } catch (Throwable $e) {
@@ -53,6 +61,23 @@ if ($ready && $view>0) {
         }
         $st=$pdo->prepare('SELECT e.action,e.created_at,u.full_name FROM crm_shop_order_work_events e LEFT JOIN users u ON u.id=e.actor_id WHERE e.replica_id=? ORDER BY e.id DESC LIMIT 20');
         $st->execute([$view]); $history=$st->fetchAll();
+        $snapshot=json_decode((string)$detail['payload'],true);
+        if (!is_array($snapshot)) $snapshot=[];
+        $productReady=shop_product_mapping_ensure($pdo);
+        if ($productReady) {
+            $productLinks=shop_product_links_for_order($pdo,(string)$detail['source_id'],$snapshot);
+            $selectedProduct=(int)($_GET['map_product'] ?? 0);
+            if (!$admin || $readonly || !shop_order_contains_product($snapshot,$selectedProduct)) $selectedProduct=0;
+            if ($selectedProduct) {
+                $productSearch=trim((string)($_GET['product_search'] ?? ''));
+                if (mb_strlen($productSearch)>=2 && mb_strlen($productSearch)<=100) {
+                    $st=$pdo->prepare('SELECT id,name,supplier FROM crm_products WHERE name LIKE ? OR specs LIKE ? OR supplier LIKE ? ORDER BY name LIMIT 30');
+                    $like='%'.$productSearch.'%'; $st->execute([$like,$like,$like]); $productOptions=$st->fetchAll();
+                }
+                $st=$pdo->prepare('SELECT e.old_crm_product_id,e.new_crm_product_id,e.created_at,u.full_name FROM crm_shop_product_link_events e LEFT JOIN users u ON u.id=e.actor_id WHERE e.source_id=? AND e.shop_product_id=? ORDER BY e.id DESC LIMIT 20');
+                $st->execute([$detail['source_id'],$selectedProduct]); $productHistory=$st->fetchAll();
+            }
+        }
     }
 } elseif ($ready) {
     $before=(int)($_GET['before'] ?? 0); $condition=$before>0 ? ' AND r.id<?' : '';
@@ -75,12 +100,24 @@ include 'includes/header.php';
   <p>مسئول: <?= shop_replica_h($detail['owner_name'] ?: 'تعیین نشده') ?> | تیم: <?= shop_replica_h($detail['team_name'] ?: '—') ?></p>
   <p>وضعیت سفارش: <?= shop_replica_h($statusLabels[$o['order_status'] ?? ''] ?? 'نامشخص') ?> | پرداخت: <?= shop_replica_h($payLabels[$o['payment_status'] ?? ''] ?? 'نامشخص') ?></p>
   <p>ثبت در فروشگاه: <?= shop_replica_h(to_jalali(substr((string)($o['created_at'] ?? ''),0,10))) ?> <?= shop_replica_h(substr((string)($o['created_at'] ?? ''),11,5)) ?> | آخرین دریافت در CRM: <?= shop_replica_h(to_jalali(substr($detail['received_at'],0,10))) ?> <?= shop_replica_h(substr($detail['received_at'],11,5)) ?></p>
-  <div style="overflow-x:auto"><table class="data-table"><thead><tr><th>کالا</th><th>شناسه فروشگاه</th><th>تعداد</th><th>قیمت واحد (تومان)</th><th>جمع (تومان)</th></tr></thead><tbody>
-  <?php foreach (($o['items'] ?? []) as $item): ?><tr><td><?= shop_replica_h($item['product_name'] ?? '') ?></td><td><?= isset($item['product_id']) ? (int)$item['product_id'] : '—' ?></td><td><?= (int)($item['qty'] ?? 0) ?></td><td><?= number_format((int)($item['price_toman'] ?? 0)) ?></td><td><?= number_format((int)($item['total_toman'] ?? 0)) ?></td></tr><?php endforeach; ?>
+  <div style="overflow-x:auto"><table class="data-table"><thead><tr><th>کالا</th><th>شناسه فروشگاه</th><th>تعداد</th><th>قیمت واحد (تومان)</th><th>جمع (تومان)</th><th>اتصال فعلی به بانک کالا</th></tr></thead><tbody>
+  <?php foreach (($o['items'] ?? []) as $item): $pid=(int)($item['product_id'] ?? 0); $mapped=$productLinks[$pid] ?? null; ?><tr><td><?= shop_replica_h($item['product_name'] ?? '') ?></td><td><?= $pid ?: '—' ?></td><td><?= (int)($item['qty'] ?? 0) ?></td><td><?= number_format((int)($item['price_toman'] ?? 0)) ?></td><td><?= number_format((int)($item['total_toman'] ?? 0)) ?></td><td>
+    <?php if (!$productReady): ?>در دسترس نیست<?php elseif ($mapped && !empty($mapped['crm_product_id']) && !empty($mapped['crm_product_name'])): ?><a href="index.php?page=crm_products&amp;view=<?= (int)$mapped['crm_product_id'] ?>"><?= shop_replica_h($mapped['crm_product_name']) ?></a><?php elseif ($mapped && !empty($mapped['crm_product_id'])): ?>کالای CRM یافت نشد<?php else: ?><?= $pid ? 'متصل نشده' : 'شناسه کالا موجود نیست' ?><?php endif; ?>
+    <?php if ($admin && !$readonly && $productReady && $pid>0): ?> <a class="btn btn-sm" href="index.php?page=shop_orders&amp;view=<?= $view ?>&amp;map_product=<?= $pid ?>">بررسی اتصال</a><?php endif; ?></td></tr><?php endforeach; ?>
   </tbody></table></div>
   <p>جمع کالاها: <?= number_format((int)($o['subtotal_toman'] ?? 0)) ?> | تخفیف: <?= number_format((int)($o['discount_toman'] ?? 0)) ?> | ارسال: <?= number_format((int)($o['shipping_fee'] ?? 0)) ?> | مبلغ کل: <strong><?= number_format((int)($o['total_toman'] ?? 0)) ?> تومان</strong></p>
   <p>آدرس، یادداشت مشتری و توکن سفارش منتقل نمی‌شوند. تغییر وضعیت و مرجوعی همچنان در فروشگاه انجام می‌شود.</p>
 </div>
+<?php if ($admin && !$productReady): ?><div class="card" style="padding:16px;margin-top:14px">اتصال کالا آماده نیست؛ ابتدا بانک کالا و مجوز ساخت جدول را بررسی کنید.</div><?php endif; ?>
+<?php if ($selectedProduct && $productReady && $admin && !$readonly): $mapping=$productLinks[$selectedProduct] ?? null; $mapVersion=(int)($mapping['version'] ?? 0); ?>
+<div class="card" style="padding:18px;margin-top:14px"><h3>اتصال کالای فروشگاه #<?= $selectedProduct ?> به بانک کالا</h3>
+<p>این اتصال هویتِ فعلی کالا را برای همه سفارش‌های دارای همین شناسه تغییر می‌دهد، نه صرفاً این سفارش. قیمت، موجودی، اطلاعات فروشگاه و انتشار را تغییر نمی‌دهد؛ تطبیق مشخصات را دستی بررسی کنید.</p>
+<form method="get"><input type="hidden" name="page" value="shop_orders"><input type="hidden" name="view" value="<?= $view ?>"><input type="hidden" name="map_product" value="<?= $selectedProduct ?>"><input name="product_search" minlength="2" maxlength="100" value="<?= shop_replica_h($productSearch) ?>" placeholder="نام یا تأمین‌کننده در بانک کالا" required> <button class="btn" type="submit">جست‌وجو</button></form>
+<?php if ($productSearch!=='' && mb_strlen($productSearch)>=2): ?><p>حداکثر ۳۰ نتیجه:</p>
+<?php if ($productOptions): ?><form method="post" onsubmit="return confirm('مشخصات دو کالا بررسی شده و اتصال فعلی برای همه سفارش‌ها ثبت شود؟');"><?= get_csrf_field() ?><input type="hidden" name="id" value="<?= $view ?>"><input type="hidden" name="action" value="map_product"><input type="hidden" name="shop_product_id" value="<?= $selectedProduct ?>"><input type="hidden" name="version" value="<?= $mapVersion ?>"><select name="value" required><?php foreach ($productOptions as $product): ?><option value="<?= (int)$product['id'] ?>"><?= shop_replica_h($product['name']) ?> — <?= shop_replica_h($product['supplier'] ?: 'بدون تأمین‌کننده') ?></option><?php endforeach; ?></select> <button class="btn btn-primary" type="submit">تأیید اتصال کالا</button></form><?php else: ?><p>کالایی یافت نشد.</p><?php endif; ?><?php endif; ?>
+<?php if ($mapping && !empty($mapping['crm_product_id'])): ?><form method="post" style="margin-top:10px" onsubmit="return confirm('اتصال فعلی کالا برای همه سفارش‌ها قطع شود؟');"><?= get_csrf_field() ?><input type="hidden" name="id" value="<?= $view ?>"><input type="hidden" name="action" value="map_product"><input type="hidden" name="shop_product_id" value="<?= $selectedProduct ?>"><input type="hidden" name="version" value="<?= $mapVersion ?>"><input type="hidden" name="value" value="0"><button class="btn" type="submit">قطع اتصال کالا</button></form><?php endif; ?>
+<?php if ($productHistory): ?><h4>تاریخچه اتصال</h4><?php foreach ($productHistory as $e): ?><p>از شناسه CRM <?= (int)($e['old_crm_product_id'] ?? 0) ?: '—' ?> به <?= (int)($e['new_crm_product_id'] ?? 0) ?: '—' ?> | <?= shop_replica_h($e['full_name'] ?: 'کاربر حذف‌شده') ?> | <?= shop_replica_h(to_jalali(substr($e['created_at'],0,10))) ?> <?= shop_replica_h(substr($e['created_at'],11,5)) ?></p><?php endforeach; ?><?php endif; ?>
+</div><?php endif; ?>
 <?php if ($canAssign && !$readonly && $assignees): ?><div class="card" style="padding:18px;margin-top:14px"><h3>ارجاع سفارش</h3><form method="post"><?= get_csrf_field() ?><input type="hidden" name="id" value="<?= $view ?>"><input type="hidden" name="version" value="<?= $version ?>"><input type="hidden" name="action" value="assign"><select name="value" required><?php foreach ($assignees as $person): ?><option value="<?= (int)$person['id'] ?>" <?= (int)$detail['owner_user_id']===(int)$person['id']?'selected':'' ?>><?= shop_replica_h($person['full_name']) ?></option><?php endforeach; ?></select> <button class="btn btn-primary" type="submit">ثبت مسئول</button></form><p>مدیر تیم فقط به اعضای تیم‌های تحت مدیریت خود ارجاع می‌دهد.</p></div><?php endif; ?>
 <div class="card" style="padding:18px;margin-top:14px"><h3>اتصال دستی به مشتری CRM</h3>
 <?php if ($linkedCustomer): ?><p>مشتری متصل: <a href="index.php?page=crm_customers&amp;view=<?= (int)$linkedCustomer['id'] ?>"><?= shop_replica_h($linkedCustomer['name']) ?></a></p>
