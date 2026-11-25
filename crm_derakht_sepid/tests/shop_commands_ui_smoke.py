@@ -7,7 +7,7 @@ with tempfile.TemporaryDirectory() as tmp:
     app=pathlib.Path(tmp)
     for d in ('pages','includes'): (app/d).mkdir()
     shutil.copy(root/'pages/shop_orders.php',app/'pages/shop_orders.php')
-    for name in ('shop_order_requests.php','shop_order_commands.php','shop_return_requests.php'):
+    for name in ('shop_order_requests.php','shop_order_commands.php','shop_return_requests.php','shop_shipping_tracking.php'):
         shutil.copy(root/'includes'/name,app/'includes'/name)
     (app/'includes/shop_order_sync.php').write_text('<?php function crm_shop_orders_ensure($p){return true;}')
     (app/'includes/shop_order_work.php').write_text('''<?php
@@ -18,12 +18,13 @@ function shop_visible_customer($p,$id,$m,$a,$t){return null;}
     (app/'includes/header.php').write_text('<header>shell</header>')
     (app/'includes/footer.php').write_text('<footer>shell</footer>')
     (app/'run.php').write_text('''<?php
-function require_login(){} function is_strict_admin(){return ($GLOBALS['case'] ?? '')!=='viewer';} function managed_team_ids($p){return [];}
-function is_nazer_kol(){return ($GLOBALS['case'] ?? '')==='readonly';} function access_is_special_account(){return true;} function access_mode($k){return 'editor';}
-function to_jalali($x){return $x;} function get_csrf_field(){return '<input name="csrf_token" value="test">';}
+function require_login(){} function is_strict_admin(){return !in_array(($GLOBALS['case'] ?? ''),['viewer','shipping_viewer','post_shipping_viewer'],true);} function managed_team_ids($p){return [];}
+function is_nazer_kol(){return in_array(($GLOBALS['case'] ?? ''),['readonly','shipping_readonly','post_shipping_readonly'],true);} function access_is_special_account(){return true;} function access_mode($k){return 'editor';}
+function to_jalali($x){return $x;} function showToast($x,$y=''){} function redirect($x){exit;} function operations_audit(...$x){} function get_csrf_field(){return '<input name="csrf_token" value="test">';}
 define('SHOP_CRM_COMMAND_ENABLED',true); define('SHOP_CRM_COMMAND_KEY',str_repeat('k',32)); define('SHOP_CRM_SOURCE_ID',str_repeat('a',32)); define('SHOP_CRM_COMMAND_URL','https://example.test/api');
 $_SESSION=['user_id'=>1]; $_GET=['view'=>1]; $_SERVER['REQUEST_METHOD']='GET'; $case=$argv[1] ?? ''; if ($case==='return_list') $_GET=[];
-$pdo=new PDO('sqlite::memory:'); $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION); $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE,PDO::FETCH_ASSOC);
+class UITestPDO extends PDO { public function prepare(string $sql,array $options=[]): PDOStatement|false { return parent::prepare(str_replace(' FOR UPDATE','',$sql),$options); }}
+$pdo=new UITestPDO('sqlite::memory:'); $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION); $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE,PDO::FETCH_ASSOC);
 foreach ([
  'CREATE TABLE users(id INTEGER PRIMARY KEY,status TEXT,role TEXT,team_id INTEGER,username TEXT,full_name TEXT)',
  'CREATE TABLE teams(id INTEGER PRIMARY KEY,name TEXT,manager_user_id INTEGER)',
@@ -34,13 +35,23 @@ foreach ([
  'CREATE TABLE crm_shop_status_request_events(id INTEGER PRIMARY KEY,request_id INTEGER,replica_id INTEGER,actor_id INTEGER,action TEXT,created_at TEXT)',
  'CREATE TABLE crm_shop_return_requests(id INTEGER PRIMARY KEY,replica_id INTEGER,source_id TEXT,shop_order_id INTEGER,replica_revision INTEGER,observed_status TEXT,reason TEXT,state TEXT,created_by INTEGER,created_at TEXT,closed_by INTEGER,closed_at TEXT)',
  'CREATE TABLE crm_shop_return_request_events(id INTEGER PRIMARY KEY,request_id INTEGER,replica_id INTEGER,actor_id INTEGER,action TEXT,created_at TEXT)',
+ 'CREATE TABLE crm_shop_shipping_tracking(replica_id INTEGER PRIMARY KEY,source_id TEXT,shop_order_id INTEGER,version INTEGER,carrier TEXT,tracking_code TEXT,replica_revision INTEGER,updated_by INTEGER,updated_at TEXT)',
+ 'CREATE TABLE crm_shop_shipping_tracking_events(id INTEGER PRIMARY KEY,replica_id INTEGER,source_id TEXT,shop_order_id INTEGER,version INTEGER,replica_revision INTEGER,action TEXT,actor_id INTEGER,created_at TEXT)',
  'CREATE TABLE crm_shop_order_commands(command_id TEXT PRIMARY KEY,request_id INTEGER,replica_id INTEGER,actor_id INTEGER,payload TEXT,state TEXT,attempts INTEGER,next_attempt_at TEXT,created_at TEXT,completed_at TEXT)'
 ] as $q) $pdo->exec($q);
 $pdo->exec("INSERT INTO users VALUES(1,'active','admin',NULL,'admin','Admin')");
-$order=['id'=>1,'order_no'=>'<order>','order_status'=>(in_array(($argv[1] ?? ''),['return_new','return_open','return_list','readonly','viewer']) ? 'shipped' : 'pending'),'payment_status'=>'pending','order_event_id'=>1,'created_at'=>'2025-01-01 10:00:00','items'=>[]];
+$order=['id'=>1,'order_no'=>'<order>','order_status'=>(in_array(($argv[1] ?? ''),['return_new','return_open','return_list','readonly','viewer','shipping_new','shipping_existing','shipping_stale','shipping_mismatch','shipping_readonly','shipping_viewer','post_shipping','post_shipping_readonly','post_shipping_viewer']) ? 'shipped' : 'pending'),'payment_status'=>'pending','order_event_id'=>1,'created_at'=>'2025-01-01 10:00:00','items'=>[]];
 $st=$pdo->prepare('INSERT INTO crm_shop_orders VALUES(1,?,1,1,?,?)'); $st->execute([str_repeat('a',32),json_encode($order),'2025-01-01 10:00:00']);
 $pdo->prepare("INSERT INTO crm_shop_status_requests VALUES(1,1,?,1,1,'pending','pending','confirmed','open',1,'2025-01-01 10:00:00',NULL,NULL)")->execute([str_repeat('a',32)]);
 if (in_array(($argv[1] ?? ''),['return_open','return_list','readonly','viewer'],true)) $pdo->prepare("INSERT INTO crm_shop_return_requests VALUES(1,1,?,1,1,'shipped','damaged','open',1,'2025-01-01',NULL,NULL)")->execute([str_repeat('a',32)]);
+if (in_array($case,['shipping_existing','shipping_stale','shipping_mismatch','shipping_readonly','shipping_viewer'],true)) {
+ $source=$case==='shipping_mismatch'?str_repeat('b',32):str_repeat('a',32); $revision=$case==='shipping_stale'?2:1;
+ $pdo->prepare("INSERT INTO crm_shop_shipping_tracking VALUES(1,?,1,1,'<Carrier>','AB123',?,1,'2025-01-01')")->execute([$source,$revision]);
+}
+if (in_array($case,['post_shipping','post_shipping_readonly','post_shipping_viewer'],true)) {
+ $_SERVER['REQUEST_METHOD']='POST'; $_POST=['id'=>'1','action'=>'save_shipping','shipping_revision'=>'1','shipping_version'=>'0','carrier'=>'Post','tracking_code'=>'AB123'];
+ register_shutdown_function(function() use ($pdo) { echo 'TRACKING_RESULT:'.$pdo->query('SELECT COUNT(*) FROM crm_shop_shipping_tracking')->fetchColumn().':'.$pdo->query('SELECT COUNT(*) FROM crm_shop_shipping_tracking_events')->fetchColumn(); });
+}
 if (($argv[1] ?? '')==='queued') $pdo->exec("INSERT INTO crm_shop_order_commands VALUES('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',1,1,1,'{}','queued',0,'2025-01-01','2025-01-01',NULL)");
 include __DIR__.'/pages/shop_orders.php';
 ''')
@@ -60,4 +71,12 @@ include __DIR__.'/pages/shop_orders.php';
     listed=run('return_list'); assert 'پیگیری‌های باز بررسی مرجوعی' in listed and '&lt;order&gt;' in listed
     readonly=run('readonly'); assert 'بستن پیگیری مرجوعی</button>' not in readonly and 'پیگیری داخلی بررسی مرجوعی' in readonly
     viewer=run('viewer'); assert 'پیگیری داخلی بررسی مرجوعی' not in viewer and 'بستن پیگیری مرجوعی</button>' not in viewer
-    print('PASS real page rendering: escaped order, explicit approval and queued-state controls')
+    shipnew=run('shipping_new'); assert 'ثبت رهگیری داخلی</button>' in shipnew and 'csrf_token' in shipnew and 'اثبات ارسال یا تحویل نیست' in shipnew
+    existing=run('shipping_existing'); assert '&lt;Carrier&gt;' in existing and '<Carrier>' not in existing and 'پاک‌کردن رهگیری داخلی</button>' in existing
+    assert 'نسخهٔ دریافتی سفارش پس از ثبت تغییر کرده' in run('shipping_stale')
+    mismatch=run('shipping_mismatch'); assert 'هویت رهگیری با سفارش فعلی ناسازگار است' in mismatch and 'AB123' not in mismatch and 'ثبت رهگیری داخلی</button>' not in mismatch
+    read=run('shipping_readonly'); assert 'AB123' in read and 'پاک‌کردن رهگیری داخلی</button>' not in read and 'ثبت رهگیری داخلی</button>' not in read
+    viewer=run('shipping_viewer'); assert 'AB123' not in viewer and 'رهگیری داخلی ارسال' not in viewer
+    assert 'TRACKING_RESULT:1:1' in run('post_shipping')
+    assert 'TRACKING_RESULT:0:0' in run('post_shipping_readonly') and 'TRACKING_RESULT:0:0' in run('post_shipping_viewer')
+    print('PASS order page rendering, return/command controls and private shipping tracking')

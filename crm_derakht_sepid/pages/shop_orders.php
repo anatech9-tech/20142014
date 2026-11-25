@@ -6,6 +6,7 @@ require_once __DIR__.'/../includes/shop_order_work.php';
 require_once __DIR__.'/../includes/shop_product_mapping.php';
 require_once __DIR__.'/../includes/shop_order_requests.php';
 require_once __DIR__.'/../includes/shop_return_requests.php';
+require_once __DIR__.'/../includes/shop_shipping_tracking.php';
 function shop_replica_h($v): string { return htmlspecialchars((string)$v,ENT_QUOTES | ENT_SUBSTITUTE,'UTF-8'); }
 $me=(int)$_SESSION['user_id'];
 // A deactivated or demoted account's existing session must not expose order data.
@@ -25,11 +26,24 @@ $commandsReady=$requestsReady && crm_shop_command_ensure($pdo); $commandsEnabled
 $statusRequests=[]; $openRequests=[]; $nextRequest=0;
 $returnReady=$ready && $admin && shop_return_request_ensure($pdo);
 $returnRequests=[]; $openReturns=[]; $nextReturn=0; $returnReasons=shop_return_reasons();
+$shippingReady=$ready && $admin && shop_shipping_ensure($pdo); $shipping=null; $shippingMismatch=false; $shippingEvents=[];
 $productReady=false; $productLinks=[]; $productOptions=[]; $productHistory=[]; $selectedProduct=0; $productSearch='';
 if ($_SERVER['REQUEST_METHOD']==='POST') {
     $id=(int)($_POST['id'] ?? 0); $action=(string)($_POST['action'] ?? '');
     try {
         if (!$ready || $readonly) throw new DomainException('دسترسی برای تغییر مجاز نیست.');
+        if (in_array($action,['save_shipping','clear_shipping'],true)) {
+            if (!$admin || !$shippingReady) throw new DomainException('ثبت رهگیری مجاز یا آماده نیست.');
+            foreach (['shipping_revision','shipping_version'] as $key) {
+                if (!is_string($_POST[$key] ?? null) || !preg_match('/^(0|[1-9][0-9]{0,17})$/D',$_POST[$key])) throw new DomainException('صفحه را دوباره بارگذاری کنید.');
+            }
+            $carrier=$_POST['carrier'] ?? ''; $tracking=$_POST['tracking_code'] ?? '';
+            if (!is_string($carrier) || !is_string($tracking)) throw new DomainException('اطلاعات رهگیری نامعتبر است.');
+            shop_shipping_apply($pdo,$id,$me,$admin,(int)$_POST['shipping_revision'],(int)$_POST['shipping_version'],$action==='save_shipping'?'save':'clear',$carrier,$tracking);
+            try { operations_audit($pdo,$me,'shop_order_'.$action,'shop_order',$id,'تغییر رهگیری داخلی'); } catch (Throwable $e) { error_log('Shop shipping global audit failed'); }
+            showToast('رهگیری فقط در CRM تغییر کرد؛ وضعیت فروشگاه و ارسال واقعی تغییر نکرد.');
+            redirect('index.php?page=shop_orders&view='.$id);
+        }
         if (in_array($action,['request_return','close_return'],true)) {
             if (!$admin || !$returnReady) throw new DomainException('بررسی مرجوعی مجاز یا آماده نیست.');
             $num=$_POST['return_number'] ?? null;
@@ -82,6 +96,14 @@ if ($ready && $view>0) {
         if ($requestsReady) {
             $st=$pdo->prepare("SELECT q.*,u.full_name AS creator_name,c.full_name AS closer_name".($commandsReady ? ',cmd.state AS command_state,cmd.command_id' : ',NULL AS command_state,NULL AS command_id')." FROM crm_shop_status_requests q LEFT JOIN users u ON u.id=q.created_by LEFT JOIN users c ON c.id=q.closed_by".($commandsReady ? ' LEFT JOIN crm_shop_order_commands cmd ON cmd.request_id=q.id' : '')." WHERE q.replica_id=? ORDER BY CASE WHEN q.state='open' THEN 0 ELSE 1 END,q.id DESC LIMIT 20");
             $st->execute([$view]); $statusRequests=$st->fetchAll();
+        }
+        if ($shippingReady) {
+            $st=$pdo->prepare('SELECT * FROM crm_shop_shipping_tracking WHERE replica_id=?'); $st->execute([$view]); $shipping=$st->fetch(PDO::FETCH_ASSOC) ?: null;
+            if ($shipping && ($shipping['source_id']!==$detail['source_id'] || (int)$shipping['shop_order_id']!==(int)$detail['shop_order_id'])) { $shipping=null; $shippingMismatch=true; }
+            else {
+                $st=$pdo->prepare('SELECT e.action,e.version,e.replica_revision,e.created_at,u.full_name FROM crm_shop_shipping_tracking_events e LEFT JOIN users u ON u.id=e.actor_id WHERE e.replica_id=? AND e.source_id=? AND e.shop_order_id=? ORDER BY e.id DESC LIMIT 20');
+                $st->execute([$view,$detail['source_id'],$detail['shop_order_id']]); $shippingEvents=$st->fetchAll();
+            }
         }
         if ($returnReady) {
             $st=$pdo->prepare("SELECT q.*,u.full_name AS creator_name,c.full_name AS closer_name FROM crm_shop_return_requests q LEFT JOIN users u ON u.id=q.created_by LEFT JOIN users c ON c.id=q.closed_by WHERE q.replica_id=? ORDER BY CASE WHEN q.state='open' THEN 0 ELSE 1 END,q.id DESC LIMIT 20");
@@ -179,6 +201,19 @@ include 'includes/header.php';
 <form method="post" onsubmit="return confirm('درخواست فقط در CRM ثبت می‌شود و وضعیت فروشگاه تغییر نمی‌کند. ادامه می‌دهید؟');"><?= get_csrf_field() ?><input type="hidden" name="id" value="<?= $view ?>"><input type="hidden" name="action" value="request_status"><input type="hidden" name="request_number" value="<?= (int)$detail['revision'] ?>"><label>وضعیت درخواستی <select name="target_status" required><?php foreach ($targets as $target): ?><option value="<?= shop_replica_h($target) ?>"><?= shop_replica_h($statusLabels[$target]) ?></option><?php endforeach; ?></select></label> <button class="btn btn-primary" type="submit">ثبت درخواست داخلی</button></form>
 <p>لغو در پنل فروشگاه ممکن است موجودی را بازگرداند و مصرف کوپن را بازنمی‌گرداند؛ سفارش ارسال‌شده یا تحویل‌شده از این مسیر لغو نمی‌شود.</p>
 <?php elseif ($hasOpen): ?><p>برای ثبت درخواست جدید، ابتدا درخواست باز را بررسی و ببندید.</p><?php else: ?><p>برای این وضعیت، گام بعدی در این بخش تعریف نشده است.</p><?php endif; ?>
+<?php endif; ?></div><?php endif; ?>
+<?php if ($admin): ?><div class="card" style="padding:18px;margin-top:14px"><h3>رهگیری داخلی ارسال</h3>
+<p>این اطلاعات فقط در CRM ثبت می‌شود؛ به فروشگاه، مشتری یا شرکت حمل ارسال نمی‌شود و اثبات ارسال یا تحویل نیست. جدا از محموله‌های مستقل سایت است. قبل از هر اقدام، اطلاعات و وضعیت را در فروشگاه و شرکت حمل بررسی کنید. آدرس، تلفن و اطلاعات محرمانه در این کادرها وارد نکنید.</p>
+<?php if (!$shippingReady): ?><p>جدول رهگیری آماده نیست.</p>
+<?php elseif ($shippingMismatch): ?><p><strong>هویت رهگیری با سفارش فعلی ناسازگار است؛ برای حفظ اطلاعات، نمایش و تغییر مسدود است. مدیر باید پس از بکاپ تطبیق کند.</strong></p>
+<?php else: $shippingVersion=(int)($shipping['version'] ?? 0); ?>
+<?php if ($shipping && $shipping['tracking_code']!==null): ?><p>شرکت حمل: <?= shop_replica_h($shipping['carrier']) ?> | کد: <strong><?= shop_replica_h($shipping['tracking_code']) ?></strong> | آخرین ثبت: <?= shop_replica_h($shipping['updated_at']) ?> | نسخه سفارش هنگام ثبت: <?= (int)$shipping['replica_revision'] ?></p>
+<?php if ((int)$shipping['replica_revision']!==(int)$detail['revision']): ?><p><strong>نسخهٔ دریافتی سفارش پس از ثبت تغییر کرده؛ اطلاعات رهگیری و وضعیت را تطبیق دهید.</strong></p><?php endif; ?>
+<?php else: ?><p>کد رهگیری داخلی فعالی ثبت نشده است.</p><?php endif; ?>
+<?php if (!$readonly && in_array($o['order_status'] ?? '',['packed','shipped','delivered'],true)): ?><form method="post" onsubmit="return confirm('اطلاعات فقط در CRM ثبت می‌شود و نشانه ارسال یا تحویل قطعی نیست. ادامه می‌دهید؟');"><?= get_csrf_field() ?><input type="hidden" name="id" value="<?= $view ?>"><input type="hidden" name="action" value="save_shipping"><input type="hidden" name="shipping_revision" value="<?= (int)$detail['revision'] ?>"><input type="hidden" name="shipping_version" value="<?= $shippingVersion ?>"><label>شرکت حمل <input name="carrier" required maxlength="80" value="<?= shop_replica_h($shipping['carrier'] ?? '') ?>"></label> <label>کد رهگیری <input name="tracking_code" required maxlength="100" value="<?= shop_replica_h($shipping['tracking_code'] ?? '') ?>" dir="ltr"></label> <button class="btn btn-primary" type="submit">ثبت رهگیری داخلی</button></form>
+<?php elseif (!$readonly): ?><p>ثبت یا ویرایش کد برای نسخهٔ سفارش در وضعیت آماده ارسال، ارسال‌شده یا تحویل‌شده مجاز است.</p><?php endif; ?>
+<?php if (!$readonly && $shipping && $shipping['tracking_code']!==null): ?><form method="post" onsubmit="return confirm('فقط کد داخلی پاک می‌شود؛ در فروشگاه یا شرکت حمل تغییری نمی‌کند. ادامه می‌دهید؟');"><?= get_csrf_field() ?><input type="hidden" name="id" value="<?= $view ?>"><input type="hidden" name="action" value="clear_shipping"><input type="hidden" name="shipping_revision" value="<?= (int)$detail['revision'] ?>"><input type="hidden" name="shipping_version" value="<?= $shippingVersion ?>"><button class="btn" type="submit">پاک‌کردن رهگیری داخلی</button></form><?php endif; ?>
+<?php if ($shippingEvents): ?><h4>تاریخچهٔ تغییر رهگیری</h4><?php foreach ($shippingEvents as $evt): ?><p><?= $evt['action']==='clear'?'پاک‌شدن':'ثبت/ویرایش' ?> — نسخه <?= (int)$evt['version'] ?> — <?= shop_replica_h($evt['full_name'] ?: 'کاربر حذف‌شده') ?> — <?= shop_replica_h($evt['created_at']) ?></p><?php endforeach; ?><p>تاریخچه، کدهای قبلی را نگه نمی‌دارد.</p><?php endif; ?>
 <?php endif; ?></div><?php endif; ?>
 <?php if ($admin): ?><div class="card" style="padding:18px;margin-top:14px"><h3>پیگیری داخلی بررسی مرجوعی</h3>
 <p>فقط برای پیگیری مدیریتی است؛ ثبت یا بستن آن به معنی پذیرش یا دریافت کالا، تغییر سفارش، برگشت موجودی، بازپرداخت یا اطلاع‌رسانی به مشتری نیست. وضعیت و نسخهٔ فروشگاه را جداگانه بررسی کنید.</p>
