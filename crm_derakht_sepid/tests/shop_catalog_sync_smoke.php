@@ -60,6 +60,7 @@ $sender=function($body) use ($crm,$source,&$firstAttempt) {
  if ($firstAttempt) { $firstAttempt=false; return [0,null]; }
  return [200,['ok'=>true,'event_id'=>$event['event_id'],'revision'=>$event['revision'],'result'=>$result]];
 };
+$now=strtotime((string)$site->query('SELECT MAX(next_attempt_at) FROM shop_catalog_outbox')->fetchColumn())+1;
 $r=shop_catalog_pump($site,$source,$sender,$now); check($r['failed']===1 && $r['sent']===2,'lost response leaves retry pending while other products deliver');
 $r=shop_catalog_pump($site,$source,$sender,$now+61); check($r['sent']===1 && $r['failed']===0,'retry completes without overwriting newer product');
 check((int)$crm->query('SELECT COUNT(*) FROM crm_shop_catalog')->fetchColumn()===2 && (int)$crm->query('SELECT is_active FROM crm_shop_catalog WHERE shop_product_id=2')->fetchColumn()===0,'CRM retains active and inactive replicas');

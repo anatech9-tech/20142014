@@ -13,17 +13,15 @@ check(site_inquiry_validate($data)!==null,'valid payload');
 $bad=$data; $bad['event_id']='bad'; check(site_inquiry_validate($bad)===null,'invalid event');
 $bad=$data; $bad['email']="bad\r\nx"; check(site_inquiry_validate($bad)===null,'invalid email');
 $pdo=new PDO('sqlite::memory:'); $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
-$pdo->exec('CREATE TABLE crm_site_inquiries (id INTEGER PRIMARY KEY, event_id TEXT UNIQUE,payload_hash TEXT,name TEXT,email TEXT,phone TEXT,subject TEXT,message TEXT,received_at TEXT,owner_user_id INT,team_id INT)');
+$pdo->exec('CREATE TABLE crm_site_inquiries (id INTEGER PRIMARY KEY, event_id TEXT UNIQUE,payload_hash TEXT,name TEXT,email TEXT,phone TEXT,subject TEXT,message TEXT,received_at TEXT,owner_user_id INT,team_id INT,lead_id INT)');
 $v=site_inquiry_validate($data); $hash=hash('sha256',$body);
 check(site_inquiry_store($pdo,$v,$hash)==='created','created');
 check(site_inquiry_store($pdo,$v,$hash)==='duplicate','retry deduplicated');
 check(site_inquiry_store($pdo,$v,hash('sha256',$body.'x'))==='conflict','event reuse rejected');
 check((int)$pdo->query('SELECT COUNT(*) FROM crm_site_inquiries')->fetchColumn()===1,'single record');
 $pdo->exec("INSERT INTO crm_site_inquiries(event_id,owner_user_id,team_id) VALUES ('b',2,10),('c',3,20),('d',4,10)");
-$src=file_get_contents(__DIR__.'/../pages/site_inquiries.php');
-$begin=strpos($src,"\$scope='i.owner_user_id=?'"); $end=strpos($src,'if (!ensure_site_inquiries', $begin);
-$scopeCode=substr($src,$begin,$end-$begin);
-function scope_test($me,$admin,$managed,$expected,$label) { global $pdo,$scopeCode; eval($scopeCode); $st=$pdo->prepare("SELECT i.event_id FROM crm_site_inquiries i WHERE $scope ORDER BY i.event_id"); $st->execute($scopeParams); check($st->fetchAll(PDO::FETCH_COLUMN)===$expected,$label); }
+$pdo->exec('CREATE TABLE crm_leads (id INTEGER PRIMARY KEY,owner_user_id INTEGER,team_id INTEGER)');
+function scope_test($me,$admin,$managed,$expected,$label) { global $pdo; [$scope,$scopeParams]=site_inquiry_scope($me,$admin,$managed); $st=$pdo->prepare("SELECT i.event_id FROM crm_site_inquiries i WHERE $scope ORDER BY i.event_id"); $st->execute($scopeParams); check($st->fetchAll(PDO::FETCH_COLUMN)===$expected,$label); }
 scope_test(2,false,[],['b'],'expert own only');
 scope_test(2,false,[10],['b','d'],'manager team only');
 scope_test(3,false,[20],['c'],'other team isolated');
