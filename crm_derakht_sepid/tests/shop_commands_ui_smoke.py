@@ -22,7 +22,7 @@ function require_login(){} function is_strict_admin(){return !in_array(($GLOBALS
 function is_nazer_kol(){return in_array(($GLOBALS['case'] ?? ''),['readonly','shipping_readonly','post_shipping_readonly'],true);} function access_is_special_account(){return true;} function access_mode($k){return 'editor';}
 function to_jalali($x){return $x;} function showToast($x,$y=''){} function redirect($x){exit;} function operations_audit(...$x){} function get_csrf_field(){return '<input name="csrf_token" value="test">';}
 define('SHOP_CRM_COMMAND_ENABLED',true); define('SHOP_CRM_COMMAND_KEY',str_repeat('k',32)); define('SHOP_CRM_SOURCE_ID',str_repeat('a',32)); define('SHOP_CRM_COMMAND_URL','https://example.test/api');
-$_SESSION=['user_id'=>1]; $_GET=['view'=>1]; $_SERVER['REQUEST_METHOD']='GET'; $case=$argv[1] ?? ''; if ($case==='return_list') $_GET=[]; if (in_array($case,['cancel_enabled','cancel_paid','cancel_queued','cancel_post_no_ack','cancel_post_one','cancel_post_both'],true)) define('SHOP_CRM_CANCEL_ENABLED',true);
+$_SESSION=['user_id'=>1]; $_GET=['view'=>1]; $_SERVER['REQUEST_METHOD']='GET'; $case=$argv[1] ?? ''; if (in_array($case,['return_list','return_mismatch_list'],true)) $_GET=[]; if (in_array($case,['cancel_enabled','cancel_paid','cancel_queued','cancel_post_no_ack','cancel_post_one','cancel_post_both'],true)) define('SHOP_CRM_CANCEL_ENABLED',true);
 class UITestPDO extends PDO { public function prepare(string $sql,array $options=[]): PDOStatement|false { return parent::prepare(str_replace(' FOR UPDATE','',$sql),$options); }}
 $pdo=new UITestPDO('sqlite::memory:'); $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION); $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE,PDO::FETCH_ASSOC);
 foreach ([
@@ -40,10 +40,11 @@ foreach ([
  'CREATE TABLE crm_shop_order_commands(command_id TEXT PRIMARY KEY,request_id INTEGER,replica_id INTEGER,actor_id INTEGER,payload TEXT,state TEXT,attempts INTEGER,next_attempt_at TEXT,created_at TEXT,completed_at TEXT)'
 ] as $q) $pdo->exec($q);
 $pdo->exec("INSERT INTO users VALUES(1,'active','admin',NULL,'admin','Admin')");
-$order=['id'=>1,'order_no'=>'<order>','order_status'=>(in_array(($argv[1] ?? ''),['return_new','return_open','return_list','readonly','viewer','shipping_new','shipping_existing','shipping_stale','shipping_mismatch','shipping_readonly','shipping_viewer','post_shipping','post_shipping_readonly','post_shipping_viewer','cancel_enabled','cancel_paid','cancel_queued','cancel_disabled','cancel_post_no_ack','cancel_post_one','cancel_post_both']) ? 'shipped' : 'pending'),'payment_status'=>'pending','order_event_id'=>1,'created_at'=>'2025-01-01 10:00:00','items'=>[]];
+$order=['id'=>1,'order_no'=>'<order>','order_status'=>(in_array(($argv[1] ?? ''),['return_new','return_open','return_list','return_mismatch','return_mismatch_list','return_mismatch_post','readonly','viewer','shipping_new','shipping_existing','shipping_stale','shipping_mismatch','shipping_readonly','shipping_viewer','post_shipping','post_shipping_readonly','post_shipping_viewer','cancel_enabled','cancel_paid','cancel_queued','cancel_disabled','cancel_post_no_ack','cancel_post_one','cancel_post_both']) ? 'shipped' : 'pending'),'payment_status'=>'pending','order_event_id'=>1,'created_at'=>'2025-01-01 10:00:00','items'=>[]];
 $st=$pdo->prepare('INSERT INTO crm_shop_orders VALUES(1,?,1,1,?,?)'); $st->execute([str_repeat('a',32),json_encode($order),'2025-01-01 10:00:00']);
 $pdo->prepare("INSERT INTO crm_shop_status_requests VALUES(1,1,?,1,1,'pending','pending','confirmed','open',1,'2025-01-01 10:00:00',NULL,NULL)")->execute([str_repeat('a',32)]);
-if (in_array(($argv[1] ?? ''),['return_open','return_list','readonly','viewer'],true)) $pdo->prepare("INSERT INTO crm_shop_return_requests VALUES(1,1,?,1,1,'shipped','damaged','open',1,'2025-01-01',NULL,NULL)")->execute([str_repeat('a',32)]);
+if (in_array(($argv[1] ?? ''),['return_open','return_list','return_mismatch','return_mismatch_list','return_mismatch_post','readonly','viewer'],true)) $pdo->prepare("INSERT INTO crm_shop_return_requests VALUES(1,1,?,1,1,'shipped','damaged','open',1,'2025-01-01',NULL,NULL)")->execute([str_repeat(str_starts_with($case,'return_mismatch')?'b':'a',32)]);
+if ($case==='return_mismatch_post') { $_SERVER['REQUEST_METHOD']='POST'; $_POST=['id'=>'1','action'=>'close_return','return_number'=>'1']; register_shutdown_function(function() use ($pdo) { echo 'RETURN_RESULT:'.$pdo->query('SELECT state FROM crm_shop_return_requests')->fetchColumn().':'.$pdo->query('SELECT COUNT(*) FROM crm_shop_return_request_events')->fetchColumn(); }); }
 if (in_array($case,['cancel_enabled','cancel_paid','cancel_queued','cancel_disabled','cancel_post_no_ack','cancel_post_one','cancel_post_both'],true)) {
  $pay=$case==='cancel_paid'?'paid':'pending';
  $pdo->prepare("UPDATE crm_shop_status_requests SET expected_status='packed',expected_payment=?,requested_status='cancelled' WHERE id=1")->execute([$pay]);
@@ -68,7 +69,7 @@ include __DIR__.'/pages/shop_orders.php';
 ''')
     def run(case):
         r=subprocess.run([php,str(app/'run.php'),case],cwd=app,capture_output=True,text=True,check=True)
-        assert 'Fatal error' not in r.stdout+r.stderr, r.stdout+r.stderr
+        assert 'Fatal error' not in r.stdout+r.stderr and 'Parse error' not in r.stdout+r.stderr, r.stdout+r.stderr
         return r.stdout
     available=run('available')
     assert '&lt;order&gt;' in available and '<order>' not in available
@@ -80,6 +81,9 @@ include __DIR__.'/pages/shop_orders.php';
     opened=run('return_open'); assert 'بستن پیگیری مرجوعی</button>' in opened and 'ثبت درخواست بررسی مرجوعی</button>' not in opened
     assert 'csrf_token' in new
     listed=run('return_list'); assert 'پیگیری‌های باز بررسی مرجوعی' in listed and '&lt;order&gt;' in listed
+    mismatch=run('return_mismatch'); assert 'هویت پیگیری مرجوعی با سفارش فعلی ناسازگار است' in mismatch and 'بستن پیگیری مرجوعی</button>' not in mismatch and 'ثبت درخواست بررسی مرجوعی</button>' not in mismatch and 'آسیب‌دیدگی یا نقص' not in mismatch
+    mismatch_list=run('return_mismatch_list'); assert 'یک پیگیری باز با هویت ناسازگار یافت شد' in mismatch_list and '&lt;order&gt;' not in mismatch_list.split('پیگیری‌های باز بررسی مرجوعی',1)[1].split('</div>',1)[0]
+    assert 'RETURN_RESULT:open:0' in run('return_mismatch_post')
     readonly=run('readonly'); assert 'بستن پیگیری مرجوعی</button>' not in readonly and 'پیگیری داخلی بررسی مرجوعی' in readonly
     viewer=run('viewer'); assert 'پیگیری داخلی بررسی مرجوعی' not in viewer and 'بستن پیگیری مرجوعی</button>' not in viewer
     shipnew=run('shipping_new'); assert 'ثبت رهگیری داخلی</button>' in shipnew and 'csrf_token' in shipnew and 'اثبات ارسال یا تحویل نیست' in shipnew

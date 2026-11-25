@@ -25,9 +25,19 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
 $h=static fn($v)=>htmlspecialchars((string)($v ?? ''),ENT_QUOTES | ENT_SUBSTITUTE,'UTF-8');
 $q=mb_substr(trim((string)($_GET['q'] ?? '')),0,100); $active=(string)($_GET['active'] ?? 'all');
 if (!in_array($active,['all','active','inactive'],true)) $active='all';
+// Categories are inferred from product snapshots, not an authoritative category replica.
+$categorySource=(string)($_GET['category_source'] ?? ''); $categoryInput=(string)($_GET['category_id'] ?? '');
+$categoryFilter=preg_match('/^[a-f0-9]{32}$/D',$categorySource)===1 && preg_match('/^[1-9][0-9]{0,17}$/D',$categoryInput)===1;
+if (!$categoryFilter) { $categorySource=''; $categoryInput=''; }
 $where=['1=1']; $args=[];
 if ($q!=='') { $where[]='(name_fa LIKE ? OR sku LIKE ?)'; $args[]='%'.$q.'%'; $args[]='%'.$q.'%'; }
 if ($active!=='all') { $where[]='is_active=?'; $args[]=$active==='active'?1:0; }
+if ($categoryFilter) {
+    // CASE prevents malformed historical JSON from aborting the entire page.
+    $categoryType=$pdo->getAttribute(PDO::ATTR_DRIVER_NAME)==='sqlite' ? "JSON_TYPE(payload, '$.category_id')" : "JSON_TYPE(JSON_EXTRACT(payload, '$.category_id'))";
+    $where[]="source_id=? AND CASE WHEN JSON_VALID(payload) THEN CASE WHEN LOWER($categoryType)='integer' THEN CAST(JSON_EXTRACT(payload, '$.category_id') AS SIGNED) ELSE NULL END ELSE NULL END = CAST(? AS SIGNED)";
+    $args[]=$categorySource; $args[]=(int)$categoryInput;
+}
 $items=[]; $page=1; $pages=1; $total=0; $selected=null; $currentLink=null; $options=[];
 $mapId=max(0,(int)($_GET['map_id'] ?? 0)); $productSearch=mb_substr(trim((string)($_GET['product_search'] ?? '')),0,100);
 if ($ready) {
@@ -52,15 +62,16 @@ include 'includes/header.php';
 <?php if (!$ready): ?><div class="card" style="padding:16px">جدول کاتالوگ آماده نیست؛ مجوز دیتابیس را بررسی کنید.</div><?php else: ?>
 <div class="card" style="padding:16px">
 <?php if (!crm_shop_catalog_configured()): ?><p><strong>همگام‌سازی کاتالوگ در CRM فعال یا پیکربندی نشده است؛ نبود کالا در فهرست به معنی خالی بودن فروشگاه نیست.</strong></p><?php endif; ?>
-<p>حذف کالا از فروشگاه فعلاً به این فهرست منتقل نمی‌شود و باید دستی تطبیق شود. تصاویر، توضیحات کامل و نرخ تبدیل ارز در این نسخه منتقل نمی‌شوند.</p>
-<form method="get"><input type="hidden" name="page" value="shop_catalog"><label>نام یا کد کالا <input name="q" maxlength="100" value="<?= $h($q) ?>"></label> <label>وضعیت <select name="active"><option value="all" <?= $active==='all'?'selected':'' ?>>همه</option><option value="active" <?= $active==='active'?'selected':'' ?>>فعال</option><option value="inactive" <?= $active==='inactive'?'selected':'' ?>>غیرفعال</option></select></label> <button class="btn" type="submit">جست‌وجو</button></form>
+<p>حذف کالا از فروشگاه فعلاً به این فهرست منتقل نمی‌شود و باید دستی تطبیق شود. تصاویر، توضیحات کامل و نرخ تبدیل ارز در این نسخه منتقل نمی‌شوند. فیلتر دسته فقط بر اساس تصویر دریافتی کالاهاست؛ دسته‌های خالی یا حذف‌شده را نشان نمی‌دهد و مدیریت دسته نیست.</p>
+<?php if ($categoryFilter): ?><p>فیلتر دستهٔ فروشگاه: <?= $h($categoryInput) ?>، منبع <?= $h(substr($categorySource,0,8)) ?>… <a href="index.php?<?= $h(http_build_query(['page'=>'shop_catalog','q'=>$q,'active'=>$active])) ?>">حذف فیلتر دسته</a></p><?php endif; ?>
+<form method="get"><input type="hidden" name="page" value="shop_catalog"><?php if ($categoryFilter): ?><input type="hidden" name="category_source" value="<?= $h($categorySource) ?>"><input type="hidden" name="category_id" value="<?= $h($categoryInput) ?>"><?php endif; ?><label>نام یا کد کالا <input name="q" maxlength="100" value="<?= $h($q) ?>"></label> <label>وضعیت <select name="active"><option value="all" <?= $active==='all'?'selected':'' ?>>همه</option><option value="active" <?= $active==='active'?'selected':'' ?>>فعال</option><option value="inactive" <?= $active==='inactive'?'selected':'' ?>>غیرفعال</option></select></label> <button class="btn" type="submit">جست‌وجو</button></form>
 <div style="overflow-x:auto;margin-top:16px"><table class="data-table"><thead><tr><th>شناسه فروشگاه</th><th>کالا / کد</th><th>دسته</th><th>قیمت پایه ثبت‌شده</th><th>موجودی ثبت‌شده</th><th>نمایش</th><th>آخرین دریافت</th><th>اتصال به بانک کالا</th></tr></thead><tbody>
 <?php foreach ($items as $r): $p=json_decode((string)$r['payload'],true); if (!is_array($p)) continue; $price=($p['currency'] ?? '')==='usd' ? ($p['price_usd'] ?? null) : ($p['price_toman'] ?? null); ?>
-<tr><td><?= (int)$r['shop_product_id'] ?><br><small>منبع: <?= $h(substr((string)$r['source_id'],0,8)) ?>…</small></td><td><?= $h($p['name_fa'] ?? '') ?><br><small><?= $h($p['sku'] ?: 'بدون کد') ?><?= !empty($p['brand'])?' — '.$h($p['brand']):'' ?></small></td><td><?= $h($p['category_name'] ?? 'بدون دسته') ?></td><td><?= $price===null ? 'ثبت نشده' : $h($price).' '.(($p['currency'] ?? '')==='usd'?'دلار':'تومان') ?></td><td><?= (int)($p['stock'] ?? 0) ?></td><td><?= (int)$r['is_active']===1?'فعال':'غیرفعال' ?></td><td><?= $h($r['received_at']) ?></td><td><?php if ($mappingReady): ?><a class="btn" href="index.php?page=shop_catalog&amp;map_id=<?= (int)$r['id'] ?>">بررسی اتصال</a><?php else: ?>در دسترس نیست<?php endif; ?></td></tr>
+<tr><td><?= (int)$r['shop_product_id'] ?><br><small>منبع: <?= $h(substr((string)$r['source_id'],0,8)) ?>…</small></td><td><?= $h($p['name_fa'] ?? '') ?><br><small><?= $h($p['sku'] ?: 'بدون کد') ?><?= !empty($p['brand'])?' — '.$h($p['brand']):'' ?></small></td><td><?php if (is_int($p['category_id'] ?? null) && $p['category_id']>0 && preg_match('/^[a-f0-9]{32}$/D',(string)$r['source_id'])): ?><a href="index.php?<?= $h(http_build_query(['page'=>'shop_catalog','q'=>$q,'active'=>$active,'category_source'=>$r['source_id'],'category_id'=>$p['category_id']])) ?>"><?= $h($p['category_name'] ?? 'نام دسته ثبت نشده') ?></a><?php else: ?><?= $h($p['category_name'] ?? 'بدون دسته') ?><?php endif; ?></td><td><?= $price===null ? 'ثبت نشده' : $h($price).' '.(($p['currency'] ?? '')==='usd'?'دلار':'تومان') ?></td><td><?= (int)($p['stock'] ?? 0) ?></td><td><?= (int)$r['is_active']===1?'فعال':'غیرفعال' ?></td><td><?= $h($r['received_at']) ?></td><td><?php if ($mappingReady): ?><a class="btn" href="index.php?page=shop_catalog&amp;map_id=<?= (int)$r['id'] ?>">بررسی اتصال</a><?php else: ?>در دسترس نیست<?php endif; ?></td></tr>
 <?php endforeach; ?><?php if (!$items): ?><tr><td colspan="8">کالایی در نتایج دریافت‌شده نیست.</td></tr><?php endif; ?></tbody></table></div>
 <p>صفحه <?= $page ?> از <?= $pages ?> — <?= $total ?> کالا
-<?php if ($page>1): ?><a class="btn" href="index.php?<?= $h(http_build_query(['page'=>'shop_catalog','q'=>$q,'active'=>$active,'p'=>$page-1])) ?>">قبلی</a><?php endif; ?>
-<?php if ($page<$pages): ?><a class="btn" href="index.php?<?= $h(http_build_query(['page'=>'shop_catalog','q'=>$q,'active'=>$active,'p'=>$page+1])) ?>">بعدی</a><?php endif; ?></p>
+<?php if ($page>1): ?><a class="btn" href="index.php?<?= $h(http_build_query(['page'=>'shop_catalog','q'=>$q,'active'=>$active,'category_source'=>$categorySource,'category_id'=>$categoryInput,'p'=>$page-1])) ?>">قبلی</a><?php endif; ?>
+<?php if ($page<$pages): ?><a class="btn" href="index.php?<?= $h(http_build_query(['page'=>'shop_catalog','q'=>$q,'active'=>$active,'category_source'=>$categorySource,'category_id'=>$categoryInput,'p'=>$page+1])) ?>">بعدی</a><?php endif; ?></p>
 </div>
 <?php if ($mapId && !$mappingReady): ?><div class="card" style="padding:16px;margin-top:14px">بانک کالا یا جدول اتصال آماده نیست.</div>
 <?php elseif ($mapId && !$selected): ?><div class="card" style="padding:16px;margin-top:14px">کالا در کاتالوگ دریافتی یافت نشد.</div>

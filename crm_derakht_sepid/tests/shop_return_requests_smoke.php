@@ -36,6 +36,13 @@ check($pdo->query('SELECT payload FROM crm_shop_orders')->fetchColumn()===$paylo
 denied(fn()=>shop_return_request_create($pdo,1,1,true,7,'other'),'second open request denied');
 denied(fn()=>shop_return_request_close($pdo,1,$id,2,true),'non-admin cannot close');
 denied(fn()=>shop_return_request_close($pdo,2,$id,1,true),'wrong order cannot close');
+$pdo->prepare('UPDATE crm_shop_orders SET source_id=? WHERE id=1')->execute([str_repeat('b',32)]);
+denied(fn()=>shop_return_request_close($pdo,1,$id,1,true),'changed source cannot close old ticket');
+$pdo->prepare('UPDATE crm_shop_orders SET source_id=?,shop_order_id=11 WHERE id=1')->execute([str_repeat('a',32)]);
+denied(fn()=>shop_return_request_close($pdo,1,$id,1,true),'changed order id cannot close old ticket');
+$pdo->prepare('UPDATE crm_shop_orders SET shop_order_id=10,payload=? WHERE id=1')->execute([json_encode(['id'=>11,'order_status'=>'shipped'])]);
+denied(fn()=>shop_return_request_close($pdo,1,$id,1,true),'mismatched payload cannot close ticket');
+check($pdo->query('SELECT state FROM crm_shop_return_requests')->fetchColumn()==='open' && (int)$pdo->query('SELECT COUNT(*) FROM crm_shop_return_request_events')->fetchColumn()===1,'identity failures cause no mutation or event');
 $pdo->prepare('UPDATE crm_shop_orders SET revision=8,payload=? WHERE id=1')->execute([json_encode(['id'=>10,'order_status'=>'delivered','payment_status'=>'paid'])]);
 check($pdo->query('SELECT state FROM crm_shop_return_requests')->fetchColumn()==='open','later snapshot does not auto-complete request');
 $pdo->exec("CREATE TRIGGER fail_close BEFORE INSERT ON crm_shop_return_request_events BEGIN SELECT RAISE(ABORT,'failure'); END");

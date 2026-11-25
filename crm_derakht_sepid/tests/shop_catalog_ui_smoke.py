@@ -15,6 +15,7 @@ function access_is_special_account(){return ($GLOBALS['case'] ?? '')!=='readonly
 function get_csrf_field(){return '<input name="csrf_token" value="test">';}
 $_SESSION=['user_id'=>1]; $_GET=[]; $_SERVER['REQUEST_METHOD']='GET'; $case=$argv[1] ?? '';
 if ($case==='filter') $_GET=['q'=>'special','active'=>'inactive'];
+if (in_array($case,['category','category1','category2','malformed','badparam'])) $_GET=['category_source'=>str_repeat('a',32),'category_id'=>$case==='badparam'?'1 OR 1=1':'1','p'=>$case==='category2'?2:1];
 if (in_array($case,['mapping','readonly'])) $_GET=['map_id'=>31,'product_search'=>'Target'];
 $pdo=new PDO('sqlite::memory:'); $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION); $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE,PDO::FETCH_ASSOC);
 $pdo->exec('CREATE TABLE users(id INTEGER PRIMARY KEY,status TEXT,role TEXT)');
@@ -26,20 +27,26 @@ $pdo->exec('CREATE TABLE crm_shop_catalog(id INTEGER PRIMARY KEY,source_id TEXT,
 $pdo->prepare('INSERT INTO users VALUES(1,?,?)')->execute(['active',$case==='viewer'?'user':'admin']);
 $st=$pdo->prepare('INSERT INTO crm_shop_catalog VALUES(?,?,?,?,?,?,?,?,?,?,?)');
 for ($i=1;$i<=31;$i++) {
- $p=['id'=>$i,'name_fa'=>$i===31?'<script>':'Item '.$i,'sku'=>$i===31?'special':'sku'.$i,'brand'=>'Brand','category_name'=>'Test','currency'=>'toman','price_toman'=>100,'stock'=>3];
+ $p=['id'=>$i,'name_fa'=>$i===31?'<script>':'Item '.$i,'sku'=>$i===31?'special':'sku'.$i,'brand'=>'Brand','category_id'=>1,'category_name'=>'<Test>','currency'=>'toman','price_toman'=>100,'stock'=>3];
  $st->execute([$i,str_repeat('a',32),$i,$i,str_repeat('b',32),'', $p['name_fa'],$p['sku'],$i===31?0:1,json_encode($p),'2025-01-01 12:00:00']);
 }
+if ($case==='malformed') { $pdo->exec("UPDATE crm_shop_catalog SET payload='not json' WHERE id=1"); $pdo->prepare('UPDATE crm_shop_catalog SET payload=? WHERE id=2')->execute([json_encode(['category_id'=>'bad'])]); }
+if ($case==='category') $pdo->exec("UPDATE crm_shop_catalog SET source_id='bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' WHERE id=31");
 include __DIR__.'/pages/shop_catalog.php';
 ''')
     def run(case):
         r=subprocess.run([php,str(app/'run.php'),case],cwd=app,capture_output=True,text=True,check=True)
-        assert 'Fatal error' not in r.stdout+r.stderr,r.stdout+r.stderr
+        assert 'Fatal error' not in r.stdout+r.stderr and 'Parse error' not in r.stdout+r.stderr,r.stdout+r.stderr
         return r.stdout
     html=run('all')
     assert '&lt;script&gt;' in html and '<script>' not in html and 'بعدی' in html and '۳۱' not in html # count uses Latin digits
     assert '31 کالا' in html and 'با تأخیر' in html and 'حذف کالا' in html
     filtered=run('filter'); assert 'special' in filtered and 'Item 30' not in filtered and 'غیرفعال' in filtered
+    category=run('category'); assert '30 کالا' in category and 'special' not in category and '&lt;Test&gt;' in category and 'category_source' in category
+    first=run('category1'); second=run('category2'); assert '31 کالا' in first and 'بعدی' in first and 'category_id=1' in first and 'Item 1' in second and 'قبلی' in second
+    malformed=run('malformed'); assert '29 کالا' in malformed
+    invalid=run('badparam'); assert '31 کالا' in invalid and 'فیلتر دستهٔ فروشگاه' not in invalid
     denied=run('viewer'); assert 'دسترسی مجاز نیست' in denied and 'special' not in denied
     mapping=run('mapping'); assert 'تأیید اتصال</button>' in mapping and 'Target Product' in mapping and '&lt;script&gt;' in mapping
     readonly=run('readonly'); assert 'تأیید اتصال</button>' not in readonly and 'Target Product' not in readonly
-    print('PASS catalogue page access, escaping, pagination, filtering and mapping controls')
+    print('PASS catalogue access, category/source filtering, malformed JSON, escaping, pagination and mapping controls')

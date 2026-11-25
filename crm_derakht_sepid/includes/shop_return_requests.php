@@ -72,10 +72,16 @@ function shop_return_request_close(PDO $pdo,int $replica,int $request,int $actor
     $pdo->beginTransaction();
     try {
         shop_status_request_check_admin($pdo,$actor,$admin);
-        $st=$pdo->prepare('SELECT id FROM crm_shop_orders WHERE id=? FOR UPDATE'); $st->execute([$replica]);
-        if (!$st->fetchColumn()) throw new DomainException('سفارش یافت نشد.');
-        $st=$pdo->prepare('SELECT state FROM crm_shop_return_requests WHERE id=? AND replica_id=? FOR UPDATE'); $st->execute([$request,$replica]);
-        if ($st->fetchColumn()!=='open') throw new DomainException('درخواست باز یافت نشد.');
+        $st=$pdo->prepare('SELECT source_id,shop_order_id,payload FROM crm_shop_orders WHERE id=? FOR UPDATE'); $st->execute([$replica]);
+        $order=$st->fetch(PDO::FETCH_ASSOC);
+        $st=$pdo->prepare('SELECT state,source_id,shop_order_id FROM crm_shop_return_requests WHERE id=? AND replica_id=? FOR UPDATE'); $st->execute([$request,$replica]);
+        $ticket=$st->fetch(PDO::FETCH_ASSOC);
+        $payload=$order ? json_decode((string)$order['payload'],true) : null;
+        if (!$order || !$ticket || $ticket['state']!=='open' || !preg_match('/^[a-f0-9]{32}$/D',(string)$order['source_id'])
+            || $ticket['source_id']!==$order['source_id'] || (int)$ticket['shop_order_id']!==(int)$order['shop_order_id']
+            || !is_array($payload) || !is_int($payload['id'] ?? null) || $payload['id']<=0 || $payload['id']!==(int)$order['shop_order_id']) {
+            throw new DomainException('درخواست باز یا هویت سفارش معتبر نیست؛ تطبیق دستی لازم است.');
+        }
         $now=date('Y-m-d H:i:s');
         $st=$pdo->prepare("UPDATE crm_shop_return_requests SET state='closed',closed_by=?,closed_at=? WHERE id=? AND replica_id=? AND state='open'");
         $st->execute([$actor,$now,$request,$replica]);
