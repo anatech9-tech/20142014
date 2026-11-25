@@ -23,6 +23,10 @@ check(ids($pdo,1,true,[])===[1,2,3,4,5,6,7],'admin sees all including missing le
 check(ids($pdo,2,false,[])===[1,2],'old owner loses access after lead reassignment or deletion');
 check(ids($pdo,3,false,[])===[],'new lead owner waits for explicit inbox reconciliation');
 check(ids($pdo,7,false,[10])===[1,2,7],'team manager sees only intersection of both scopes');
+check(site_inquiry_lead_links($pdo,[10,11,99],2,false,[])===[10=>2],'lead links include only in-scope inbox rows');
+check(site_inquiry_lead_links($pdo,[10,11,99],3,false,[])===[],'new lead owner gets no link before reconciliation');
+check(site_inquiry_lead_links($pdo,[10,11,99],1,true,[])===[99=>4,11=>3,10=>2],'admin can link even to an orphan for investigation');
+check(site_inquiry_lead_links($pdo,range(1,301),1,true,[])===[],'lead link query is bounded');
 foreach ([[2,false,[]],[3,false,[]],[7,false,[10]],[1,true,[]]] as [$me,$admin,$teams]) {
  $actual=ids($pdo,$me,$admin,$teams); $expected=[];
  foreach ($pdo->query('SELECT * FROM crm_site_inquiries ORDER BY id')->fetchAll(PDO::FETCH_ASSOC) as $row) {
@@ -49,6 +53,7 @@ try { site_inquiry_reconcile($pdo,3,1,true,11,3,20); check(false,'audit failure'
 check((int)$pdo->query('SELECT owner_user_id FROM crm_site_inquiries WHERE id=3')->fetchColumn()===2,'audit failure rolls back reassignment');
 $pdo->exec('DROP TRIGGER fail_audit'); site_inquiry_reconcile($pdo,3,1,true,11,3,20);
 check(ids($pdo,2,false,[])===[1,2] && ids($pdo,3,false,[])===[3],'manual admin reconciliation transfers access');
+check(site_inquiry_lead_links($pdo,[11],3,false,[])===[11=>3] && site_inquiry_lead_links($pdo,[11],2,false,[])===[],'lead link follows manual reconciliation');
 $event=$pdo->query('SELECT * FROM crm_site_inquiry_owner_events')->fetch(PDO::FETCH_ASSOC);
 check((int)$event['old_owner']===2 && (int)$event['new_owner']===3 && (int)$event['lead_id']===11,'identity reconciliation recorded atomically');
 denied(fn()=>site_inquiry_reconcile($pdo,3,1,true,11,3,20),'unchanged reconciliation denied');

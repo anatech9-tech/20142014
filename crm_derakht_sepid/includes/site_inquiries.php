@@ -115,3 +115,17 @@ function site_inquiry_reconcile(PDO $pdo,int $id,int $actor,bool $admin,int $exp
         $pdo->commit();
     } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
 }
+
+/** Return only links to inquiries visible under inbox scope; never return message contents. */
+function site_inquiry_lead_links(PDO $pdo,array $leadIds,int $me,bool $admin,array $managed): array {
+    $ids=array_values(array_unique(array_filter(array_map('intval',$leadIds),static fn($id)=>$id>0)));
+    if (!$ids || count($ids)>300) return [];
+    [$scope,$args]=site_inquiry_scope($me,$admin,$managed);
+    $ph=implode(',',array_fill(0,count($ids),'?'));
+    $st=$pdo->prepare("SELECT i.id,i.lead_id FROM crm_site_inquiries i WHERE i.lead_id IN ($ph) AND ($scope) ORDER BY i.id DESC LIMIT 300");
+    $st->execute(array_merge($ids,$args)); $links=[];
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $lead=(int)$row['lead_id']; if (!isset($links[$lead])) $links[$lead]=(int)$row['id'];
+    }
+    return $links;
+}

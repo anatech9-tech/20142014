@@ -68,7 +68,8 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
         } elseif ($action==='lead') {
             if (empty($row['owner_user_id'])) throw new DomainException('ابتدا مسئول درخواست را مشخص کنید.');
             if (!empty($row['lead_id'])) throw new DomainException('برای این درخواست قبلاً سرنخ ساخته شده است.');
-            $notes="ایمیل: ".$row['email']."\nموضوع: ".$row['subject']."\n\n".$row['message']."\nشناسه درخواست سایت: ".$id;
+            // Do not duplicate message, subject or email into the broader lead/customer scope.
+            $notes='درخواست سایت #'.$id.' — متن و ایمیل در صندوق درخواست‌های سایت، مطابق مجوز صندوق قابل مشاهده است.';
             $pdo->prepare("INSERT INTO crm_leads (name,company,phone,mobile,source,product_interest,notes,status,owner_user_id,team_id,created_by) VALUES (?, '', ?, '', 'فرم سایت', '', ?, 'new', ?, ?, ?)")
                 ->execute([$row['name'],$row['phone'],$notes,$row['owner_user_id'],$row['team_id'],$me]);
             $lead=(int)$pdo->lastInsertId();
@@ -84,12 +85,20 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     }
     redirect('index.php?page=site_inquiries');
 }
-$st=$pdo->prepare("SELECT i.*,u.full_name AS owner_name,t.name AS team_name,l.id AS actual_lead_id,l.name AS actual_lead_name,l.owner_user_id AS lead_owner_id,l.team_id AS lead_team_id,lu.full_name AS lead_owner_name,lt.name AS lead_team_name FROM crm_site_inquiries i LEFT JOIN users u ON u.id=i.owner_user_id LEFT JOIN teams t ON t.id=i.team_id LEFT JOIN crm_leads l ON l.id=i.lead_id LEFT JOIN users lu ON lu.id=l.owner_user_id LEFT JOIN teams lt ON lt.id=l.team_id WHERE $scope ORDER BY i.id DESC LIMIT 200");
-$st->execute($scopeParams); $rows=$st->fetchAll();
+$view=0;
+if (isset($_GET['view'])) {
+    $rawView=$_GET['view'];
+    if (!is_string($rawView) || !preg_match('/^[1-9][0-9]{0,17}$/D',$rawView)) { http_response_code(400); echo 'شناسه درخواست نامعتبر است.'; return; }
+    $view=(int)$rawView;
+}
+$viewCondition=$view>0 ? ' AND i.id=?' : '';
+$st=$pdo->prepare("SELECT i.*,u.full_name AS owner_name,t.name AS team_name,l.id AS actual_lead_id,l.name AS actual_lead_name,l.owner_user_id AS lead_owner_id,l.team_id AS lead_team_id,lu.full_name AS lead_owner_name,lt.name AS lead_team_name FROM crm_site_inquiries i LEFT JOIN users u ON u.id=i.owner_user_id LEFT JOIN teams t ON t.id=i.team_id LEFT JOIN crm_leads l ON l.id=i.lead_id LEFT JOIN users lu ON lu.id=l.owner_user_id LEFT JOIN teams lt ON lt.id=l.team_id WHERE ($scope)$viewCondition ORDER BY i.id DESC LIMIT 200");
+$st->execute($view>0 ? array_merge($scopeParams,[$view]) : $scopeParams); $rows=$st->fetchAll();
 function inquiry_h($value): string { return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 include 'includes/header.php';
 ?>
-<div class="page-header"><h1>درخواست‌های سایت</h1><p>درخواست بدون مسئول فقط برای مدیر کل قابل مشاهده است. پس از ساخت سرنخ، دسترسی غیرمدیر باید هم در ارجاع صندوق و هم در ارجاع فعلی سرنخ مجاز باشد. تغییر مسئول سرنخ، صندوق را خودکار جابه‌جا نمی‌کند. ایجاد سرنخ، مشتری تکراری را خودکار تشخیص نمی‌دهد؛ متن پیام در یادداشت سرنخ کپی می‌شود و مجوز سرنخ و مشتری ممکن است از صندوق گسترده‌تر باشد.</p></div>
+<div class="page-header"><h1>درخواست‌های سایت</h1><p>درخواست بدون مسئول فقط برای مدیر کل قابل مشاهده است. پس از ساخت سرنخ، دسترسی غیرمدیر باید هم در ارجاع صندوق و هم در ارجاع فعلی سرنخ مجاز باشد. تغییر مسئول سرنخ، صندوق را خودکار جابه‌جا نمی‌کند. در سرنخ‌های جدید، متن، موضوع و ایمیل پیام کپی نمی‌شوند؛ نام و تلفن در سرنخ ثبت می‌شوند و ممکن است مجوز گسترده‌تری داشته باشند. نسخه‌های قدیمی و یادداشت‌های دستی تغییر نمی‌کنند. ایجاد سرنخ، مشتری تکراری را خودکار تشخیص نمی‌دهد.</p></div>
+<?php if ($view): ?><p><a href="index.php?page=site_inquiries">بازگشت به فهرست صندوق</a></p><?php endif; ?>
 <?php if (!$rows): ?><div class="card">درخواستی در محدودهٔ دسترسی شما وجود ندارد.</div><?php endif; ?>
 <?php foreach ($rows as $row): ?>
 <div class="card" style="padding:18px;margin-bottom:16px;overflow-wrap:anywhere">
@@ -108,7 +117,7 @@ include 'includes/header.php';
  <?php endif; ?>
  <?php if (!$readonly && !empty($row['owner_user_id']) && (empty($row['lead_id']) || !empty($row['actual_lead_id']))): ?>
  <form method="post" style="display:inline"><?= get_csrf_field() ?><input type="hidden" name="id" value="<?= (int)$row['id'] ?>"><input type="hidden" name="action" value="status"><input type="hidden" name="status" value="<?= $row['status']==='done'?'assigned':'done' ?>"><button class="btn" type="submit"><?= $row['status']==='done'?'بازگشت به پیگیری':'ثبت پاسخ‌داده‌شده' ?></button></form>
- <?php if (empty($row['lead_id'])): ?><form method="post" style="display:inline" onsubmit="return confirm('متن پیام در یادداشت سرنخ کپی می‌شود و دسترسی آن ممکن است گسترده‌تر باشد. مشتریان و مجوزها را بررسی کرده‌اید؟');"><?= get_csrf_field() ?><input type="hidden" name="id" value="<?= (int)$row['id'] ?>"><input type="hidden" name="action" value="lead"><button class="btn" type="submit">ساخت سرنخ</button></form>
+ <?php if (empty($row['lead_id'])): ?><form method="post" style="display:inline" onsubmit="return confirm('نام و تلفن در سرنخ ثبت می‌شوند و ممکن است دسترسی گسترده‌تری داشته باشند؛ متن و ایمیل در صندوق می‌مانند. مشتریان و مجوزها را بررسی کرده‌اید؟');"><?= get_csrf_field() ?><input type="hidden" name="id" value="<?= (int)$row['id'] ?>"><input type="hidden" name="action" value="lead"><button class="btn" type="submit">ساخت سرنخ</button></form>
  <?php else: ?><span>سرنخ #<?= (int)$row['lead_id'] ?> (ارجاع صندوق پس از ساخت سرنخ قفل است)</span><?php endif; ?>
  <?php endif; ?>
 </div>

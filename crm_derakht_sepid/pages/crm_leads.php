@@ -142,6 +142,16 @@ $st = $pdo->prepare("SELECT l.*, u.full_name AS owner_name, t.name AS team_name 
 $st->execute($params);
 $leads = $st->fetchAll();
 
+// Links never grant access; the inbox rechecks its own narrower scope on every request.
+$inquiryLinks=[];
+try {
+    require_once __DIR__.'/../includes/site_inquiries.php';
+    $st=$pdo->prepare('SELECT status,role FROM users WHERE id=?'); $st->execute([$me]); $inboxActor=$st->fetch(PDO::FETCH_ASSOC);
+    if ($inboxActor && $inboxActor['status']==='active' && $inboxActor['role']!=='karfarma' && !access_is_special_account()) {
+        $inquiryLinks=site_inquiry_lead_links($pdo,array_column($leads,'id'),$me,is_strict_admin() && $inboxActor['role']==='admin',$managed);
+    }
+} catch (Throwable $e) { error_log('Site inquiry links unavailable'); }
+
 $editId = (int)($_GET['edit'] ?? 0);
 $editLead = null;
 if ($editId > 0) {
@@ -227,7 +237,7 @@ include 'includes/header.php';
             <td><?= (int)$row['id'] ?></td>
             <td><strong><?= htmlspecialchars($row['name']) ?></strong><?php if ($row['company']): ?><br><span class="text-muted" style="font-size:11px"><?= htmlspecialchars($row['company']) ?></span><?php endif; ?></td>
             <td dir="ltr"><?= htmlspecialchars($row['mobile'] ?: $row['phone'] ?: '—') ?><?php if (!empty($row['mobile']) || !empty($row['phone'])): ?><button type="button" class="icon-btn" style="vertical-align:middle" title="تماس" onclick="wttpCall(<?= js_arg($row['mobile'] ?: $row['phone']) ?>, 0, <?= (int)$row['id'] ?>)"><i data-lucide="phone"></i></button><?php endif; ?></td>
-            <td><?= htmlspecialchars($row['source'] ?: '—') ?></td>
+            <td><?= htmlspecialchars($row['source'] ?: '—') ?><?php if (!empty($inquiryLinks[(int)$row['id']])): ?><br><a href="index.php?page=site_inquiries&amp;view=<?= (int)$inquiryLinks[(int)$row['id']] ?>">مشاهده درخواست سایت</a><?php endif; ?></td>
             <td style="max-width:180px"><?= htmlspecialchars($row['product_interest'] ?: '—') ?></td>
             <td><?= htmlspecialchars($row['owner_name'] ?? '—') ?></td>
             <td>
