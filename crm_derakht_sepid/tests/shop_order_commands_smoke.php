@@ -24,12 +24,12 @@ check(shop_command_signature_valid($key,(string)$now,$sig,'body',$now),'valid si
 check(!shop_command_signature_valid($key,(string)$now,$sig,'body altered',$now) && !shop_command_signature_valid($key,(string)$now,$sig,'body',$now+301) && !shop_command_signature_valid(str_repeat('b',32),(string)$now,$sig,'body',$now),'modified payload, expired signature, wrong key rejected');
 $site=new CommandTestPDO('sqlite::memory:'); $site->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
 foreach ([
- 'CREATE TABLE orders(id INTEGER PRIMARY KEY,order_no TEXT,customer_id INTEGER,customer_name TEXT,customer_phone TEXT,customer_email TEXT,subtotal_toman INTEGER,discount_toman INTEGER,shipping_fee INTEGER,total_toman INTEGER,order_status TEXT,payment_status TEXT,created_at TEXT,status_note TEXT)',
+ 'CREATE TABLE orders(id INTEGER PRIMARY KEY,order_no TEXT,customer_id INTEGER,customer_name TEXT,customer_phone TEXT,customer_email TEXT,subtotal_toman INTEGER,discount_toman INTEGER,shipping_fee INTEGER,total_toman INTEGER,order_status TEXT,payment_status TEXT,created_at TEXT,status_note TEXT,coupon_code TEXT)',
  'CREATE TABLE order_items(id INTEGER PRIMARY KEY,order_id INTEGER,product_id INTEGER,product_name TEXT,qty INTEGER,price_toman INTEGER,total_toman INTEGER)',
  'CREATE TABLE order_events(id INTEGER PRIMARY KEY AUTOINCREMENT,order_id INTEGER,status TEXT,note TEXT)',
  'CREATE TABLE shop_crm_command_receipts(command_id TEXT PRIMARY KEY,request_hash TEXT,shop_order_id INTEGER,result TEXT,created_at TEXT,completed_at TEXT)'
 ] as $sql) $site->exec($sql);
-$site->exec("INSERT INTO orders VALUES(1,'W-1',NULL,'Test','09120000000','',100,0,0,100,'pending','pending','2025-01-01 10:00:00','')");
+$site->exec("INSERT INTO orders VALUES(1,'W-1',NULL,'Test','09120000000','',100,0,0,100,'pending','pending','2025-01-01 10:00:00','',NULL)");
 $site->exec("INSERT INTO order_items VALUES(1,1,7,'Item',1,100,100); INSERT INTO order_events VALUES(1,1,'pending','initial')");
 function snapshot(PDO $pdo): array {
     $o=$pdo->query('SELECT * FROM orders WHERE id=1')->fetch(PDO::FETCH_ASSOC);

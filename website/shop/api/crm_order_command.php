@@ -16,7 +16,7 @@ require_once __DIR__.'/../../config.php';
 require_once BASE_PATH.'/includes/db.php';
 require_once BASE_PATH.'/includes/shop/CrmOrderSync.php';
 try {
-    $pdo=DB::pdo(); shop_command_ensure($pdo); shop_command_require_innodb($pdo);
+    $pdo=DB::pdo(); shop_command_ensure($pdo); shop_command_require_innodb($pdo,$data['type']==='shop_cancel_v1');
     $result=shop_command_apply($pdo,$data,(string)SHOP_CRM_SOURCE_ID,time());
     echo json_encode(['ok'=>true,'command_id'=>$data['command_id'],'result'=>$result]);
 } catch (DomainException $e) { http_response_code(409); echo '{"ok":false,"error":"command_conflict"}'; }

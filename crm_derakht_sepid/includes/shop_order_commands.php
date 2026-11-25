@@ -1,5 +1,5 @@
 <?php
-/** Explicitly approved, opt-in, at-least-once commands; never payment or cancellation. */
+/** Explicitly approved commands; restricted cancellation has an independent opt-in. */
 function crm_shop_command_configured(): bool {
     if (!defined('SHOP_CRM_COMMAND_ENABLED') || SHOP_CRM_COMMAND_ENABLED !== true
         || !defined('SHOP_CRM_COMMAND_KEY') || strlen((string)SHOP_CRM_COMMAND_KEY)<32
@@ -11,6 +11,7 @@ function crm_shop_command_configured(): bool {
     }
     return true;
 }
+function crm_shop_cancel_enabled(): bool { return defined('SHOP_CRM_CANCEL_ENABLED') && SHOP_CRM_CANCEL_ENABLED===true; }
 function crm_shop_command_schema(): string {
     return "CREATE TABLE IF NOT EXISTS crm_shop_order_commands (
         command_id CHAR(32) NOT NULL PRIMARY KEY, request_id BIGINT UNSIGNED NOT NULL,
@@ -33,7 +34,7 @@ function crm_shop_command_require_innodb(PDO $pdo): void {
     }
 }
 /** Call only after csrf and strict administrator checks. No network call in this transaction. */
-function crm_shop_command_enqueue(PDO $pdo,int $replica,int $request,int $actor,bool $strictAdmin,int $now,string $source): string {
+function crm_shop_command_enqueue(PDO $pdo,int $replica,int $request,int $actor,bool $strictAdmin,int $now,string $source,bool $cancelConfirmed=false): string {
     if (!crm_shop_command_configured() || $source!==(string)SHOP_CRM_SOURCE_ID || $replica<=0 || $request<=0 || $now<=0) throw new DomainException('فرمان غیرفعال یا نامعتبر است.');
     if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME)==='mysql') crm_shop_command_require_innodb($pdo);
     $pdo->beginTransaction();
@@ -43,15 +44,17 @@ function crm_shop_command_enqueue(PDO $pdo,int $replica,int $request,int $actor,
         $st=$pdo->prepare('SELECT * FROM crm_shop_status_requests WHERE id=? AND replica_id=? FOR UPDATE'); $st->execute([$request,$replica]); $r=$st->fetch(PDO::FETCH_ASSOC);
         if (!$row || !$r || $r['state']!=='open' || $source!==$row['source_id'] || $source!==$r['source_id'] || (int)$row['shop_order_id']!==(int)$r['shop_order_id'] || (int)$row['revision']!==(int)$r['replica_revision']) throw new DomainException('درخواست یا نسخهٔ سفارش تغییر کرده است؛ صفحه را دوباره بارگذاری کنید.');
         $o=json_decode((string)$row['payload'],true);
+        $normal=($r['expected_status']==='pending' && $r['requested_status']==='confirmed') || ($r['expected_status']==='confirmed' && $r['requested_status']==='packed');
+        $cancel=crm_shop_cancel_enabled() && $cancelConfirmed && $r['requested_status']==='cancelled' && $r['expected_payment']==='pending' && in_array($r['expected_status'],['pending','confirmed','packed'],true);
         if (!is_array($o) || ($o['id'] ?? null)!==(int)$row['shop_order_id'] || !is_int($o['order_event_id'] ?? null) || $o['order_event_id']<=0
             || ($o['order_status'] ?? '')!==$r['expected_status'] || ($o['payment_status'] ?? '')!==$r['expected_payment']
-            || !(($r['expected_status']==='pending' && $r['requested_status']==='confirmed') || ($r['expected_status']==='confirmed' && $r['requested_status']==='packed'))) throw new DomainException('این تغییر یا نسخهٔ مبدأ برای فرمان پشتیبانی نمی‌شود.');
+            || !($normal || $cancel)) throw new DomainException('این تغییر یا نسخهٔ مبدأ برای فرمان پشتیبانی نمی‌شود.');
         $snapshot=json_encode($o,JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($snapshot===false || strlen($snapshot)>500000) throw new DomainException('نسخه سفارش معتبر نیست.');
         $st=$pdo->prepare('SELECT command_id FROM crm_shop_order_commands WHERE request_id=?'); $st->execute([$request]);
         if ($st->fetchColumn()) throw new DomainException('برای این درخواست قبلاً فرمان ثبت شده است.');
         $id=bin2hex(random_bytes(16));
-        $command=['type'=>'shop_status_v1','command_id'=>$id,'source_id'=>$source,'order_id'=>(int)$row['shop_order_id'],
+        $command=['type'=>$cancel?'shop_cancel_v1':'shop_status_v1','command_id'=>$id,'source_id'=>$source,'order_id'=>(int)$row['shop_order_id'],
             'expected_event_id'=>$o['order_event_id'],'expected_status'=>$r['expected_status'],'expected_payment'=>$r['expected_payment'],
             'target_status'=>$r['requested_status'],'snapshot_hash'=>hash('sha256',$snapshot),'issued_at'=>$now,'expires_at'=>$now+900];
         $payload=json_encode($command,JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

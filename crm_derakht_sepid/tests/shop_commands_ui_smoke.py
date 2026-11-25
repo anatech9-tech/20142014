@@ -22,7 +22,7 @@ function require_login(){} function is_strict_admin(){return !in_array(($GLOBALS
 function is_nazer_kol(){return in_array(($GLOBALS['case'] ?? ''),['readonly','shipping_readonly','post_shipping_readonly'],true);} function access_is_special_account(){return true;} function access_mode($k){return 'editor';}
 function to_jalali($x){return $x;} function showToast($x,$y=''){} function redirect($x){exit;} function operations_audit(...$x){} function get_csrf_field(){return '<input name="csrf_token" value="test">';}
 define('SHOP_CRM_COMMAND_ENABLED',true); define('SHOP_CRM_COMMAND_KEY',str_repeat('k',32)); define('SHOP_CRM_SOURCE_ID',str_repeat('a',32)); define('SHOP_CRM_COMMAND_URL','https://example.test/api');
-$_SESSION=['user_id'=>1]; $_GET=['view'=>1]; $_SERVER['REQUEST_METHOD']='GET'; $case=$argv[1] ?? ''; if ($case==='return_list') $_GET=[];
+$_SESSION=['user_id'=>1]; $_GET=['view'=>1]; $_SERVER['REQUEST_METHOD']='GET'; $case=$argv[1] ?? ''; if ($case==='return_list') $_GET=[]; if (in_array($case,['cancel_enabled','cancel_paid','cancel_queued','cancel_post_no_ack','cancel_post_one','cancel_post_both'],true)) define('SHOP_CRM_CANCEL_ENABLED',true);
 class UITestPDO extends PDO { public function prepare(string $sql,array $options=[]): PDOStatement|false { return parent::prepare(str_replace(' FOR UPDATE','',$sql),$options); }}
 $pdo=new UITestPDO('sqlite::memory:'); $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION); $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE,PDO::FETCH_ASSOC);
 foreach ([
@@ -40,10 +40,21 @@ foreach ([
  'CREATE TABLE crm_shop_order_commands(command_id TEXT PRIMARY KEY,request_id INTEGER,replica_id INTEGER,actor_id INTEGER,payload TEXT,state TEXT,attempts INTEGER,next_attempt_at TEXT,created_at TEXT,completed_at TEXT)'
 ] as $q) $pdo->exec($q);
 $pdo->exec("INSERT INTO users VALUES(1,'active','admin',NULL,'admin','Admin')");
-$order=['id'=>1,'order_no'=>'<order>','order_status'=>(in_array(($argv[1] ?? ''),['return_new','return_open','return_list','readonly','viewer','shipping_new','shipping_existing','shipping_stale','shipping_mismatch','shipping_readonly','shipping_viewer','post_shipping','post_shipping_readonly','post_shipping_viewer']) ? 'shipped' : 'pending'),'payment_status'=>'pending','order_event_id'=>1,'created_at'=>'2025-01-01 10:00:00','items'=>[]];
+$order=['id'=>1,'order_no'=>'<order>','order_status'=>(in_array(($argv[1] ?? ''),['return_new','return_open','return_list','readonly','viewer','shipping_new','shipping_existing','shipping_stale','shipping_mismatch','shipping_readonly','shipping_viewer','post_shipping','post_shipping_readonly','post_shipping_viewer','cancel_enabled','cancel_paid','cancel_queued','cancel_disabled','cancel_post_no_ack','cancel_post_one','cancel_post_both']) ? 'shipped' : 'pending'),'payment_status'=>'pending','order_event_id'=>1,'created_at'=>'2025-01-01 10:00:00','items'=>[]];
 $st=$pdo->prepare('INSERT INTO crm_shop_orders VALUES(1,?,1,1,?,?)'); $st->execute([str_repeat('a',32),json_encode($order),'2025-01-01 10:00:00']);
 $pdo->prepare("INSERT INTO crm_shop_status_requests VALUES(1,1,?,1,1,'pending','pending','confirmed','open',1,'2025-01-01 10:00:00',NULL,NULL)")->execute([str_repeat('a',32)]);
 if (in_array(($argv[1] ?? ''),['return_open','return_list','readonly','viewer'],true)) $pdo->prepare("INSERT INTO crm_shop_return_requests VALUES(1,1,?,1,1,'shipped','damaged','open',1,'2025-01-01',NULL,NULL)")->execute([str_repeat('a',32)]);
+if (in_array($case,['cancel_enabled','cancel_paid','cancel_queued','cancel_disabled','cancel_post_no_ack','cancel_post_one','cancel_post_both'],true)) {
+ $pay=$case==='cancel_paid'?'paid':'pending';
+ $pdo->prepare("UPDATE crm_shop_status_requests SET expected_status='packed',expected_payment=?,requested_status='cancelled' WHERE id=1")->execute([$pay]);
+ $order['order_status']='packed'; $order['payment_status']=$pay; $pdo->prepare('UPDATE crm_shop_orders SET payload=? WHERE id=1')->execute([json_encode($order)]);
+ if ($case==='cancel_queued') $pdo->exec("INSERT INTO crm_shop_order_commands VALUES('cccccccccccccccccccccccccccccccc',1,1,1,'{}','queued',0,'2025-01-01','2025-01-01',NULL)");
+}
+if (in_array($case,['cancel_post_no_ack','cancel_post_one','cancel_post_both'],true)) {
+ $_SERVER['REQUEST_METHOD']='POST'; $_POST=['id'=>'1','action'=>'send_status_command','request_number'=>'1'];
+ if ($case!=='cancel_post_no_ack') $_POST['cancel_unpaid']='1'; if ($case==='cancel_post_both') $_POST['cancel_unshipped']='1';
+ register_shutdown_function(function() use ($pdo) { echo 'CANCEL_RESULT:'.$pdo->query('SELECT COUNT(*) FROM crm_shop_order_commands')->fetchColumn(); });
+}
 if (in_array($case,['shipping_existing','shipping_stale','shipping_mismatch','shipping_readonly','shipping_viewer'],true)) {
  $source=$case==='shipping_mismatch'?str_repeat('b',32):str_repeat('a',32); $revision=$case==='shipping_stale'?2:1;
  $pdo->prepare("INSERT INTO crm_shop_shipping_tracking VALUES(1,?,1,1,'<Carrier>','AB123',?,1,'2025-01-01')")->execute([$source,$revision]);
@@ -79,4 +90,10 @@ include __DIR__.'/pages/shop_orders.php';
     viewer=run('shipping_viewer'); assert 'AB123' not in viewer and 'رهگیری داخلی ارسال' not in viewer
     assert 'TRACKING_RESULT:1:1' in run('post_shipping')
     assert 'TRACKING_RESULT:0:0' in run('post_shipping_readonly') and 'TRACKING_RESULT:0:0' in run('post_shipping_viewer')
-    print('PASS order page rendering, return/command controls and private shipping tracking')
+    cancel=run('cancel_enabled'); assert 'تأیید و ثبت فرمان در صف' in cancel and 'هیچ بازپرداختی انجام نمی‌شود' in cancel and 'وجهی دریافت نشده' in cancel and 'name="cancel_unpaid"' in cancel and 'name="cancel_unshipped"' in cancel
+    assert 'تأیید و ثبت فرمان در صف' not in run('cancel_disabled')
+    assert 'تأیید و ثبت فرمان در صف' not in run('cancel_paid')
+    assert 'تأیید و ثبت فرمان در صف' not in run('cancel_queued')
+    assert 'CANCEL_RESULT:0' in run('cancel_post_no_ack') and 'CANCEL_RESULT:0' in run('cancel_post_one')
+    assert 'CANCEL_RESULT:1' in run('cancel_post_both')
+    print('PASS order page rendering, cancel opt-in, required checks and private shipping tracking')
