@@ -18,11 +18,12 @@ function shop_visible_customer($p,$id,$m,$a,$t){return null;}
     (app/'includes/header.php').write_text('<header>shell</header>')
     (app/'includes/footer.php').write_text('<footer>shell</footer>')
     (app/'run.php').write_text('''<?php
-function require_login(){} function is_strict_admin(){return !in_array(($GLOBALS['case'] ?? ''),['viewer','shipping_viewer','post_shipping_viewer','package_viewer','post_package_viewer'],true);} function managed_team_ids($p){return [];}
-function is_nazer_kol(){return in_array(($GLOBALS['case'] ?? ''),['readonly','shipping_readonly','post_shipping_readonly','package_readonly','post_package_readonly'],true);} function access_is_special_account(){return true;} function access_mode($k){return 'editor';}
+function require_login(){} function is_strict_admin(){return !in_array(($GLOBALS['case'] ?? ''),['viewer','shipping_viewer','post_shipping_viewer','package_viewer','post_package_viewer','post_delivery_viewer'],true);} function managed_team_ids($p){return [];}
+function is_nazer_kol(){return in_array(($GLOBALS['case'] ?? ''),['readonly','shipping_readonly','post_shipping_readonly','package_readonly','post_package_readonly','post_delivery_readonly'],true);} function access_is_special_account(){return true;} function access_mode($k){return 'editor';}
 function to_jalali($x){return $x;} function showToast($x,$y=''){} function redirect($x){exit;} function operations_audit(...$x){} function get_csrf_field(){return '<input name="csrf_token" value="test">';}
 define('SHOP_CRM_COMMAND_ENABLED',true); define('SHOP_CRM_COMMAND_KEY',str_repeat('k',32)); define('SHOP_CRM_SOURCE_ID',str_repeat('a',32)); define('SHOP_CRM_COMMAND_URL','https://example.test/api');
 $_SESSION=['user_id'=>1]; $_GET=['view'=>1]; $_SERVER['REQUEST_METHOD']='GET'; $case=$argv[1] ?? ''; if (in_array($case,['return_list','return_mismatch_list'],true)) $_GET=[]; if (in_array($case,['cancel_enabled','cancel_paid','cancel_queued','cancel_post_no_ack','cancel_post_one','cancel_post_both'],true)) define('SHOP_CRM_CANCEL_ENABLED',true);
+if (in_array($case,['delivery_enabled','delivery_delivered','delivery_post_none','delivery_post_one','delivery_post_both','post_delivery_viewer','post_delivery_readonly'],true)) define('SHOP_CRM_DELIVERY_COMMAND_ENABLED',true);
 class UITestPDO extends PDO { public function prepare(string $sql,array $options=[]): PDOStatement|false { return parent::prepare(str_replace(' FOR UPDATE','',$sql),$options); }}
 $pdo=new UITestPDO('sqlite::memory:'); $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION); $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE,PDO::FETCH_ASSOC);
 foreach ([
@@ -47,6 +48,17 @@ $st=$pdo->prepare('INSERT INTO crm_shop_orders VALUES(1,?,1,1,?,?)'); $st->execu
 $pdo->prepare("INSERT INTO crm_shop_status_requests VALUES(1,1,?,1,1,'pending','pending','confirmed','open',1,'2025-01-01 10:00:00',NULL,NULL)")->execute([str_repeat('a',32)]);
 if (in_array(($argv[1] ?? ''),['return_open','return_list','return_mismatch','return_mismatch_list','return_mismatch_post','readonly','viewer'],true)) $pdo->prepare("INSERT INTO crm_shop_return_requests VALUES(1,1,?,1,1,'shipped','damaged','open',1,'2025-01-01',NULL,NULL)")->execute([str_repeat(str_starts_with($case,'return_mismatch')?'b':'a',32)]);
 if ($case==='return_mismatch_post') { $_SERVER['REQUEST_METHOD']='POST'; $_POST=['id'=>'1','action'=>'close_return','return_number'=>'1']; register_shutdown_function(function() use ($pdo) { echo 'RETURN_RESULT:'.$pdo->query('SELECT state FROM crm_shop_return_requests')->fetchColumn().':'.$pdo->query('SELECT COUNT(*) FROM crm_shop_return_request_events')->fetchColumn(); }); }
+if (in_array($case,['delivery_disabled','delivery_enabled','delivery_delivered','delivery_post_none','delivery_post_one','delivery_post_both','post_delivery_viewer','post_delivery_readonly'],true)) {
+ $old=$case==='delivery_delivered'?'shipped':'packed'; $target=$case==='delivery_delivered'?'delivered':'shipped';
+ $pdo->prepare('UPDATE crm_shop_status_requests SET expected_status=?,requested_status=? WHERE id=1')->execute([$old,$target]);
+ $order['order_status']=$old; $pdo->prepare('UPDATE crm_shop_orders SET payload=? WHERE id=1')->execute([json_encode($order)]);
+}
+if (in_array($case,['delivery_post_none','delivery_post_one','delivery_post_both','post_delivery_viewer','post_delivery_readonly'],true)) {
+ $_SERVER['REQUEST_METHOD']='POST'; $_POST=['id'=>'1','action'=>'send_status_command','request_number'=>'1'];
+ if ($case!=='delivery_post_none') $_POST['delivery_verified']='1';
+ if (in_array($case,['delivery_post_both','post_delivery_viewer','post_delivery_readonly'],true)) $_POST['delivery_understood']='1';
+ register_shutdown_function(function() use ($pdo) { echo 'DELIVERY_RESULT:'.$pdo->query('SELECT COUNT(*) FROM crm_shop_order_commands')->fetchColumn(); });
+}
 if (in_array($case,['cancel_enabled','cancel_paid','cancel_queued','cancel_disabled','cancel_post_no_ack','cancel_post_one','cancel_post_both'],true)) {
  $pay=$case==='cancel_paid'?'paid':'pending';
  $pdo->prepare("UPDATE crm_shop_status_requests SET expected_status='packed',expected_payment=?,requested_status='cancelled' WHERE id=1")->execute([$pay]);
@@ -70,7 +82,7 @@ if (in_array($case,['package_existing','package_mismatch','package_readonly','pa
  $source=$case==='package_mismatch'?str_repeat('b',32):str_repeat('a',32);
  $pdo->prepare("INSERT INTO crm_shop_shipping_packages VALUES(?,1,?,1,1,'<Carrier>','PK123',1,1,'2025-01-01')")->execute([str_repeat('1',32),$source]);
 }
-if (in_array($case,['post_package','post_package_readonly','post_package_viewer'],true)) {
+if (in_array($case,['post_package','post_package_readonly','post_package_viewer','post_delivery_viewer'],true)) {
  $_SERVER['REQUEST_METHOD']='POST'; $_POST=['id'=>'1','action'=>'create_package','package_revision'=>'1','package_version'=>'0','package_id'=>str_repeat('1',32),'carrier'=>'Post','tracking_code'=>'PK123'];
  register_shutdown_function(function() use ($pdo) { echo 'PACKAGE_RESULT:'.$pdo->query('SELECT COUNT(*) FROM crm_shop_shipping_packages')->fetchColumn().':'.$pdo->query('SELECT COUNT(*) FROM crm_shop_shipping_package_events')->fetchColumn(); });
 }
@@ -111,10 +123,16 @@ include __DIR__.'/pages/shop_orders.php';
     viewer=run('package_viewer'); assert 'بسته‌های اضافی و کدهای داخلی' not in viewer and 'PK123' not in viewer
     assert 'PACKAGE_RESULT:1:1' in run('post_package')
     assert 'PACKAGE_RESULT:0:0' in run('post_package_readonly') and 'PACKAGE_RESULT:0:0' in run('post_package_viewer')
+    assert 'تأیید و ثبت فرمان در صف' not in run('delivery_disabled')
+    delivery=run('delivery_enabled'); assert 'name="delivery_verified"' in delivery and 'name="delivery_understood"' in delivery and 'تحویل فیزیکی همه بسته‌های سفارش به شرکت حمل' in delivery
+    delivered=run('delivery_delivered'); assert 'تحویل همه بسته‌های سفارش به مشتری را با مدرک مستقل' in delivered and 'name="delivery_understood"' in delivered
+    assert 'DELIVERY_RESULT:0' in run('delivery_post_none') and 'DELIVERY_RESULT:0' in run('delivery_post_one')
+    assert 'DELIVERY_RESULT:1' in run('delivery_post_both')
+    assert 'DELIVERY_RESULT:0' in run('post_delivery_viewer') and 'DELIVERY_RESULT:0' in run('post_delivery_readonly')
     cancel=run('cancel_enabled'); assert 'تأیید و ثبت فرمان در صف' in cancel and 'هیچ بازپرداختی انجام نمی‌شود' in cancel and 'وجهی دریافت نشده' in cancel and 'name="cancel_unpaid"' in cancel and 'name="cancel_unshipped"' in cancel
     assert 'تأیید و ثبت فرمان در صف' not in run('cancel_disabled')
     assert 'تأیید و ثبت فرمان در صف' not in run('cancel_paid')
     assert 'تأیید و ثبت فرمان در صف' not in run('cancel_queued')
     assert 'CANCEL_RESULT:0' in run('cancel_post_no_ack') and 'CANCEL_RESULT:0' in run('cancel_post_one')
     assert 'CANCEL_RESULT:1' in run('cancel_post_both')
-    print('PASS order page, cancellation, private tracking and multi-package controls')
+    print('PASS order page, cancellation, delivery confirmations and private package controls')

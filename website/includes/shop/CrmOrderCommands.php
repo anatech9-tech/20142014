@@ -1,5 +1,5 @@
 <?php
-/** Opt-in CRM command receiver; limited cancellation is independently disabled by default. */
+/** Opt-in CRM command receiver; cancellation and shipping have independent opt-ins. */
 function shop_command_configured(): bool {
     if (!defined('SHOP_CRM_COMMAND_ENABLED') || SHOP_CRM_COMMAND_ENABLED !== true
         || !defined('SHOP_CRM_COMMAND_KEY') || strlen((string)SHOP_CRM_COMMAND_KEY)<32
@@ -10,6 +10,7 @@ function shop_command_configured(): bool {
     return true;
 }
 function shop_cancel_enabled(): bool { return defined('SHOP_CRM_CANCEL_ENABLED') && SHOP_CRM_CANCEL_ENABLED===true; }
+function shop_delivery_command_enabled(): bool { return defined('SHOP_CRM_DELIVERY_COMMAND_ENABLED') && SHOP_CRM_DELIVERY_COMMAND_ENABLED===true; }
 function shop_command_signature_valid(string $key, string $timestamp, string $signature, string $body, int $now): bool {
     return strlen($key)>=32 && preg_match('/^[0-9]{10}$/D',$timestamp)===1
         && abs($now-(int)$timestamp)<=300 && preg_match('/^[a-f0-9]{64}$/D',$signature)===1
@@ -38,7 +39,7 @@ function shop_command_require_innodb(PDO $pdo, bool $cancel=false): void {
 }
 function shop_command_validate($c,string $source): bool {
     if (!is_array($c) || array_diff(array_keys($c),['type','command_id','source_id','order_id','expected_event_id','expected_status','expected_payment','target_status','snapshot_hash','issued_at','expires_at'])) return false;
-    if (!in_array($c['type'] ?? '',['shop_status_v1','shop_cancel_v1'],true) || ($c['source_id'] ?? '')!==$source || !preg_match('/^[a-f0-9]{32}$/D',$source)
+    if (!in_array($c['type'] ?? '',['shop_status_v1','shop_cancel_v1','shop_delivery_v1'],true) || ($c['source_id'] ?? '')!==$source || !preg_match('/^[a-f0-9]{32}$/D',$source)
         || !is_string($c['command_id'] ?? null) || !preg_match('/^[a-f0-9]{32}$/D',$c['command_id'])
         || !is_string($c['snapshot_hash'] ?? null) || !preg_match('/^[a-f0-9]{64}$/D',$c['snapshot_hash'])) return false;
     foreach (['order_id','expected_event_id','issued_at','expires_at'] as $k) if (!is_int($c[$k] ?? null) || $c[$k]<=0) return false;
@@ -46,6 +47,8 @@ function shop_command_validate($c,string $source): bool {
     if (!in_array($c['expected_payment'] ?? '',['pending','paid','failed','refunded'],true)) return false;
     if ($c['type']==='shop_cancel_v1') return ($c['target_status'] ?? '')==='cancelled' && ($c['expected_payment'] ?? '')==='pending'
         && in_array($c['expected_status'] ?? '',['pending','confirmed','packed'],true);
+    if ($c['type']==='shop_delivery_v1') return (($c['expected_status'] ?? '')==='packed' && ($c['target_status'] ?? '')==='shipped')
+        || (($c['expected_status'] ?? '')==='shipped' && ($c['target_status'] ?? '')==='delivered');
     return (($c['expected_status'] ?? '')==='pending' && ($c['target_status'] ?? '')==='confirmed')
         || (($c['expected_status'] ?? '')==='confirmed' && ($c['target_status'] ?? '')==='packed');
 }
@@ -89,6 +92,7 @@ function shop_command_apply(PDO $pdo,array $c,string $source,int $now): string {
         if (!$receipt || !hash_equals((string)$receipt['request_hash'],$hash)) throw new DomainException('Command id conflict');
         if ($receipt['result']!=='processing') { $pdo->commit(); return (string)$receipt['result']; }
         if ($c['type']==='shop_cancel_v1' && !shop_cancel_enabled()) throw new RuntimeException('Cancellation disabled');
+        if ($c['type']==='shop_delivery_v1' && !shop_delivery_command_enabled()) throw new RuntimeException('Delivery command disabled');
         if ($c['issued_at']>$now+300 || $now>$c['expires_at']) $result='expired';
         else {
             $st=$pdo->prepare('SELECT id,order_no,customer_id,customer_name,customer_phone,customer_email,subtotal_toman,discount_toman,shipping_fee,total_toman,order_status,payment_status,created_at,coupon_code FROM orders WHERE id=? FOR UPDATE');
