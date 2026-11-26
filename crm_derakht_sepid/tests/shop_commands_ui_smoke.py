@@ -7,7 +7,7 @@ with tempfile.TemporaryDirectory() as tmp:
     app=pathlib.Path(tmp)
     for d in ('pages','includes'): (app/d).mkdir()
     shutil.copy(root/'pages/shop_orders.php',app/'pages/shop_orders.php')
-    for name in ('shop_order_requests.php','shop_order_commands.php','shop_return_requests.php','shop_shipping_tracking.php'):
+    for name in ('shop_order_requests.php','shop_order_commands.php','shop_return_requests.php','shop_shipping_tracking.php','shop_shipping_packages.php'):
         shutil.copy(root/'includes'/name,app/'includes'/name)
     (app/'includes/shop_order_sync.php').write_text('<?php function crm_shop_orders_ensure($p){return true;}')
     (app/'includes/shop_order_work.php').write_text('''<?php
@@ -18,8 +18,8 @@ function shop_visible_customer($p,$id,$m,$a,$t){return null;}
     (app/'includes/header.php').write_text('<header>shell</header>')
     (app/'includes/footer.php').write_text('<footer>shell</footer>')
     (app/'run.php').write_text('''<?php
-function require_login(){} function is_strict_admin(){return !in_array(($GLOBALS['case'] ?? ''),['viewer','shipping_viewer','post_shipping_viewer'],true);} function managed_team_ids($p){return [];}
-function is_nazer_kol(){return in_array(($GLOBALS['case'] ?? ''),['readonly','shipping_readonly','post_shipping_readonly'],true);} function access_is_special_account(){return true;} function access_mode($k){return 'editor';}
+function require_login(){} function is_strict_admin(){return !in_array(($GLOBALS['case'] ?? ''),['viewer','shipping_viewer','post_shipping_viewer','package_viewer','post_package_viewer'],true);} function managed_team_ids($p){return [];}
+function is_nazer_kol(){return in_array(($GLOBALS['case'] ?? ''),['readonly','shipping_readonly','post_shipping_readonly','package_readonly','post_package_readonly'],true);} function access_is_special_account(){return true;} function access_mode($k){return 'editor';}
 function to_jalali($x){return $x;} function showToast($x,$y=''){} function redirect($x){exit;} function operations_audit(...$x){} function get_csrf_field(){return '<input name="csrf_token" value="test">';}
 define('SHOP_CRM_COMMAND_ENABLED',true); define('SHOP_CRM_COMMAND_KEY',str_repeat('k',32)); define('SHOP_CRM_SOURCE_ID',str_repeat('a',32)); define('SHOP_CRM_COMMAND_URL','https://example.test/api');
 $_SESSION=['user_id'=>1]; $_GET=['view'=>1]; $_SERVER['REQUEST_METHOD']='GET'; $case=$argv[1] ?? ''; if (in_array($case,['return_list','return_mismatch_list'],true)) $_GET=[]; if (in_array($case,['cancel_enabled','cancel_paid','cancel_queued','cancel_post_no_ack','cancel_post_one','cancel_post_both'],true)) define('SHOP_CRM_CANCEL_ENABLED',true);
@@ -37,10 +37,12 @@ foreach ([
  'CREATE TABLE crm_shop_return_request_events(id INTEGER PRIMARY KEY,request_id INTEGER,replica_id INTEGER,actor_id INTEGER,action TEXT,created_at TEXT)',
  'CREATE TABLE crm_shop_shipping_tracking(replica_id INTEGER PRIMARY KEY,source_id TEXT,shop_order_id INTEGER,version INTEGER,carrier TEXT,tracking_code TEXT,replica_revision INTEGER,updated_by INTEGER,updated_at TEXT)',
  'CREATE TABLE crm_shop_shipping_tracking_events(id INTEGER PRIMARY KEY,replica_id INTEGER,source_id TEXT,shop_order_id INTEGER,version INTEGER,replica_revision INTEGER,action TEXT,actor_id INTEGER,created_at TEXT)',
+ 'CREATE TABLE crm_shop_shipping_packages(package_id TEXT PRIMARY KEY,replica_id INTEGER,source_id TEXT,shop_order_id INTEGER,version INTEGER,carrier TEXT,tracking_code TEXT,replica_revision INTEGER,updated_by INTEGER,updated_at TEXT)',
+ 'CREATE TABLE crm_shop_shipping_package_events(id INTEGER PRIMARY KEY,package_id TEXT,replica_id INTEGER,source_id TEXT,shop_order_id INTEGER,version INTEGER,replica_revision INTEGER,action TEXT,actor_id INTEGER,created_at TEXT)',
  'CREATE TABLE crm_shop_order_commands(command_id TEXT PRIMARY KEY,request_id INTEGER,replica_id INTEGER,actor_id INTEGER,payload TEXT,state TEXT,attempts INTEGER,next_attempt_at TEXT,created_at TEXT,completed_at TEXT)'
 ] as $q) $pdo->exec($q);
 $pdo->exec("INSERT INTO users VALUES(1,'active','admin',NULL,'admin','Admin')");
-$order=['id'=>1,'order_no'=>'<order>','order_status'=>(in_array(($argv[1] ?? ''),['return_new','return_open','return_list','return_mismatch','return_mismatch_list','return_mismatch_post','readonly','viewer','shipping_new','shipping_existing','shipping_stale','shipping_mismatch','shipping_readonly','shipping_viewer','post_shipping','post_shipping_readonly','post_shipping_viewer','cancel_enabled','cancel_paid','cancel_queued','cancel_disabled','cancel_post_no_ack','cancel_post_one','cancel_post_both']) ? 'shipped' : 'pending'),'payment_status'=>'pending','order_event_id'=>1,'created_at'=>'2025-01-01 10:00:00','items'=>[]];
+$order=['id'=>1,'order_no'=>'<order>','order_status'=>(in_array(($argv[1] ?? ''),['return_new','return_open','return_list','return_mismatch','return_mismatch_list','return_mismatch_post','readonly','viewer','shipping_new','shipping_existing','shipping_stale','shipping_mismatch','shipping_readonly','shipping_viewer','post_shipping','post_shipping_readonly','post_shipping_viewer','package_new','package_existing','package_mismatch','package_readonly','package_viewer','post_package','post_package_readonly','post_package_viewer','cancel_enabled','cancel_paid','cancel_queued','cancel_disabled','cancel_post_no_ack','cancel_post_one','cancel_post_both']) ? 'shipped' : 'pending'),'payment_status'=>'pending','order_event_id'=>1,'created_at'=>'2025-01-01 10:00:00','items'=>[]];
 $st=$pdo->prepare('INSERT INTO crm_shop_orders VALUES(1,?,1,1,?,?)'); $st->execute([str_repeat('a',32),json_encode($order),'2025-01-01 10:00:00']);
 $pdo->prepare("INSERT INTO crm_shop_status_requests VALUES(1,1,?,1,1,'pending','pending','confirmed','open',1,'2025-01-01 10:00:00',NULL,NULL)")->execute([str_repeat('a',32)]);
 if (in_array(($argv[1] ?? ''),['return_open','return_list','return_mismatch','return_mismatch_list','return_mismatch_post','readonly','viewer'],true)) $pdo->prepare("INSERT INTO crm_shop_return_requests VALUES(1,1,?,1,1,'shipped','damaged','open',1,'2025-01-01',NULL,NULL)")->execute([str_repeat(str_starts_with($case,'return_mismatch')?'b':'a',32)]);
@@ -63,6 +65,14 @@ if (in_array($case,['shipping_existing','shipping_stale','shipping_mismatch','sh
 if (in_array($case,['post_shipping','post_shipping_readonly','post_shipping_viewer'],true)) {
  $_SERVER['REQUEST_METHOD']='POST'; $_POST=['id'=>'1','action'=>'save_shipping','shipping_revision'=>'1','shipping_version'=>'0','carrier'=>'Post','tracking_code'=>'AB123'];
  register_shutdown_function(function() use ($pdo) { echo 'TRACKING_RESULT:'.$pdo->query('SELECT COUNT(*) FROM crm_shop_shipping_tracking')->fetchColumn().':'.$pdo->query('SELECT COUNT(*) FROM crm_shop_shipping_tracking_events')->fetchColumn(); });
+}
+if (in_array($case,['package_existing','package_mismatch','package_readonly','package_viewer'],true)) {
+ $source=$case==='package_mismatch'?str_repeat('b',32):str_repeat('a',32);
+ $pdo->prepare("INSERT INTO crm_shop_shipping_packages VALUES(?,1,?,1,1,'<Carrier>','PK123',1,1,'2025-01-01')")->execute([str_repeat('1',32),$source]);
+}
+if (in_array($case,['post_package','post_package_readonly','post_package_viewer'],true)) {
+ $_SERVER['REQUEST_METHOD']='POST'; $_POST=['id'=>'1','action'=>'create_package','package_revision'=>'1','package_version'=>'0','package_id'=>str_repeat('1',32),'carrier'=>'Post','tracking_code'=>'PK123'];
+ register_shutdown_function(function() use ($pdo) { echo 'PACKAGE_RESULT:'.$pdo->query('SELECT COUNT(*) FROM crm_shop_shipping_packages')->fetchColumn().':'.$pdo->query('SELECT COUNT(*) FROM crm_shop_shipping_package_events')->fetchColumn(); });
 }
 if (($argv[1] ?? '')==='queued') $pdo->exec("INSERT INTO crm_shop_order_commands VALUES('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',1,1,1,'{}','queued',0,'2025-01-01','2025-01-01',NULL)");
 include __DIR__.'/pages/shop_orders.php';
@@ -94,10 +104,17 @@ include __DIR__.'/pages/shop_orders.php';
     viewer=run('shipping_viewer'); assert 'AB123' not in viewer and 'رهگیری داخلی ارسال' not in viewer
     assert 'TRACKING_RESULT:1:1' in run('post_shipping')
     assert 'TRACKING_RESULT:0:0' in run('post_shipping_readonly') and 'TRACKING_RESULT:0:0' in run('post_shipping_viewer')
+    package=run('package_new'); assert 'ثبت بسته اضافی</button>' in package and 'فقط یادداشت داخلی CRM' in package and 'csrf_token' in package
+    package=run('package_existing'); assert 'PK123' in package and '&lt;Carrier&gt;' in package and 'ویرایش بسته</button>' in package and 'پاک‌کردن بسته</button>' in package
+    mismatch=run('package_mismatch'); assert 'هویت بسته‌ها با سفارش فعلی ناسازگار است' in mismatch and 'PK123' not in mismatch and 'ثبت بسته اضافی</button>' not in mismatch
+    readonly=run('package_readonly'); assert 'PK123' in readonly and 'ویرایش بسته</button>' not in readonly and 'ثبت بسته اضافی</button>' not in readonly
+    viewer=run('package_viewer'); assert 'بسته‌های اضافی و کدهای داخلی' not in viewer and 'PK123' not in viewer
+    assert 'PACKAGE_RESULT:1:1' in run('post_package')
+    assert 'PACKAGE_RESULT:0:0' in run('post_package_readonly') and 'PACKAGE_RESULT:0:0' in run('post_package_viewer')
     cancel=run('cancel_enabled'); assert 'تأیید و ثبت فرمان در صف' in cancel and 'هیچ بازپرداختی انجام نمی‌شود' in cancel and 'وجهی دریافت نشده' in cancel and 'name="cancel_unpaid"' in cancel and 'name="cancel_unshipped"' in cancel
     assert 'تأیید و ثبت فرمان در صف' not in run('cancel_disabled')
     assert 'تأیید و ثبت فرمان در صف' not in run('cancel_paid')
     assert 'تأیید و ثبت فرمان در صف' not in run('cancel_queued')
     assert 'CANCEL_RESULT:0' in run('cancel_post_no_ack') and 'CANCEL_RESULT:0' in run('cancel_post_one')
     assert 'CANCEL_RESULT:1' in run('cancel_post_both')
-    print('PASS order page rendering, cancel opt-in, required checks and private shipping tracking')
+    print('PASS order page, cancellation, private tracking and multi-package controls')

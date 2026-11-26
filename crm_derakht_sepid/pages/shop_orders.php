@@ -7,6 +7,7 @@ require_once __DIR__.'/../includes/shop_product_mapping.php';
 require_once __DIR__.'/../includes/shop_order_requests.php';
 require_once __DIR__.'/../includes/shop_return_requests.php';
 require_once __DIR__.'/../includes/shop_shipping_tracking.php';
+require_once __DIR__.'/../includes/shop_shipping_packages.php';
 function shop_replica_h($v): string { return htmlspecialchars((string)$v,ENT_QUOTES | ENT_SUBSTITUTE,'UTF-8'); }
 $me=(int)$_SESSION['user_id'];
 // A deactivated or demoted account's existing session must not expose order data.
@@ -27,11 +28,25 @@ $statusRequests=[]; $openRequests=[]; $nextRequest=0;
 $returnReady=$ready && $admin && shop_return_request_ensure($pdo);
 $returnRequests=[]; $openReturns=[]; $nextReturn=0; $returnReasons=shop_return_reasons();
 $shippingReady=$ready && $admin && shop_shipping_ensure($pdo); $shipping=null; $shippingMismatch=false; $shippingEvents=[];
+$packagesReady=$ready && $admin && shop_packages_ensure($pdo); $packages=[]; $packageMismatch=false;
 $productReady=false; $productLinks=[]; $productOptions=[]; $productHistory=[]; $selectedProduct=0; $productSearch='';
 if ($_SERVER['REQUEST_METHOD']==='POST') {
     $id=(int)($_POST['id'] ?? 0); $action=(string)($_POST['action'] ?? '');
     try {
         if (!$ready || $readonly) throw new DomainException('دسترسی برای تغییر مجاز نیست.');
+        if (in_array($action,['create_package','save_package','clear_package'],true)) {
+            if (!$admin || !$packagesReady) throw new DomainException('ثبت بسته مجاز یا آماده نیست.');
+            foreach (['package_revision','package_version'] as $key) {
+                if (!is_string($_POST[$key] ?? null) || !preg_match('/^(0|[1-9][0-9]{0,17})$/D',$_POST[$key])) throw new DomainException('صفحه را دوباره بارگذاری کنید.');
+            }
+            $package=$_POST['package_id'] ?? ''; $carrier=$_POST['carrier'] ?? ''; $tracking=$_POST['tracking_code'] ?? '';
+            if (!is_string($package) || !is_string($carrier) || !is_string($tracking)) throw new DomainException('اطلاعات بسته نامعتبر است.');
+            $packageAction=['create_package'=>'create','save_package'=>'save','clear_package'=>'clear'][$action];
+            shop_packages_apply($pdo,$id,$me,$admin,(int)$_POST['package_revision'],$package,(int)$_POST['package_version'],$packageAction,$carrier,$tracking);
+            try { operations_audit($pdo,$me,'shop_order_'.$action,'shop_order',$id,'تغییر بسته داخلی'); } catch (Throwable $e) { error_log('Shop package global audit failed'); }
+            showToast('بسته فقط در CRM تغییر کرد؛ ارسال واقعی یا وضعیت فروشگاه تغییر نکرد.');
+            redirect('index.php?page=shop_orders&view='.$id);
+        }
         if (in_array($action,['save_shipping','clear_shipping'],true)) {
             if (!$admin || !$shippingReady) throw new DomainException('ثبت رهگیری مجاز یا آماده نیست.');
             foreach (['shipping_revision','shipping_version'] as $key) {
@@ -104,6 +119,17 @@ if ($ready && $view>0) {
                 $st=$pdo->prepare('SELECT e.action,e.version,e.replica_revision,e.created_at,u.full_name FROM crm_shop_shipping_tracking_events e LEFT JOIN users u ON u.id=e.actor_id WHERE e.replica_id=? AND e.source_id=? AND e.shop_order_id=? ORDER BY e.id DESC LIMIT 20');
                 $st->execute([$view,$detail['source_id'],$detail['shop_order_id']]); $shippingEvents=$st->fetchAll();
             }
+        }
+        if ($packagesReady) {
+            $st=$pdo->prepare('SELECT * FROM crm_shop_shipping_packages WHERE replica_id=? ORDER BY updated_at DESC,package_id');
+            $st->execute([$view]); $allPackages=$st->fetchAll(PDO::FETCH_ASSOC);
+            $identitySnapshot=json_decode((string)$detail['payload'],true);
+            if (!is_array($identitySnapshot) || !is_int($identitySnapshot['id'] ?? null) || $identitySnapshot['id']!==(int)$detail['shop_order_id']) $packageMismatch=true;
+            foreach ($allPackages as $pkg) {
+                if ($pkg['source_id']!==$detail['source_id'] || (int)$pkg['shop_order_id']!==(int)$detail['shop_order_id']) $packageMismatch=true;
+                if ($pkg['tracking_code']!==null) $packages[]=$pkg;
+            }
+            if ($packageMismatch) $packages=[];
         }
         if ($returnReady) {
             $st=$pdo->prepare("SELECT q.*,u.full_name AS creator_name,c.full_name AS closer_name FROM crm_shop_return_requests q LEFT JOIN users u ON u.id=q.created_by LEFT JOIN users c ON c.id=q.closed_by WHERE q.replica_id=? ORDER BY CASE WHEN q.state='open' THEN 0 ELSE 1 END,q.id DESC LIMIT 20");
@@ -214,6 +240,17 @@ include 'includes/header.php';
 <?php elseif (!$readonly): ?><p>ثبت یا ویرایش کد برای نسخهٔ سفارش در وضعیت آماده ارسال، ارسال‌شده یا تحویل‌شده مجاز است.</p><?php endif; ?>
 <?php if (!$readonly && $shipping && $shipping['tracking_code']!==null): ?><form method="post" onsubmit="return confirm('فقط کد داخلی پاک می‌شود؛ در فروشگاه یا شرکت حمل تغییری نمی‌کند. ادامه می‌دهید؟');"><?= get_csrf_field() ?><input type="hidden" name="id" value="<?= $view ?>"><input type="hidden" name="action" value="clear_shipping"><input type="hidden" name="shipping_revision" value="<?= (int)$detail['revision'] ?>"><input type="hidden" name="shipping_version" value="<?= $shippingVersion ?>"><button class="btn" type="submit">پاک‌کردن رهگیری داخلی</button></form><?php endif; ?>
 <?php if ($shippingEvents): ?><h4>تاریخچهٔ تغییر رهگیری</h4><?php foreach ($shippingEvents as $evt): ?><p><?= $evt['action']==='clear'?'پاک‌شدن':'ثبت/ویرایش' ?> — نسخه <?= (int)$evt['version'] ?> — <?= shop_replica_h($evt['full_name'] ?: 'کاربر حذف‌شده') ?> — <?= shop_replica_h($evt['created_at']) ?></p><?php endforeach; ?><p>تاریخچه، کدهای قبلی را نگه نمی‌دارد.</p><?php endif; ?>
+<?php endif; ?></div><?php endif; ?>
+<?php if ($admin): ?><div class="card" style="padding:18px;margin-top:14px"><h3>بسته‌های اضافی و کدهای داخلی</h3>
+<p>فقط یادداشت داخلی CRM است: ارسال، تحویل یا صحت کد را ثابت نمی‌کند و به فروشگاه، مشتری یا شرکت حمل منتقل نمی‌شود. کد قدیمی تک‌رهگیری جداگانه باقی می‌ماند؛ از ثبت دوباره آن خودداری کنید. حداکثر ۲۰ بسته فعال و ۱۰۰ ثبت در عمر هر سفارش.</p>
+<?php if (!$packagesReady): ?><p>جدول بسته‌ها آماده نیست.</p>
+<?php elseif ($packageMismatch): ?><p>هویت بسته‌ها با سفارش فعلی ناسازگار است؛ ثبت و نمایش متوقف شد و تطبیق دستی لازم است.</p>
+<?php else: ?>
+<?php foreach ($packages as $pkg): ?><div style="border-top:1px solid var(--border);padding:10px 0"><p><?= shop_replica_h($pkg['carrier']) ?> — <span dir="ltr"><?= shop_replica_h($pkg['tracking_code']) ?></span> | نسخه <?= (int)$pkg['version'] ?> | <?= shop_replica_h($pkg['updated_at']) ?></p>
+<?php if ((int)$pkg['replica_revision']!==(int)$detail['revision']): ?><p>نسخه سفارش از زمان ثبت تغییر کرده؛ کد را دوباره تطبیق دهید.</p><?php endif; ?>
+<?php if (!$readonly && in_array($o['order_status'] ?? '',['packed','shipped','delivered'],true)): ?><form method="post"><?= get_csrf_field() ?><input type="hidden" name="id" value="<?= $view ?>"><input type="hidden" name="action" value="save_package"><input type="hidden" name="package_id" value="<?= shop_replica_h($pkg['package_id']) ?>"><input type="hidden" name="package_revision" value="<?= (int)$detail['revision'] ?>"><input type="hidden" name="package_version" value="<?= (int)$pkg['version'] ?>"><label>شرکت <input name="carrier" maxlength="80" required value="<?= shop_replica_h($pkg['carrier']) ?>"></label> <label>کد <input name="tracking_code" maxlength="100" required value="<?= shop_replica_h($pkg['tracking_code']) ?>"></label> <button class="btn" type="submit">ویرایش بسته</button></form><?php endif; ?>
+<?php if (!$readonly): ?><form method="post" onsubmit="return confirm('فقط کد داخلی این بسته پاک می‌شود؛ ادامه می‌دهید؟');"><?= get_csrf_field() ?><input type="hidden" name="id" value="<?= $view ?>"><input type="hidden" name="action" value="clear_package"><input type="hidden" name="package_id" value="<?= shop_replica_h($pkg['package_id']) ?>"><input type="hidden" name="package_revision" value="<?= (int)$detail['revision'] ?>"><input type="hidden" name="package_version" value="<?= (int)$pkg['version'] ?>"><button class="btn" type="submit">پاک‌کردن بسته</button></form><?php endif; ?></div><?php endforeach; ?>
+<?php if (!$readonly && count($packages)<20 && count($allPackages)<100 && in_array($o['order_status'] ?? '',['packed','shipped','delivered'],true)): ?><form method="post"><?= get_csrf_field() ?><input type="hidden" name="id" value="<?= $view ?>"><input type="hidden" name="action" value="create_package"><input type="hidden" name="package_id" value="<?= bin2hex(random_bytes(16)) ?>"><input type="hidden" name="package_revision" value="<?= (int)$detail['revision'] ?>"><input type="hidden" name="package_version" value="0"><label>شرکت <input name="carrier" maxlength="80" required></label> <label>کد <input name="tracking_code" maxlength="100" required></label> <button class="btn btn-primary" type="submit">ثبت بسته اضافی</button></form><?php endif; ?>
 <?php endif; ?></div><?php endif; ?>
 <?php if ($admin): ?><div class="card" style="padding:18px;margin-top:14px"><h3>پیگیری داخلی بررسی مرجوعی</h3>
 <p>فقط برای پیگیری مدیریتی است؛ ثبت یا بستن آن به معنی پذیرش یا دریافت کالا، تغییر سفارش، برگشت موجودی، بازپرداخت یا اطلاع‌رسانی به مشتری نیست. وضعیت و نسخهٔ فروشگاه را جداگانه بررسی کنید.</p>
