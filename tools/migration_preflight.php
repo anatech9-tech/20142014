@@ -83,6 +83,11 @@ function preflight_specs(string $component): array {
         'shop_catalog'=>['required'=>false,'tables'=>[
             'crm_shop_catalog'=>['id','source_id','shop_product_id','revision','payload'],
             'crm_shop_product_links'=>['source_id','shop_product_id','version'], 'crm_shop_product_link_events'=>['id','source_id','shop_product_id']]],
+        'shop_category_groups'=>['required'=>false,'tables'=>[
+            'crm_shop_category_groups'=>['id','name','is_active','version','updated_by','updated_at'],
+            'crm_shop_category_group_events'=>['id','group_id','version','old_name','new_name','old_active','new_active','actor_id','created_at'],
+            'crm_shop_category_group_links'=>['id','source_id','category_id','replica_id','group_id','version','source_revision','group_version','updated_by','updated_at'],
+            'crm_shop_category_group_link_events'=>['id','link_id','version','source_id','category_id','replica_id','old_group_id','new_group_id','source_revision','group_version','actor_id','created_at']]],
         'shop_category_meta'=>['required'=>false,'tables'=>['crm_shop_category_meta'=>['id','source_id','category_id','revision','event_id','payload_hash','category_name','is_active','received_at']]],
         'shop_coupon_meta'=>['required'=>false,'tables'=>['crm_shop_coupon_meta'=>['id','source_id','coupon_id','revision','event_id','payload_hash','coupon_type','is_active','received_at']]],
         'site_shipment_meta'=>['required'=>false,'tables'=>[

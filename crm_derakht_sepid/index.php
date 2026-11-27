@@ -256,6 +256,10 @@ switch ($page) {
         require_login();
         include 'pages/site_content_drafts.php';
         break;
+    case 'shop_category_groups':
+        require_login();
+        include 'pages/shop_category_groups.php';
+        break;
     case 'shop_category_metadata':
         require_login();
         include 'pages/shop_category_metadata.php';
