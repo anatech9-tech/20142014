@@ -2,24 +2,30 @@
 /** Active administrators only; internal plain-text drafts, never published to the website. */
 $pageTitle='پیش‌نویس محتوای سایت'; require_login(); header('Cache-Control: no-store');
 require_once __DIR__.'/../includes/site_content_drafts.php';
+require_once __DIR__.'/../includes/site_content_draft_reviews.php';
 $me=(int)($_SESSION['user_id'] ?? 0);
 try {
     $st=$pdo->prepare('SELECT status,role FROM users WHERE id=?'); $st->execute([$me]); $actor=$st->fetch(PDO::FETCH_ASSOC);
     if (!is_strict_admin() || !$actor || $actor['status']!=='active' || $actor['role']!=='admin') { http_response_code(403); echo 'دسترسی مجاز نیست.'; return; }
 } catch (Throwable $e) { http_response_code(503); echo 'بررسی دسترسی ممکن نیست.'; return; }
-$ready=content_draft_ensure($pdo); $readonly=is_nazer_kol() || (!access_is_special_account() && access_mode('crm_customers')==='viewer');
+$ready=content_draft_ensure($pdo); $reviewReady=$ready && content_draft_review_ensure($pdo); $readonly=is_nazer_kol() || (!access_is_special_account() && access_mode('crm_customers')==='viewer');
 $parse=static function($v,bool $zero=false): int { if (!is_string($v) || !preg_match($zero?'/^(0|[1-9][0-9]{0,17})$/D':'/^[1-9][0-9]{0,17}$/D',$v)) return -1; return (int)$v; };
 if (($_SERVER['REQUEST_METHOD'] ?? '')==='POST') {
     $id=$parse($_POST['draft_id'] ?? null,true); $version=$parse($_POST['version'] ?? null,true); $action=$_POST['action'] ?? null;
     try {
-        if (!$ready || $readonly || $id<0 || $version<0 || !is_string($action) || !in_array($action,['create','edit','restore'],true)) throw new DomainException('عملیات مجاز یا آماده نیست.');
+        if (!$ready || $readonly || $id<0 || $version<0 || !is_string($action) || !in_array($action,['create','edit','restore','review'],true)) throw new DomainException('عملیات مجاز یا آماده نیست.');
         $title=$_POST['title'] ?? ''; $body=$_POST['body'] ?? '';
         if (!is_string($title) || !is_string($body)) throw new DomainException('متن نامعتبر است.');
         $target=0;
         if ($action==='restore') { $target=$parse($_POST['restore_version'] ?? null); if ($target<=0 || ($_POST['confirm_restore'] ?? null)!=='1') throw new DomainException('تأیید نسخهٔ بازگشتی لازم است.'); }
-        $id=content_draft_write($pdo,$me,true,$id,$version,$action,$title,$body,$target);
-        try { operations_audit($pdo,$me,'site_content_draft_'.$action,'site_content_draft',$id,'تغییر پیش‌نویس داخلی محتوا'); } catch (Throwable $e) { error_log('Content draft global audit failed'); }
-        showToast('پیش‌نویس داخلی ثبت شد؛ در سایت منتشر نشده است.');
+        if ($action==='review') {
+            if (!$reviewReady || ($_POST['confirm_review'] ?? null)!=='1') throw new DomainException('ثبت و تأیید بررسی داخلی لازم است.');
+            content_draft_review_record($pdo,$me,true,$id,$version,true);
+        } else {
+            $id=content_draft_write($pdo,$me,true,$id,$version,$action,$title,$body,$target);
+        }
+        try { operations_audit($pdo,$me,'site_content_draft_'.$action,'site_content_draft',$id,'عملیات داخلی پیش‌نویس محتوا'); } catch (Throwable $e) { error_log('Content draft global audit failed'); }
+        showToast($action==='review'?'اظهار بررسی داخلی ثبت شد؛ تأیید انتشار نیست.':'پیش‌نویس داخلی ثبت شد؛ در سایت منتشر نشده است.');
     } catch (Throwable $e) { error_log('Content draft failed: '.get_class($e)); showToast($e instanceof DomainException?$e->getMessage():'ثبت پیش‌نویس ممکن نشد.','error'); }
     redirect('index.php?page=site_content_drafts'.($id>0?'&draft='.$id:''));
 }
@@ -27,7 +33,7 @@ $h=static fn($v)=>htmlspecialchars((string)$v,ENT_QUOTES | ENT_SUBSTITUTE,'UTF-8
 $draftRaw=$_GET['draft'] ?? ''; $id=$parse($draftRaw); if ($id<0) $id=0;
 $oldRaw=$_GET['history'] ?? ''; $oldVersion=$parse($oldRaw); if ($oldVersion<0) $oldVersion=0;
 $beforeRaw=$_GET['before'] ?? ''; $before=$parse($beforeRaw); if ($before<0) $before=0;
-$rows=[]; $selected=null; $versions=[]; $old=null; $next=0;
+$rows=[]; $selected=null; $versions=[]; $reviews=[]; $old=null; $next=0;
 if ($ready) {
     $st=$pdo->prepare('SELECT id,title,version,updated_at FROM crm_site_content_drafts'.($before?' WHERE id<?':'').' ORDER BY id DESC LIMIT 31'); $st->execute($before?[$before]:[]); $rows=$st->fetchAll(PDO::FETCH_ASSOC);
     if (count($rows)>30) { array_pop($rows); $next=(int)$rows[count($rows)-1]['id']; }
@@ -35,6 +41,7 @@ if ($ready) {
         $st=$pdo->prepare('SELECT id,title,body,version,updated_at FROM crm_site_content_drafts WHERE id=?'); $st->execute([$id]); $selected=$st->fetch(PDO::FETCH_ASSOC) ?: null;
         if ($selected) {
             $st=$pdo->prepare('SELECT version,actor_id,action,restored_version,created_at FROM crm_site_content_draft_versions WHERE draft_id=? ORDER BY version DESC LIMIT 100'); $st->execute([$id]); $versions=$st->fetchAll(PDO::FETCH_ASSOC);
+            if ($reviewReady) { try { $st=$pdo->prepare('SELECT draft_version,actor_id,created_at FROM crm_site_content_draft_reviews WHERE draft_id=? ORDER BY id DESC LIMIT 100'); $st->execute([$id]); $reviews=$st->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) { error_log('Content draft review list unavailable'); $reviewReady=false; } }
             if ($oldVersion>0) { $st=$pdo->prepare('SELECT version,title,body FROM crm_site_content_draft_versions WHERE draft_id=? AND version=?'); $st->execute([$id,$oldVersion]); $old=$st->fetch(PDO::FETCH_ASSOC) ?: null; }
         }
     }
@@ -47,8 +54,14 @@ include 'includes/header.php';
 <?php if ($selected): ?>
 <h3>پیش‌نویس #<?= (int)$selected['id'] ?> — نسخه <?= (int)$selected['version'] ?></h3><p><a class="btn" href="index.php?page=site_blog_metadata&amp;draft=<?= (int)$selected['id'] ?>">تطبیق دستی با مقاله سایت</a></p>
 <?php if (!$readonly): ?><form method="post"><?= get_csrf_field() ?><input type="hidden" name="action" value="edit"><input type="hidden" name="draft_id" value="<?= (int)$selected['id'] ?>"><input type="hidden" name="version" value="<?= (int)$selected['version'] ?>"><label>عنوان <input name="title" maxlength="200" required value="<?= $h($selected['title']) ?>"></label><br><label>متن ساده<br><textarea name="body" rows="12" style="width:100%" maxlength="32000"><?= $h($selected['body']) ?></textarea></label><br><button class="btn" type="submit">ذخیره نسخه جدید</button></form><?php else: ?><h4><?= $h($selected['title']) ?></h4><pre style="white-space:pre-wrap;overflow-wrap:anywhere"><?= $h($selected['body']) ?></pre><?php endif; ?>
+<h4>بازبینی داخلی نسخه ذخیره‌شده</h4><p>این ثبت فقط اظهار بررسی مدیر است، نه اثبات خواندن، تأیید محتوا یا مجوز انتشار. هر ویرایش نسخه جدیدی می‌سازد و اظهار قبلی به آن منتقل نمی‌شود. متن ذخیره‌نشده در فرم ویرایش جزو بررسی نیست.</p>
+<?php if (!$reviewReady): ?><p>ثبت بررسی آماده نیست؛ امکان ویرایش و تاریخچه همچنان مستقل‌اند.</p><?php else: ?>
+<h5>متن ذخیره‌شده نسخه <?= (int)$selected['version'] ?></h5><p><strong><?= $h($selected['title']) ?></strong></p><pre style="white-space:pre-wrap;overflow-wrap:anywhere"><?= $h($selected['body']) ?></pre>
+<?php if (!$readonly): ?><form method="post" onsubmit="return confirm('اظهار بررسی این نسخه ذخیره‌شده ثبت شود؟ این کار تأیید انتشار نیست.');"><?= get_csrf_field() ?><input type="hidden" name="action" value="review"><input type="hidden" name="draft_id" value="<?= (int)$selected['id'] ?>"><input type="hidden" name="version" value="<?= (int)$selected['version'] ?>"><label><input type="checkbox" name="confirm_review" value="1" required> بررسی دستی همین نسخه ذخیره‌شده را اظهار می‌کنم؛ این تأیید انتشار نیست</label> <button class="btn" type="submit">ثبت اظهار بررسی داخلی</button></form><?php endif; ?>
+<p>حداکثر ۱۰۰ ثبت اخیر نمایش داده می‌شود؛ سقف هر پیش‌نویس ۵۰۰ ثبت است.</p><ul><?php foreach ($reviews as $review): ?><li>نسخه <?= (int)$review['draft_version'] ?> — مدیر <?= (int)$review['actor_id'] ?> — <?= $h($review['created_at']) ?><?= (int)$review['draft_version']===(int)$selected['version']?' (نسخه جاری)':' (نسخه قدیمی)' ?></li><?php endforeach; ?><?php if (!$reviews): ?><li>اظهار بررسی ثبت نشده است.</li><?php endif; ?></ul>
+<?php endif; ?>
 <h4>تاریخچه داخلی</h4><ul><?php foreach ($versions as $v): ?><li><a href="index.php?<?= $h(http_build_query(['page'=>'site_content_drafts','draft'=>$id,'history'=>(int)$v['version']])) ?>">نسخه <?= (int)$v['version'] ?></a> — <?= $h($v['created_at']) ?> — شناسه مدیر <?= (int)$v['actor_id'] ?> — <?= $h($v['action']) ?><?php if ($v['restored_version']!==null): ?> (بازگردانی نسخه <?= (int)$v['restored_version'] ?>)<?php endif; ?></li><?php endforeach; ?></ul>
-<?php if ($old): ?><h4>نسخه تاریخی <?= (int)$old['version'] ?>: <?= $h($old['title']) ?></h4><pre style="white-space:pre-wrap;overflow-wrap:anywhere"><?= $h($old['body']) ?></pre>
+<?php if ($old): ?><h4>مقایسه داخلی نسخه تاریخی <?= (int)$old['version'] ?> با نسخه ذخیره‌شده <?= (int)$selected['version'] ?></h4><p>این مقایسه فقط میان دو نسخه CRM است، نه با مقاله سایت؛ تفاوت عنوان: <?= $old['title']===$selected['title']?'خیر':'بله' ?>، تفاوت متن: <?= $old['body']===$selected['body']?'خیر':'بله' ?>. تغییرهای جزئی برجسته نمی‌شوند.</p><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:1rem"><section><h5>نسخه تاریخی <?= (int)$old['version'] ?></h5><p><strong><?= $h($old['title']) ?></strong></p><pre style="white-space:pre-wrap;overflow-wrap:anywhere"><?= $h($old['body']) ?></pre></section><section><h5>نسخه ذخیره‌شده <?= (int)$selected['version'] ?></h5><p><strong><?= $h($selected['title']) ?></strong></p><pre style="white-space:pre-wrap;overflow-wrap:anywhere"><?= $h($selected['body']) ?></pre></section></div>
 <?php if (!$readonly && (int)$selected['version']<100): ?><form method="post" onsubmit="return confirm('این نسخه به عنوان یک نسخه داخلی جدید بازگردانده شود؟ چیزی در سایت منتشر نمی‌شود.');"><?= get_csrf_field() ?><input type="hidden" name="action" value="restore"><input type="hidden" name="draft_id" value="<?= (int)$id ?>"><input type="hidden" name="version" value="<?= (int)$selected['version'] ?>"><input type="hidden" name="restore_version" value="<?= (int)$old['version'] ?>"><label><input type="checkbox" name="confirm_restore" value="1" required> نسخه تاریخی را بررسی و بازگردانی داخلی را تأیید می‌کنم</label> <button class="btn" type="submit">بازگردانی به نسخه جدید</button></form><?php endif; ?><?php endif; ?>
 <?php elseif (!$readonly): ?><?php if ($id>0): ?><p>پیش‌نویس انتخاب‌شده یافت نشد.</p><?php endif; ?><h3>پیش‌نویس جدید</h3><form method="post"><?= get_csrf_field() ?><input type="hidden" name="action" value="create"><input type="hidden" name="draft_id" value="0"><input type="hidden" name="version" value="0"><label>عنوان <input name="title" maxlength="200" required></label><br><label>متن ساده<br><textarea name="body" rows="8" style="width:100%" maxlength="32000"></textarea></label><br><button class="btn" type="submit">ساخت پیش‌نویس داخلی</button></form><?php endif; ?>
 <h3>فهرست پیش‌نویس‌ها</h3><p><a href="index.php?page=site_content_drafts">پیش‌نویس جدید / صفحه اول</a></p><table class="data-table"><thead><tr><th>عنوان</th><th>نسخه</th><th>آخرین تغییر</th></tr></thead><tbody><?php foreach ($rows as $r): ?><tr><td><a href="index.php?page=site_content_drafts&amp;draft=<?= (int)$r['id'] ?>"><?= $h($r['title']) ?></a></td><td><?= (int)$r['version'] ?></td><td><?= $h($r['updated_at']) ?></td></tr><?php endforeach; ?><?php if (!$rows): ?><tr><td colspan="3">پیش‌نویسی ثبت نشده است.</td></tr><?php endif; ?></tbody></table>

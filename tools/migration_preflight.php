@@ -65,6 +65,8 @@ function preflight_specs(string $component): array {
         'site_blog_draft_links'=>['required'=>false,'tables'=>[
             'crm_site_blog_draft_links'=>['id','draft_id','source_id','post_id','replica_id','draft_version','post_revision','linked_by','linked_at'],
             'crm_site_blog_draft_link_events'=>['id','link_id','draft_id','source_id','post_id','replica_id','draft_version','post_revision','actor_id','action','created_at']]],
+        'site_content_draft_reviews'=>['required'=>false,'tables'=>[
+            'crm_site_content_draft_reviews'=>['id','draft_id','draft_version','actor_id','created_at']]],
         'site_content_drafts'=>['required'=>false,'tables'=>[
             'crm_site_content_drafts'=>['id','title','body','version','created_by','updated_by','created_at','updated_at'],
             'crm_site_content_draft_versions'=>['id','draft_id','version','title','body','actor_id','action','restored_version','created_at']]],
