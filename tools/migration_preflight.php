@@ -29,6 +29,7 @@ function preflight_specs(string $component): array {
             'shop_catalog_cursor'=>['source_id','last_product_id'], 'shop_catalog_state'=>['source_id','product_id','snapshot_hash','latest_revision'],
             'shop_catalog_outbox'=>['id','source_id','product_id','event_id','snapshot','delivered_at']]],
         'shop_command_receiver'=>['required'=>false,'tables'=>['shop_crm_command_receipts'=>['command_id','request_hash','shop_order_id','result']]],
+        'shop_product_command_receiver'=>['required'=>false,'tables'=>['shop_product_command_receipts'=>['command_id','request_hash','product_id','result']]],
     ];
     if ($component==='crm') return [
         'crm_core'=>['required'=>true,'tables'=>[
@@ -46,6 +47,9 @@ function preflight_specs(string $component): array {
             'crm_shop_status_requests'=>['id','replica_id','source_id','shop_order_id','replica_revision','state'],
             'crm_shop_status_request_events'=>['id','request_id','replica_id','action'],
             'crm_shop_order_commands'=>['command_id','request_id','replica_id','state','payload']]],
+        'shop_product_commands'=>['required'=>false,'tables'=>[
+            'crm_shop_product_commands'=>['command_id','replica_id','source_id','product_id','replica_revision','actor_id','payload','state'],
+            'crm_shop_product_command_events'=>['id','command_id','replica_id','actor_id','action']]],
         'shop_returns'=>['required'=>false,'tables'=>[
             'crm_shop_return_requests'=>['id','replica_id','source_id','shop_order_id','state'],
             'crm_shop_return_request_events'=>['id','request_id','replica_id','action']]],
