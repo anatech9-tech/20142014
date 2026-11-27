@@ -1,0 +1,118 @@
+<?php
+/** Metadata-only staging diagnostic. Not an installer, backup, migration or production approval. */
+declare(strict_types=1);
+if (PHP_SAPI!=='cli') { http_response_code(404); exit; }
+
+/** Exact, deliberately incomplete minimum schema checks. Optional groups may not yet be created. */
+function preflight_specs(string $component): array {
+    if ($component==='site') return [
+        'site_core'=>['required'=>true,'tables'=>[
+            'admin_users'=>['id','username','password_hash','is_active'],
+            'site_settings'=>['setting_key','setting_value'], 'contact_messages'=>['id'],
+            'shipments'=>['id','tracking_code','status','is_public'],
+            'shipment_events'=>['id','shipment_id','event_time'],
+            'team_members'=>['id'], 'services'=>['id'], 'blog_posts'=>['id']]],
+        'shop_core'=>['required'=>true,'tables'=>[
+            'product_categories'=>['id','name_fa'],
+            'products'=>['id','name_fa','slug','category_id','currency','price_toman','price_usd','stock','sold_count','is_active'],
+            'product_reviews'=>['id','product_id','is_active'],
+            'customer_users'=>['id','email','password_hash'],
+            'orders'=>['id','order_no','customer_id','subtotal_toman','discount_toman','shipping_fee','total_toman','coupon_code','order_status','payment_status','success_token'],
+            'order_items'=>['id','order_id','product_id','product_name','qty','price_toman','total_toman'],
+            'order_events'=>['id','order_id','status','note'],
+            'discount_codes'=>['id']]],
+        'site_inbox_outbox'=>['required'=>false,'tables'=>['website_crm_outbox'=>['id','event_id','payload','delivered_at']]],
+        'shop_order_bridge'=>['required'=>false,'tables'=>[
+            'shop_crm_cursor'=>['source_id','last_order_id'], 'shop_crm_sync_state'=>['source_id','shop_order_id','snapshot_hash','latest_revision'],
+            'shop_crm_outbox'=>['id','source_id','shop_order_id','event_id','snapshot','delivered_at']]],
+        'shop_catalog_bridge'=>['required'=>false,'tables'=>[
+            'shop_catalog_cursor'=>['source_id','last_product_id'], 'shop_catalog_state'=>['source_id','product_id','snapshot_hash','latest_revision'],
+            'shop_catalog_outbox'=>['id','source_id','product_id','event_id','snapshot','delivered_at']]],
+        'shop_command_receiver'=>['required'=>false,'tables'=>['shop_crm_command_receipts'=>['command_id','request_hash','shop_order_id','result']]],
+    ];
+    if ($component==='crm') return [
+        'crm_core'=>['required'=>true,'tables'=>[
+            'users'=>['id','status','role'], 'crm_customers'=>['id'], 'crm_products'=>['id','name'], 'teams'=>['id']]],
+        'site_inquiries'=>['required'=>false,'tables'=>[
+            'crm_site_inquiries'=>['id','event_id','payload_hash','owner_user_id','lead_id'],
+            'crm_site_inquiry_owner_events'=>['id']]],
+        'shop_orders'=>['required'=>false,'tables'=>[
+            'crm_shop_orders'=>['id','source_id','shop_order_id','revision','payload_hash','payload'],
+            'crm_shop_order_work'=>['replica_id','version'], 'crm_shop_order_work_events'=>['id','replica_id']]],
+        'shop_catalog'=>['required'=>false,'tables'=>[
+            'crm_shop_catalog'=>['id','source_id','shop_product_id','revision','payload'],
+            'crm_shop_product_links'=>['source_id','shop_product_id','version'], 'crm_shop_product_link_events'=>['id','source_id','shop_product_id']]],
+        'shop_commands'=>['required'=>false,'tables'=>[
+            'crm_shop_status_requests'=>['id','replica_id','source_id','shop_order_id','replica_revision','state'],
+            'crm_shop_status_request_events'=>['id','request_id','replica_id','action'],
+            'crm_shop_order_commands'=>['command_id','request_id','replica_id','state','payload']]],
+        'shop_returns'=>['required'=>false,'tables'=>[
+            'crm_shop_return_requests'=>['id','replica_id','source_id','shop_order_id','state'],
+            'crm_shop_return_request_events'=>['id','request_id','replica_id','action']]],
+        'shop_tracking'=>['required'=>false,'tables'=>[
+            'crm_shop_shipping_tracking'=>['replica_id','source_id','shop_order_id','version'],
+            'crm_shop_shipping_tracking_events'=>['id','replica_id','source_id','shop_order_id'],
+            'crm_shop_shipping_packages'=>['package_id','replica_id','source_id','shop_order_id','version'],
+            'crm_shop_shipping_package_events'=>['id','package_id','replica_id']]],
+    ];
+    throw new InvalidArgumentException('Invalid component');
+}
+/** $tables maps known table names to engines, $columns maps names to a set of columns. */
+function preflight_evaluate(array $specs,array $tables,array $columns): array {
+    $groups=[]; $requiredOk=true; $optionalOk=true;
+    foreach ($specs as $group=>$spec) {
+        $missing=[]; $badEngine=[]; $missingColumns=[];
+        foreach ($spec['tables'] as $name=>$expected) {
+            if (!array_key_exists($name,$tables)) { $missing[]=$name; continue; }
+            if (strtoupper((string)$tables[$name])!=='INNODB') $badEngine[]=$name;
+            foreach ($expected as $col) if (!isset($columns[$name][$col])) $missingColumns[]=$name.'.'.$col;
+        }
+        $ok=!$missing && !$badEngine && !$missingColumns;
+        if (!$ok && $spec['required']) $requiredOk=false;
+        if (!$ok && !$spec['required']) $optionalOk=false;
+        $groups[$group]=['required'=>$spec['required'],'status'=>$ok?'checked':'incomplete',
+            'missing_or_not_visible'=>$missing,'non_innodb_or_unknown'=>$badEngine,'missing_columns_or_not_visible'=>$missingColumns];
+    }
+    return ['required_checks_passed'=>$requiredOk,'optional_checks_passed'=>$optionalOk,'groups'=>$groups];
+}
+function preflight_main(array $argv, ?callable $connect=null): int {
+    if (count($argv)!==2 || !in_array($argv[1],['site','crm'],true)) {
+        fwrite(STDERR,"Usage: php migration_preflight.php site|crm\n"); return 2;
+    }
+    $name=getenv('MIGRATION_DB_NAME'); $user=getenv('MIGRATION_DB_USER'); $pass=getenv('MIGRATION_DB_PASS');
+    $host=getenv('MIGRATION_DB_HOST'); if ($host===false || $host==='') $host='localhost';
+    // No arbitrary or remote hosts; use the local MySQL socket/loopback on the staging server.
+    if (!is_string($name) || !preg_match('/^[A-Za-z0-9_$-]{1,64}$/D',$name) || !is_string($user) || $user==='' || !is_string($pass)
+        || !in_array($host,['localhost','127.0.0.1'],true)) {
+        fwrite(STDERR,"Missing/invalid local-only database settings. See staging preflight documentation.\n"); return 2;
+    }
+    if (!extension_loaded('pdo_mysql')) { fwrite(STDERR,"PHP PDO MySQL extension is missing; metadata inspection not run.\n"); return 2; }
+    try {
+        $dsn='mysql:host='.$host.';dbname='.$name.';charset=utf8mb4';
+        $options=[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,PDO::ATTR_EMULATE_PREPARES=>false,PDO::ATTR_TIMEOUT=>5];
+        $pdo=$connect ? $connect($dsn,$user,$pass,$options) : new PDO($dsn,$user,$pass,$options);
+        // No application rows, table contents, row counts, configuration files, writes or DDL.
+        $specs=preflight_specs($argv[1]); $names=[];
+        foreach ($specs as $group) foreach (array_keys($group['tables']) as $table) $names[$table]=$table;
+        $names=array_values($names); $in=implode(',',array_fill(0,count($names),'?'));
+        $st=$pdo->prepare("SELECT TABLE_NAME,ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE' AND TABLE_NAME IN ($in)");
+        $st->execute($names); $tableRows=$st->fetchAll();
+        $st=$pdo->prepare("SELECT TABLE_NAME,COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME IN ($in)");
+        $st->execute($names); $columnRows=$st->fetchAll();
+        $tables=[]; foreach ($tableRows as $r) $tables[$r['TABLE_NAME']]=$r['ENGINE'];
+        $columns=[]; foreach ($columnRows as $r) $columns[$r['TABLE_NAME']][$r['COLUMN_NAME']]=true;
+        $report=preflight_evaluate($specs,$tables,$columns);
+        $report=['component'=>$argv[1],'php_version'=>PHP_VERSION,'extensions'=>[
+            'pdo_mysql'=>extension_loaded('pdo_mysql'),'mbstring'=>extension_loaded('mbstring'),
+            'curl'=>extension_loaded('curl'),'json'=>extension_loaded('json')],
+            'scope'=>'metadata_only_not_a_deployment_approval','database_or_account_names_excluded'=>true]+$report;
+        $output=json_encode($report,JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if ($output===false) throw new RuntimeException('report');
+        echo $output."\n";
+        return $report['required_checks_passed'] ? 0 : 1;
+    } catch (Throwable $e) {
+        // Exceptions may include credentials/host names: do not emit their messages.
+        fwrite(STDERR,"Metadata inspection failed; check local access and PHP MySQL support privately.\n"); return 2;
+    }
+}
+if (!defined('MIGRATION_PREFLIGHT_TESTING')) exit(preflight_main($argv));
