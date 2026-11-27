@@ -33,7 +33,7 @@ $now=1700000000; $source=SHOP_CRM_SOURCE_ID; $s=site(); $c=cmd($s,1);
 check(shop_product_command_configured() && crm_product_command_configured() && crm_product_hide_enabled() && shop_product_command_validate($c,$source),'independent opt-in and hide-only command');
 $sig=hash_hmac('sha256','shop-product-command-v1.'.$now.'.body',SHOP_PRODUCT_COMMAND_KEY);
 check(shop_product_command_signature_valid(SHOP_PRODUCT_COMMAND_KEY,(string)$now,$sig,'body',$now) && !shop_product_command_signature_valid(SHOP_PRODUCT_COMMAND_KEY,(string)$now,$sig,'changed',$now) && !shop_product_command_signature_valid(SHOP_PRODUCT_COMMAND_KEY,(string)$now,$sig,'body',$now+301),'HMAC rejects tamper and stale timestamps');
-$x=$c; $x['type']='shop_product_show_v1'; check(!shop_product_command_validate($x,$source),'reactivation not supported');
+$x=$c; $x['type']='shop_product_price_v1'; check(!shop_product_command_validate($x,$source),'price change not supported');
 $x=$c; $x['price']=1; check(!shop_product_command_validate($x,$source),'additional fields rejected');
 $crm=new ProductCommandPDO('sqlite::memory:'); $crm->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
 foreach ([

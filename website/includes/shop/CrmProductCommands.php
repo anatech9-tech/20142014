@@ -1,11 +1,16 @@
 <?php
-/** Independently opt-in command to hide one active product. Never changes price or stock. */
+/** Independently opt-in visibility commands; never change price or stock. */
 require_once __DIR__.'/CrmCatalogSync.php';
 function shop_product_command_configured(): bool {
     if (!defined('SHOP_PRODUCT_COMMAND_ENABLED') || SHOP_PRODUCT_COMMAND_ENABLED!==true || !defined('SHOP_PRODUCT_COMMAND_KEY') || strlen((string)SHOP_PRODUCT_COMMAND_KEY)<32
         || !defined('SHOP_CRM_SOURCE_ID') || !preg_match('/^[a-f0-9]{32}$/D',(string)SHOP_CRM_SOURCE_ID)) return false;
     foreach (['SITE_CRM_BRIDGE_KEY','SHOP_CRM_BRIDGE_KEY','SHOP_CRM_COMMAND_KEY','SHOP_CATALOG_CRM_KEY'] as $other) if (defined($other) && hash_equals((string)constant($other),(string)SHOP_PRODUCT_COMMAND_KEY)) return false;
     return true;
+}
+function shop_product_command_action_enabled(string $type): bool {
+    if ($type==='shop_product_hide_v1') return defined('SHOP_PRODUCT_HIDE_ENABLED') && SHOP_PRODUCT_HIDE_ENABLED===true;
+    if ($type==='shop_product_show_v1') return defined('SHOP_PRODUCT_SHOW_ENABLED') && SHOP_PRODUCT_SHOW_ENABLED===true;
+    return false;
 }
 function shop_product_command_signature_valid(string $key,string $ts,string $sig,string $body,int $now): bool {
     return strlen($key)>=32 && preg_match('/^[0-9]{10}$/D',$ts)===1 && abs($now-(int)$ts)<=300 && preg_match('/^[a-f0-9]{64}$/D',$sig)===1
@@ -26,7 +31,7 @@ function shop_product_command_require_innodb(PDO $pdo): void {
 }
 function shop_product_command_validate($c,string $source): bool {
     if (!is_array($c) || array_diff(array_keys($c),['type','command_id','source_id','product_id','revision','snapshot_hash','issued_at','expires_at'])
-        || ($c['type'] ?? '')!=='shop_product_hide_v1' || ($c['source_id'] ?? '')!==$source || !preg_match('/^[a-f0-9]{32}$/D',$source)
+        || !in_array($c['type'] ?? '',['shop_product_hide_v1','shop_product_show_v1'],true) || ($c['source_id'] ?? '')!==$source || !preg_match('/^[a-f0-9]{32}$/D',$source)
         || !is_string($c['command_id'] ?? null) || !preg_match('/^[a-f0-9]{32}$/D',$c['command_id'])
         || !is_string($c['snapshot_hash'] ?? null) || !preg_match('/^[a-f0-9]{64}$/D',$c['snapshot_hash'])) return false;
     foreach (['product_id','revision','issued_at','expires_at'] as $k) if (!is_int($c[$k] ?? null) || $c[$k]<=0) return false;
@@ -55,9 +60,12 @@ function shop_product_command_apply(PDO $pdo,array $c,string $source,int $now,bo
                 $st=$pdo->prepare('SELECT snapshot_hash,latest_revision FROM shop_catalog_state WHERE source_id=? AND product_id=? FOR UPDATE'); $st->execute([$source,$c['product_id']]); $state=$st->fetch(PDO::FETCH_ASSOC);
                 $snapshot=json_encode(shop_catalog_snapshot($p,$category),JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 if ($snapshot===false || strlen($snapshot)>8192) throw new RuntimeException('Product snapshot unavailable');
-                if ((int)$p['is_active']===1 && $state && (int)$state['latest_revision']===$c['revision']
+                $show=$c['type']==='shop_product_show_v1'; $expected=$show?0:1; $target=$show?1:0;
+                // USD rate is not part of the replicated snapshot. Do not publish USD or zero-price items through this path.
+                $publishable=!$show || (($p['currency'] ?? '')==='toman' && $p['price_toman']!==null && shop_crm_uint($p['price_toman'])>0);
+                if ($publishable && (int)$p['is_active']===$expected && $state && (int)$state['latest_revision']===$c['revision']
                     && hash_equals((string)$state['snapshot_hash'],$c['snapshot_hash']) && hash_equals(hash('sha256',$snapshot),$c['snapshot_hash'])) {
-                    $st=$pdo->prepare('UPDATE products SET is_active=0 WHERE id=? AND is_active=1'); $st->execute([$c['product_id']]);
+                    $st=$pdo->prepare('UPDATE products SET is_active=? WHERE id=? AND is_active=?'); $st->execute([$target,$c['product_id'],$expected]);
                     if ($st->rowCount()!==1) throw new RuntimeException('Product update failed');
                     $result='applied';
                 }

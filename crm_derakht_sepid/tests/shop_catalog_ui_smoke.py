@@ -12,14 +12,16 @@ with tempfile.TemporaryDirectory() as tmp:
     (app/'includes/header.php').write_text('<header>shell</header>'); (app/'includes/footer.php').write_text('<footer>shell</footer>')
     (app/'run.php').write_text('''<?php
 function require_login(){} function is_strict_admin(){return true;} function is_nazer_kol(){return false;}
-function access_is_special_account(){return !in_array(($GLOBALS['case'] ?? ''),['readonly','hide_readonly','hide_post_readonly'],true);} function access_mode($k){return 'viewer';}
+function access_is_special_account(){return !in_array(($GLOBALS['case'] ?? ''),['readonly','hide_readonly','hide_post_readonly','show_readonly','show_post_readonly'],true);} function access_mode($k){return 'viewer';}
 function get_csrf_field(){return '<input name="csrf_token" value="test">';} function showToast($x,$y=''){} function redirect($x){exit;} function operations_audit(...$x){}
 $_SESSION=['user_id'=>1]; $_GET=[]; $_SERVER['REQUEST_METHOD']='GET'; $case=$argv[1] ?? '';
 if ($case==='filter') $_GET=['q'=>'special','active'=>'inactive'];
 if (in_array($case,['category','category1','category2','malformed','badparam'])) $_GET=['category_source'=>str_repeat('a',32),'category_id'=>$case==='badparam'?'1 OR 1=1':'1','p'=>$case==='category2'?2:1];
 if (in_array($case,['mapping','readonly'])) $_GET=['map_id'=>31,'product_search'=>'Target'];
 if (str_starts_with($case,'hide_')) $_GET=['map_id'=>30];
-if (in_array($case,['hide_enabled','hide_nomapping','hide_queued','hide_readonly','hide_post','hide_post_no_ack','hide_post_readonly','hide_viewer'],true)) { define('SHOP_PRODUCT_COMMAND_ENABLED',true); define('SHOP_PRODUCT_HIDE_ENABLED',true); define('SHOP_PRODUCT_COMMAND_KEY',str_repeat('p',32)); define('SHOP_CATALOG_CRM_ENABLED',true); define('SHOP_CATALOG_CRM_KEY',str_repeat('c',32)); define('SHOP_CRM_SOURCE_ID',str_repeat('a',32)); define('SHOP_PRODUCT_COMMAND_URL','https://example.test/cmd'); }
+if (str_starts_with($case,'show_')) $_GET=['map_id'=>31];
+if (in_array($case,['hide_enabled','hide_nomapping','hide_queued','hide_readonly','hide_post','hide_post_no_ack','hide_post_readonly','hide_viewer'],true) || str_starts_with($case,'show_')) { define('SHOP_PRODUCT_COMMAND_ENABLED',true); define('SHOP_PRODUCT_HIDE_ENABLED',true); define('SHOP_PRODUCT_COMMAND_KEY',str_repeat('p',32)); define('SHOP_CATALOG_CRM_ENABLED',true); define('SHOP_CATALOG_CRM_KEY',str_repeat('c',32)); define('SHOP_CRM_SOURCE_ID',str_repeat('a',32)); define('SHOP_PRODUCT_COMMAND_URL','https://example.test/cmd'); }
+if (str_starts_with($case,'show_') && $case!=='show_disabled') define('SHOP_PRODUCT_SHOW_ENABLED',true);
 class UITestPDO extends PDO { public function prepare(string $sql,array $options=[]): PDOStatement|false { return parent::prepare(str_replace(' FOR UPDATE','',$sql),$options); } }
 $pdo=new UITestPDO('sqlite::memory:'); $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION); $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE,PDO::FETCH_ASSOC);
 $pdo->exec('CREATE TABLE users(id INTEGER PRIMARY KEY,status TEXT,role TEXT)');
@@ -28,7 +30,7 @@ $pdo->exec('CREATE TABLE crm_shop_product_links(source_id TEXT,shop_product_id I
 $pdo->exec('CREATE TABLE crm_shop_product_link_events(id INTEGER PRIMARY KEY,source_id TEXT,shop_product_id INTEGER,replica_id INTEGER,actor_id INTEGER,old_crm_product_id INTEGER,new_crm_product_id INTEGER,created_at TEXT)');
 $pdo->exec("INSERT INTO crm_products VALUES(1,'Target Product','', 'Vendor')");
 $pdo->exec('CREATE TABLE crm_shop_catalog(id INTEGER PRIMARY KEY,source_id TEXT,shop_product_id INTEGER,revision INTEGER,event_id TEXT,payload_hash TEXT,name_fa TEXT,sku TEXT,is_active INTEGER,payload TEXT,received_at TEXT)');
-$pdo->prepare('INSERT INTO users VALUES(1,?,?)')->execute(['active',in_array($case,['viewer','hide_viewer'],true)?'user':'admin']);
+$pdo->prepare('INSERT INTO users VALUES(1,?,?)')->execute(['active',in_array($case,['viewer','hide_viewer','show_viewer'],true)?'user':'admin']);
 $st=$pdo->prepare('INSERT INTO crm_shop_catalog VALUES(?,?,?,?,?,?,?,?,?,?,?)');
 for ($i=1;$i<=31;$i++) {
  $p=['id'=>$i,'name_fa'=>$i===31?'<script>':'Item '.$i,'name_en'=>'Item','slug'=>'item-'.$i,'sku'=>$i===31?'special':'sku'.$i,'brand'=>'Brand','category_id'=>1,'category_name'=>'<Test>','currency'=>'toman','price_toman'=>100,'price_usd'=>null,'stock'=>3,'is_active'=>$i===31?0:1];
@@ -36,6 +38,17 @@ for ($i=1;$i<=31;$i++) {
 }
 $pdo->exec('CREATE TABLE crm_shop_product_commands(command_id TEXT PRIMARY KEY,replica_id INTEGER,source_id TEXT,product_id INTEGER,replica_revision INTEGER,actor_id INTEGER,payload TEXT,state TEXT,attempts INTEGER,next_attempt_at TEXT,created_at TEXT,completed_at TEXT)');
 $pdo->exec('CREATE TABLE crm_shop_product_command_events(id INTEGER PRIMARY KEY,command_id TEXT,replica_id INTEGER,actor_id INTEGER,action TEXT,created_at TEXT)');
+if (in_array($case,['show_zero','show_usd'],true)) {
+ $st=$pdo->prepare('SELECT payload FROM crm_shop_catalog WHERE id=31'); $st->execute(); $p=json_decode($st->fetchColumn(),true);
+ if ($case==='show_zero') $p['price_toman']=0; else { $p['currency']='usd'; $p['price_usd']='2.50'; $p['price_toman']=null; }
+ $pdo->prepare('UPDATE crm_shop_catalog SET payload=? WHERE id=31')->execute([json_encode($p)]);
+}
+if ($case==='show_queued') $pdo->prepare("INSERT INTO crm_shop_product_commands VALUES(?,31,?,31,31,1,'{}','queued',0,'2025-01-01','2025-01-01',NULL)")->execute([str_repeat('b',32),str_repeat('a',32)]);
+if (in_array($case,['show_post_none','show_post_one','show_post_both','show_post_readonly'],true)) {
+ $_SERVER['REQUEST_METHOD']='POST'; $_POST=['action'=>'show_product','replica_id'=>'31','revision'=>'31'];
+ if ($case!=='show_post_none') $_POST['confirmed_show']='1'; if (in_array($case,['show_post_both','show_post_readonly'],true)) $_POST['checked_price_stock']='1';
+ register_shutdown_function(function() use ($pdo) { echo 'SHOW_RESULT:'.$pdo->query('SELECT COUNT(*) FROM crm_shop_product_commands')->fetchColumn().':'.$pdo->query('SELECT COUNT(*) FROM crm_shop_product_command_events')->fetchColumn(); });
+}
 if ($case==='hide_nomapping') $pdo->exec('DROP TABLE crm_products');
 if ($case==='hide_queued') $pdo->prepare("INSERT INTO crm_shop_product_commands VALUES(?,30,?,30,30,1,'{}','queued',0,'2025-01-01','2025-01-01',NULL)")->execute([str_repeat('b',32),str_repeat('a',32)]);
 if (in_array($case,['hide_post','hide_post_no_ack','hide_post_readonly'],true)) {
@@ -68,4 +81,11 @@ include __DIR__.'/pages/shop_catalog.php';
     assert 'ثبت فرمان مخفی‌کردن کالا</button>' not in run('hide_readonly')
     assert 'دسترسی مجاز نیست' in run('hide_viewer')
     assert 'HIDE_RESULT:1:1' in run('hide_post') and 'HIDE_RESULT:0:0' in run('hide_post_no_ack') and 'HIDE_RESULT:0:0' in run('hide_post_readonly')
-    print('PASS catalogue access, filtering, mapping and opt-in product hide UI')
+    assert 'ثبت فرمان انتشار کالا</button>' not in run('show_disabled')
+    show=run('show_enabled'); assert 'ثبت فرمان انتشار کالا</button>' in show and 'name="confirmed_show"' in show and 'name="checked_price_stock"' in show and 'csrf_token' in show
+    assert 'ثبت فرمان انتشار کالا</button>' not in run('show_zero') and 'ثبت فرمان انتشار کالا</button>' not in run('show_usd')
+    assert 'ثبت فرمان انتشار کالا</button>' not in run('show_queued') and 'ثبت فرمان انتشار کالا</button>' not in run('show_readonly')
+    assert 'دسترسی مجاز نیست' in run('show_viewer')
+    assert 'SHOW_RESULT:0:0' in run('show_post_none') and 'SHOW_RESULT:0:0' in run('show_post_one')
+    assert 'SHOW_RESULT:1:1' in run('show_post_both') and 'SHOW_RESULT:0:0' in run('show_post_readonly')
+    print('PASS catalogue access, filtering, mapping and separately opt-in visibility UI')

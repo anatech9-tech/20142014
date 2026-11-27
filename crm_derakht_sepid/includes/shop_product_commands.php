@@ -1,5 +1,5 @@
 <?php
-/** CRM outbox for a single opt-in operation: hide an active shop product. */
+/** CRM outbox for separately opt-in hide and restricted publication commands. */
 require_once __DIR__.'/shop_catalog_sync.php';
 function crm_product_command_configured(): bool {
     if (!defined('SHOP_PRODUCT_COMMAND_ENABLED') || SHOP_PRODUCT_COMMAND_ENABLED!==true || !defined('SHOP_PRODUCT_COMMAND_KEY') || strlen((string)SHOP_PRODUCT_COMMAND_KEY)<32
@@ -9,6 +9,7 @@ function crm_product_command_configured(): bool {
     return true;
 }
 function crm_product_hide_enabled(): bool { return defined('SHOP_PRODUCT_HIDE_ENABLED') && SHOP_PRODUCT_HIDE_ENABLED===true; }
+function crm_product_show_enabled(): bool { return defined('SHOP_PRODUCT_SHOW_ENABLED') && SHOP_PRODUCT_SHOW_ENABLED===true; }
 function crm_product_command_schema(): array {
     return [
         "CREATE TABLE IF NOT EXISTS crm_shop_product_commands(command_id CHAR(32) NOT NULL PRIMARY KEY,replica_id BIGINT UNSIGNED NOT NULL,source_id CHAR(32) NOT NULL,product_id BIGINT UNSIGNED NOT NULL,replica_revision BIGINT UNSIGNED NOT NULL,actor_id INT NOT NULL,payload TEXT NOT NULL,state VARCHAR(12) NOT NULL DEFAULT 'queued',attempts INT NOT NULL DEFAULT 0,next_attempt_at DATETIME NOT NULL,created_at DATETIME NOT NULL,completed_at DATETIME NULL,KEY idx_product_queue(state,next_attempt_at,created_at),KEY idx_product_replica(replica_id,created_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
@@ -30,7 +31,13 @@ function crm_product_command_require_innodb(PDO $pdo): void {
 }
 /** Caller performs CSRF checks and must receive an explicit confirmation. */
 function crm_product_hide_enqueue(PDO $pdo,int $replica,int $actor,bool $admin,int $revision,int $now,bool $confirmed): string {
-    if (!crm_product_command_configured() || !crm_product_hide_enabled() || !crm_shop_catalog_configured() || !$confirmed || !$admin || $replica<=0 || $actor<=0 || $revision<=0 || $now<=0 || $now>PHP_INT_MAX-900) throw new DomainException('فرمان یا تأیید مدیر معتبر نیست.');
+    return crm_product_visibility_enqueue($pdo,$replica,$actor,$admin,$revision,$now,$confirmed,'hide');
+}
+function crm_product_show_enqueue(PDO $pdo,int $replica,int $actor,bool $admin,int $revision,int $now,bool $confirmed): string {
+    return crm_product_visibility_enqueue($pdo,$replica,$actor,$admin,$revision,$now,$confirmed,'show');
+}
+function crm_product_visibility_enqueue(PDO $pdo,int $replica,int $actor,bool $admin,int $revision,int $now,bool $confirmed,string $action): string {
+    if (!in_array($action,['hide','show'],true) || !crm_product_command_configured() || !($action==='hide'?crm_product_hide_enabled():crm_product_show_enabled()) || !crm_shop_catalog_configured() || !$confirmed || !$admin || $replica<=0 || $actor<=0 || $revision<=0 || $now<=0 || $now>PHP_INT_MAX-900) throw new DomainException('فرمان یا تأیید مدیر معتبر نیست.');
     if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME)==='mysql') crm_product_command_require_innodb($pdo);
     $pdo->beginTransaction();
     try {
@@ -38,13 +45,15 @@ function crm_product_hide_enqueue(PDO $pdo,int $replica,int $actor,bool $admin,i
         if (!$user || $user['status']!=='active' || $user['role']!=='admin') throw new DomainException('دسترسی مدیر معتبر نیست.');
         $st=$pdo->prepare('SELECT * FROM crm_shop_catalog WHERE id=? FOR UPDATE'); $st->execute([$replica]); $r=$st->fetch(PDO::FETCH_ASSOC);
         $p=$r ? json_decode((string)$r['payload'],true) : null;
-        if (!$r || $r['source_id']!==(string)SHOP_CRM_SOURCE_ID || (int)$r['revision']!==$revision || (int)$r['is_active']!==1
-            || !is_array($p) || ($p['id'] ?? null)!==(int)$r['shop_product_id'] || ($p['is_active'] ?? null)!==1
+        $expected=$action==='hide'?1:0;
+        if (!$r || $r['source_id']!==(string)SHOP_CRM_SOURCE_ID || (int)$r['revision']!==$revision || (int)$r['is_active']!==$expected
+            || !is_array($p) || ($p['id'] ?? null)!==(int)$r['shop_product_id'] || ($p['is_active'] ?? null)!==$expected
             || !crm_shop_catalog_validate(['type'=>'shop_product','source_id'=>$r['source_id'],'event_id'=>$r['event_id'],'revision'=>$revision,'product'=>$p],(string)SHOP_CRM_SOURCE_ID)) throw new DomainException('نسخه یا هویت کالا معتبر نیست؛ مجدداً تطبیق دهید.');
+        if ($action==='show' && (($p['currency'] ?? '')!=='toman' || !is_int($p['price_toman'] ?? null) || $p['price_toman']<=0)) throw new DomainException('انتشار فقط برای کالای با قیمت تومانی مثبت مجاز است.');
         $st=$pdo->prepare("SELECT command_id FROM crm_shop_product_commands WHERE replica_id=? AND state='queued' LIMIT 1"); $st->execute([$replica]);
         if ($st->fetchColumn()) throw new DomainException('فرمان قبلی هنوز تعیین تکلیف نشده است.');
         $snapshot=json_encode($p,JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); if ($snapshot===false || strlen($snapshot)>8192) throw new RuntimeException('Invalid product snapshot');
-        $id=bin2hex(random_bytes(16)); $command=['type'=>'shop_product_hide_v1','command_id'=>$id,'source_id'=>$r['source_id'],'product_id'=>(int)$r['shop_product_id'],'revision'=>$revision,'snapshot_hash'=>hash('sha256',$snapshot),'issued_at'=>$now,'expires_at'=>$now+900];
+        $id=bin2hex(random_bytes(16)); $command=['type'=>$action==='hide'?'shop_product_hide_v1':'shop_product_show_v1','command_id'=>$id,'source_id'=>$r['source_id'],'product_id'=>(int)$r['shop_product_id'],'revision'=>$revision,'snapshot_hash'=>hash('sha256',$snapshot),'issued_at'=>$now,'expires_at'=>$now+900];
         $payload=json_encode($command,JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); if ($payload===false) throw new RuntimeException('Encoding failed');
         $stamp=date('Y-m-d H:i:s',$now);
         $pdo->prepare("INSERT INTO crm_shop_product_commands(command_id,replica_id,source_id,product_id,replica_revision,actor_id,payload,state,attempts,next_attempt_at,created_at) VALUES (?,?,?,?,?,?,?,'queued',0,?,?)")->execute([$id,$replica,$r['source_id'],$r['shop_product_id'],$revision,$actor,$payload,$stamp,$stamp]);

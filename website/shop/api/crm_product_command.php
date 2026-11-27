@@ -13,7 +13,8 @@ $data=json_decode($body,true); if (!shop_product_command_validate($data,(string)
 require_once __DIR__.'/../../config.php'; require_once BASE_PATH.'/includes/db.php';
 try {
     $pdo=DB::pdo(); shop_product_command_ensure($pdo); shop_product_command_require_innodb($pdo);
-    $result=shop_product_command_apply($pdo,$data,(string)SHOP_CRM_SOURCE_ID,time(),defined('SHOP_PRODUCT_HIDE_ENABLED') && SHOP_PRODUCT_HIDE_ENABLED===true);
+    $enabled=shop_product_command_action_enabled($data['type']);
+    $result=shop_product_command_apply($pdo,$data,(string)SHOP_CRM_SOURCE_ID,time(),$enabled);
     echo json_encode(['ok'=>true,'command_id'=>$data['command_id'],'result'=>$result]);
 } catch (DomainException $e) { http_response_code(409); echo '{"ok":false,"error":"command_conflict"}'; }
 catch (Throwable $e) { error_log('Shop product command failed'); http_response_code(503); echo '{"ok":false}'; }
