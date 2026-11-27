@@ -11,11 +11,15 @@ with tempfile.TemporaryDirectory() as tmp:
     (app/'includes/header.php').write_text('<header>shell</header>'); (app/'includes/footer.php').write_text('<footer>shell</footer>')
     (app/'run.php').write_text('''<?php
 function require_login(){} function is_strict_admin(){return $GLOBALS['case']!=='viewer';}
-function is_nazer_kol(){return in_array($GLOBALS['case'],['readonly','post_readonly'],true);} function access_is_special_account(){return true;} function access_mode($k){return 'viewer';} function get_csrf_field(){return '<input name="csrf_token" value="token">';} function showToast($s,$t=''){} function operations_audit(...$x){} function redirect($s){exit;}
+function is_nazer_kol(){return in_array($GLOBALS['case'],['readonly','post_readonly','show_readonly','show_post_readonly'],true);} function access_is_special_account(){return true;} function access_mode($k){return 'viewer';} function get_csrf_field(){return '<input name="csrf_token" value="token">';} function showToast($s,$t=''){} function operations_audit(...$x){} function redirect($s){exit;}
 $case=$argv[1]; $_SESSION=['user_id'=>1]; $_GET=[]; $_SERVER['REQUEST_METHOD']='GET';
 if ($case!=='disabled' && $case!=='missing') { define('SHOP_REVIEW_META_CRM_ENABLED',true); define('SHOP_REVIEW_META_CRM_KEY',str_repeat('r',32)); define('SHOP_CRM_SOURCE_ID',str_repeat('a',32)); }
 if (in_array($case,['hide','readonly','post_none','post_one','post_both','post_readonly','queued'],true)) {
  define('SHOP_REVIEW_COMMAND_ENABLED',true); define('SHOP_REVIEW_HIDE_ENABLED',true); define('SHOP_REVIEW_COMMAND_KEY',str_repeat('h',32)); define('SHOP_REVIEW_COMMAND_URL','https://example.test/cmd'); $_GET['review']='30';
+}
+if (str_starts_with($case,'show_')) {
+ define('SHOP_REVIEW_COMMAND_ENABLED',true); define('SHOP_REVIEW_HIDE_ENABLED',true); define('SHOP_REVIEW_COMMAND_KEY',str_repeat('h',32)); define('SHOP_REVIEW_COMMAND_URL','https://example.test/cmd'); $_GET['review']='30';
+ if (!in_array($case,['show_disabled','show_post_disabled'],true)) define('SHOP_REVIEW_SHOW_ENABLED',true);
 }
 if ($case==='filter') $_GET['status']='inactive'; if ($case==='missing_filter') $_GET['status']='missing'; if ($case==='page2') $_GET=['status'=>'all','before'=>'2'];
 class UITestPDO extends PDO { public function prepare(string $sql,array $options=[]): PDOStatement|false { return parent::prepare(str_replace(' FOR UPDATE','',$sql),$options); } }
@@ -26,11 +30,18 @@ if ($case!=='missing') {
  $pdo->exec('CREATE TABLE crm_shop_review_meta(id INTEGER PRIMARY KEY,source_id TEXT,review_id INTEGER,product_id INTEGER,revision INTEGER,event_id TEXT,payload_hash TEXT,rating INTEGER,is_active INTEGER,received_at TEXT)');
  $st=$pdo->prepare('INSERT INTO crm_shop_review_meta VALUES(?,?,?,?,?,?,?,?,?,?)');
  for ($i=1;$i<=31;$i++) $st->execute([$i,$i===31?'<script>':str_repeat('a',32),$i,10,15,str_repeat('b',32),str_repeat('c',64),5,$i===31?0:1,'2025-01-01']);
+ if (str_starts_with($case,'show_')) $pdo->exec('UPDATE crm_shop_review_meta SET is_active=0 WHERE id=30');
  if ($case==='missing_filter') $st->execute([32,str_repeat('a',32),99,0,15,str_repeat('b',32),str_repeat('c',64),0,0,'2025-01-01']);
 }
 $pdo->exec('CREATE TABLE crm_shop_review_commands(command_id TEXT PRIMARY KEY,replica_id INTEGER,source_id TEXT,review_id INTEGER,replica_revision INTEGER,actor_id INTEGER,payload TEXT,state TEXT,attempts INTEGER,next_attempt_at TEXT,created_at TEXT,completed_at TEXT)');
 $pdo->exec('CREATE TABLE crm_shop_review_command_events(id INTEGER PRIMARY KEY,command_id TEXT,replica_id INTEGER,actor_id INTEGER,action TEXT,created_at TEXT)');
 if ($case==='queued') $pdo->prepare("INSERT INTO crm_shop_review_commands VALUES(?,30,?,30,15,1,'{}','queued',0,'2025-01-01','2025-01-01',NULL)")->execute([str_repeat('d',32),str_repeat('a',32)]);
+if ($case==='show_queued') $pdo->prepare("INSERT INTO crm_shop_review_commands VALUES(?,30,?,30,15,1,?,'queued',0,'2025-01-01','2025-01-01',NULL)")->execute([str_repeat('d',32),str_repeat('a',32),json_encode(['type'=>'shop_review_show_v1'])]);
+if (str_starts_with($case,'show_post_')) {
+ $_SERVER['REQUEST_METHOD']='POST'; $_POST=['replica_id'=>'30','revision'=>'15','action'=>'show_review'];
+ if ($case!=='show_post_none') $_POST['checked_review']='1'; if (in_array($case,['show_post_both','show_post_readonly','show_post_disabled'],true)) $_POST['confirmed_show']='1';
+ register_shutdown_function(function() use ($pdo) { echo 'SHOW_RESULT:'.$pdo->query('SELECT COUNT(*) FROM crm_shop_review_commands')->fetchColumn().':'.$pdo->query('SELECT COUNT(*) FROM crm_shop_review_command_events')->fetchColumn(); });
+}
 if (str_starts_with($case,'post_')) {
  $_SERVER['REQUEST_METHOD']='POST'; $_POST=['replica_id'=>'30','revision'=>'15','action'=>'hide_review'];
  if ($case!=='post_none') $_POST['checked_review']='1'; if (in_array($case,['post_both','post_readonly'],true)) $_POST['confirmed_hide']='1';
@@ -53,6 +64,12 @@ include __DIR__.'/pages/shop_review_meta.php';
     assert 'ثبت فرمان مخفی‌سازی</button>' not in run('readonly') and 'ثبت فرمان مخفی‌سازی</button>' not in run('queued')
     assert 'COMMAND_RESULT:0:0' in run('post_none') and 'COMMAND_RESULT:0:0' in run('post_one') and 'COMMAND_RESULT:0:0' in run('post_readonly')
     assert 'COMMAND_RESULT:1:1' in run('post_both')
+    index=(root/'index.php').read_text(); assert "verify_csrf($_POST['csrf_token'] ?? '')" in index and index.index('verify_csrf(')<index.index("pages/")
+    show=run('show_enabled'); assert 'name="checked_review"' in show and 'name="confirmed_show"' in show and 'csrf_token' in show and 'برای عموم' in show
+    assert 'ثبت فرمان نمایش مجدد</button>' not in run('show_disabled') and 'ثبت فرمان نمایش مجدد</button>' not in run('show_readonly') and 'ثبت فرمان نمایش مجدد</button>' not in run('show_queued')
+    assert 'نمایش مجدد: در صف؛ نتیجه نامشخص' in run('show_queued')
+    for case in ('show_post_none','show_post_one','show_post_readonly','show_post_disabled'): assert 'SHOW_RESULT:0:0' in run(case)
+    assert 'SHOW_RESULT:1:1' in run('show_post_both')
     for case in ('viewer','forged','inactive'):
         denied=run(case); assert 'دسترسی مجاز نیست' in denied and '<table' not in denied
     print('PASS review metadata page role checks, escaping, filters and disabled state')

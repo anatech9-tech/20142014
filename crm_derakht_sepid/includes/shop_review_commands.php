@@ -1,5 +1,5 @@
 <?php
-/** CRM outbox for an independently opt-in, hide-only review command. */
+/** CRM outbox for separately opt-in hide and publication review commands. */
 require_once __DIR__.'/shop_review_meta_sync.php';
 function crm_review_command_configured(): bool {
     if (!defined('SHOP_REVIEW_COMMAND_ENABLED') || SHOP_REVIEW_COMMAND_ENABLED!==true || !defined('SHOP_REVIEW_COMMAND_KEY') || strlen((string)SHOP_REVIEW_COMMAND_KEY)<32
@@ -9,6 +9,7 @@ function crm_review_command_configured(): bool {
     return true;
 }
 function crm_review_hide_enabled(): bool { return defined('SHOP_REVIEW_HIDE_ENABLED') && SHOP_REVIEW_HIDE_ENABLED===true; }
+function crm_review_show_enabled(): bool { return defined('SHOP_REVIEW_SHOW_ENABLED') && SHOP_REVIEW_SHOW_ENABLED===true; }
 function crm_review_command_schema(): array {
     return [
         "CREATE TABLE IF NOT EXISTS crm_shop_review_commands(command_id CHAR(32) NOT NULL PRIMARY KEY,replica_id BIGINT UNSIGNED NOT NULL,source_id CHAR(32) NOT NULL,review_id BIGINT UNSIGNED NOT NULL,replica_revision BIGINT UNSIGNED NOT NULL,actor_id INT NOT NULL,payload TEXT NOT NULL,state VARCHAR(12) NOT NULL DEFAULT 'queued',attempts INT NOT NULL DEFAULT 0,next_attempt_at DATETIME NOT NULL,created_at DATETIME NOT NULL,completed_at DATETIME NULL,KEY idx_review_queue(state,next_attempt_at,created_at),KEY idx_review_replica(replica_id,created_at)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
@@ -37,20 +38,27 @@ function crm_review_uint($value,bool $zero=false): int {
 }
 /** Caller checks CSRF and two confirmations; no review text is carried in the queue. */
 function crm_review_hide_enqueue(PDO $pdo,int $replica,int $actor,bool $admin,int $revision,int $now,bool $confirmed): string {
-    if (!crm_review_command_configured() || !crm_review_hide_enabled() || !crm_review_meta_configured() || !$confirmed || !$admin || $replica<=0 || $actor<=0 || $revision<=0 || $now<=0 || $now>PHP_INT_MAX-900) throw new DomainException('فرمان یا تأیید مدیر معتبر نیست.');
+    return crm_review_visibility_enqueue($pdo,$replica,$actor,$admin,$revision,$now,$confirmed,'hide');
+}
+function crm_review_show_enqueue(PDO $pdo,int $replica,int $actor,bool $admin,int $revision,int $now,bool $confirmed): string {
+    return crm_review_visibility_enqueue($pdo,$replica,$actor,$admin,$revision,$now,$confirmed,'show');
+}
+function crm_review_visibility_enqueue(PDO $pdo,int $replica,int $actor,bool $admin,int $revision,int $now,bool $confirmed,string $action): string {
+    if (!in_array($action,['hide','show'],true) || !crm_review_command_configured() || !($action==='hide'?crm_review_hide_enabled():crm_review_show_enabled()) || !crm_review_meta_configured() || !$confirmed || !$admin || $replica<=0 || $actor<=0 || $revision<=0 || $now<=0 || $now>PHP_INT_MAX-900) throw new DomainException('فرمان یا تأیید مدیر معتبر نیست.');
     if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME)==='mysql') crm_review_command_require_innodb($pdo);
     $pdo->beginTransaction();
     try {
         $st=$pdo->prepare('SELECT status,role FROM users WHERE id=? FOR UPDATE'); $st->execute([$actor]); $user=$st->fetch(PDO::FETCH_ASSOC);
         if (!$user || $user['status']!=='active' || $user['role']!=='admin') throw new DomainException('دسترسی مدیر معتبر نیست.');
         $st=$pdo->prepare('SELECT * FROM crm_shop_review_meta WHERE id=? FOR UPDATE'); $st->execute([$replica]); $r=$st->fetch(PDO::FETCH_ASSOC);
-        if (!$r || $r['source_id']!==(string)SHOP_CRM_SOURCE_ID || crm_review_uint($r['revision'])!==$revision || crm_review_uint($r['is_active'],true)!==1) throw new DomainException('نسخه یا هویت دیدگاه معتبر نیست؛ مجدداً تطبیق دهید.');
-        $review=['id'=>crm_review_uint($r['review_id']),'product_id'=>crm_review_uint($r['product_id']),'rating'=>crm_review_uint($r['rating']),'is_active'=>1];
+        $expected=$action==='hide'?1:0;
+        if (!$r || $r['source_id']!==(string)SHOP_CRM_SOURCE_ID || crm_review_uint($r['revision'])!==$revision || crm_review_uint($r['is_active'],true)!==$expected) throw new DomainException('نسخه یا هویت دیدگاه معتبر نیست؛ مجدداً تطبیق دهید.');
+        $review=['id'=>crm_review_uint($r['review_id']),'product_id'=>crm_review_uint($r['product_id']),'rating'=>crm_review_uint($r['rating']),'is_active'=>$expected];
         if ($review['rating']>5) throw new DomainException('امتیاز دیدگاه معتبر نیست.');
         $st=$pdo->prepare("SELECT command_id FROM crm_shop_review_commands WHERE replica_id=? AND state='queued' LIMIT 1"); $st->execute([$replica]);
         if ($st->fetchColumn()) throw new DomainException('فرمان قبلی هنوز تعیین تکلیف نشده است.');
         $snapshot=json_encode($review,JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); if ($snapshot===false) throw new RuntimeException('Invalid review snapshot');
-        $id=bin2hex(random_bytes(16)); $command=['type'=>'shop_review_hide_v1','command_id'=>$id,'source_id'=>$r['source_id'],'review_id'=>(int)$r['review_id'],'revision'=>$revision,'snapshot_hash'=>hash('sha256',$snapshot),'issued_at'=>$now,'expires_at'=>$now+900];
+        $id=bin2hex(random_bytes(16)); $command=['type'=>$action==='hide'?'shop_review_hide_v1':'shop_review_show_v1','command_id'=>$id,'source_id'=>$r['source_id'],'review_id'=>(int)$r['review_id'],'revision'=>$revision,'snapshot_hash'=>hash('sha256',$snapshot),'issued_at'=>$now,'expires_at'=>$now+900];
         $payload=json_encode($command,JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); if ($payload===false) throw new RuntimeException('Encoding failed');
         $stamp=date('Y-m-d H:i:s',$now);
         $pdo->prepare("INSERT INTO crm_shop_review_commands(command_id,replica_id,source_id,review_id,replica_revision,actor_id,payload,state,attempts,next_attempt_at,created_at) VALUES (?,?,?,?,?,?,?,'queued',0,?,?)")->execute([$id,$replica,$r['source_id'],$r['review_id'],$revision,$actor,$payload,$stamp,$stamp]);
@@ -75,7 +83,7 @@ function crm_review_command_settle(PDO $pdo,array $row,$reply,int $http,int $now
 /** Treat outbox as untrusted: do not transmit added fields or mismatched identifiers. */
 function crm_review_command_payload_valid($c,array $row): bool {
     if (!is_array($c) || count($c)!==8 || array_diff(array_keys($c),['type','command_id','source_id','review_id','revision','snapshot_hash','issued_at','expires_at'])
-        || ($c['type'] ?? null)!=='shop_review_hide_v1' || ($c['source_id'] ?? null)!==(string)SHOP_CRM_SOURCE_ID || ($c['source_id'] ?? null)!==$row['source_id']
+        || !in_array($c['type'] ?? null,['shop_review_hide_v1','shop_review_show_v1'],true) || ($c['source_id'] ?? null)!==(string)SHOP_CRM_SOURCE_ID || ($c['source_id'] ?? null)!==$row['source_id']
         || !is_string($c['command_id'] ?? null) || !preg_match('/^[a-f0-9]{32}$/D',$c['command_id']) || $c['command_id']!==$row['command_id']
         || !is_string($c['snapshot_hash'] ?? null) || !preg_match('/^[a-f0-9]{64}$/D',$c['snapshot_hash'])) return false;
     foreach (['review_id','revision','issued_at','expires_at'] as $k) if (!is_int($c[$k] ?? null) || $c[$k]<=0) return false;

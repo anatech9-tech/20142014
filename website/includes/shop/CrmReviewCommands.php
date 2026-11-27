@@ -1,5 +1,5 @@
 <?php
-/** Independently opt-in hide of one review; never edits text or deletes. */
+/** Separately opt-in visibility commands; never edit text or delete. */
 require_once __DIR__.'/CrmReviewMetaSync.php';
 function shop_review_command_configured(): bool {
     if (!defined('SHOP_REVIEW_COMMAND_ENABLED') || SHOP_REVIEW_COMMAND_ENABLED!==true || !defined('SHOP_REVIEW_COMMAND_KEY') || strlen((string)SHOP_REVIEW_COMMAND_KEY)<32
@@ -9,6 +9,7 @@ function shop_review_command_configured(): bool {
 }
 function shop_review_command_action_enabled(string $type): bool {
     if ($type==='shop_review_hide_v1') return defined('SHOP_REVIEW_HIDE_ENABLED') && SHOP_REVIEW_HIDE_ENABLED===true && shop_review_meta_configured() && shop_review_guard_configured();
+    if ($type==='shop_review_show_v1') return defined('SHOP_REVIEW_SHOW_ENABLED') && SHOP_REVIEW_SHOW_ENABLED===true && shop_review_meta_configured() && shop_review_guard_configured();
     return false;
 }
 function shop_review_command_signature_valid(string $key,string $ts,string $sig,string $body,int $now): bool {
@@ -32,7 +33,7 @@ function shop_review_command_require_innodb(PDO $pdo): void {
 }
 function shop_review_command_validate($c,string $source): bool {
     if (!is_array($c) || array_diff(array_keys($c),['type','command_id','source_id','review_id','revision','snapshot_hash','issued_at','expires_at'])
-        || ($c['type'] ?? '')!=='shop_review_hide_v1' || ($c['source_id'] ?? '')!==$source || !preg_match('/^[a-f0-9]{32}$/D',$source)
+        || !in_array($c['type'] ?? '',['shop_review_hide_v1','shop_review_show_v1'],true) || ($c['source_id'] ?? '')!==$source || !preg_match('/^[a-f0-9]{32}$/D',$source)
         || !is_string($c['command_id'] ?? null) || !preg_match('/^[a-f0-9]{32}$/D',$c['command_id'])
         || !is_string($c['snapshot_hash'] ?? null) || !preg_match('/^[a-f0-9]{64}$/D',$c['snapshot_hash'])) return false;
     foreach (['review_id','revision','issued_at','expires_at'] as $k) if (!is_int($c[$k] ?? null) || $c[$k]<=0) return false;
@@ -63,10 +64,11 @@ function shop_review_command_apply(PDO $pdo,array $c,string $source,int $now,boo
                 $currentGuard=shop_review_guard_hash($source,$review);
                 $snapshot=json_encode(shop_review_meta_snapshot($review),JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 if ($snapshot===false || strlen($snapshot)>1024) throw new RuntimeException('Review snapshot unavailable');
-                if ((int)$review['is_active']===1 && $state && (int)$state['latest_revision']===$c['revision']
+                $show=$c['type']==='shop_review_show_v1'; $expected=$show?0:1; $target=$show?1:0;
+                if ((int)$review['is_active']===$expected && $state && (int)$state['latest_revision']===$c['revision']
                     && $guard && (int)$guard['latest_revision']===$c['revision'] && hash_equals((string)$guard['guard_hash'],$currentGuard)
                     && hash_equals((string)$state['snapshot_hash'],$c['snapshot_hash']) && hash_equals(hash('sha256',$snapshot),$c['snapshot_hash'])) {
-                    $st=$pdo->prepare('UPDATE product_reviews SET is_active=0 WHERE id=? AND is_active=1'); $st->execute([$c['review_id']]);
+                    $st=$pdo->prepare('UPDATE product_reviews SET is_active=? WHERE id=? AND is_active=?'); $st->execute([$target,$c['review_id'],$expected]);
                     if ($st->rowCount()!==1) throw new RuntimeException('Review update failed');
                     $result='applied';
                 }

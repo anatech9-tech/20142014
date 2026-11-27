@@ -31,7 +31,8 @@ $now=1700000000; $source=SHOP_CRM_SOURCE_ID; $s=site(); $c=cmd($s,1);
 check(shop_review_command_configured() && crm_review_command_configured() && crm_review_hide_enabled() && shop_review_command_action_enabled($c['type']) && shop_review_command_validate($c,$source),'independent opt-ins and hide command');
 $sig=hash_hmac('sha256','shop-review-command-v1.'.$now.'.body',SHOP_REVIEW_COMMAND_KEY);
 check(shop_review_command_signature_valid(SHOP_REVIEW_COMMAND_KEY,(string)$now,$sig,'body',$now) && !shop_review_command_signature_valid(SHOP_REVIEW_COMMAND_KEY,(string)$now,$sig,'altered',$now) && !shop_review_command_signature_valid(SHOP_REVIEW_COMMAND_KEY,(string)$now,$sig,'body',$now+301),'HMAC rejects modification and expiry');
-$bad=$c; $bad['type']='shop_review_show_v1'; check(!shop_review_command_validate($bad,$source) && !shop_review_command_action_enabled($bad['type']),'publication is not supported');
+$bad=$c; $bad['type']='shop_review_show_v1'; check(shop_review_command_validate($bad,$source) && !shop_review_command_action_enabled($bad['type']) && !crm_review_show_enabled(),'publication protocol recognized but not enabled by hide opt-in');
+$bad['type']='shop_review_delete_v1'; check(!shop_review_command_validate($bad,$source) && !shop_review_command_action_enabled($bad['type']),'deletion is not supported');
 $bad=$c; $bad['body']='PRIVATE'; check(!shop_review_command_validate($bad,$source),'extra fields rejected');
 $crm=new ReviewCommandPDO('sqlite::memory:'); $crm->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
 foreach ([

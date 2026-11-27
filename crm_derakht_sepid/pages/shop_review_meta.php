@@ -1,5 +1,5 @@
 <?php
-/** Administrator-only minimal review metadata and separately opt-in hide command. */
+/** Administrator-only minimal review metadata and separately opt-in visibility commands. */
 $pageTitle='نمای کلی دیدگاه‌های فروشگاه'; require_login();
 header('Cache-Control: no-store');
 require_once __DIR__.'/../includes/shop_review_meta_sync.php';
@@ -23,10 +23,13 @@ if ($_SERVER['REQUEST_METHOD']==='POST') {
     $rawId=$_POST['replica_id'] ?? null; $rawRevision=$_POST['revision'] ?? null;
     $id=is_string($rawId) && preg_match('/^[1-9][0-9]{0,17}$/D',$rawId)?(int)$rawId:0;
     try {
-        if (!$ready || !$commandReady || $readonly || ($_POST['action'] ?? null)!=='hide_review' || !$id || !is_string($rawRevision) || !preg_match('/^[1-9][0-9]{0,17}$/D',$rawRevision)) throw new DomainException('فرمان مجاز یا آماده نیست.');
-        crm_review_hide_enqueue($pdo,$id,$me,true,(int)$rawRevision,time(),($_POST['checked_review'] ?? null)==='1' && ($_POST['confirmed_hide'] ?? null)==='1');
-        try { operations_audit($pdo,$me,'shop_review_hide','shop_review',$id,'فرمان مخفی‌کردن دیدگاه در صف'); } catch (Throwable $e) { error_log('Review command global audit failed'); }
-        showToast('فرمان در صف است؛ مخفی‌شدن هنوز تأیید نشده است.');
+        $action=$_POST['action'] ?? null;
+        if (!$ready || !$commandReady || $readonly || !in_array($action,['hide_review','show_review'],true) || !$id || !is_string($rawRevision) || !preg_match('/^[1-9][0-9]{0,17}$/D',$rawRevision)) throw new DomainException('فرمان مجاز یا آماده نیست.');
+        $show=$action==='show_review'; $confirmed=($_POST['checked_review'] ?? null)==='1' && ($_POST[$show?'confirmed_show':'confirmed_hide'] ?? null)==='1';
+        if ($show) crm_review_show_enqueue($pdo,$id,$me,true,(int)$rawRevision,time(),$confirmed);
+        else crm_review_hide_enqueue($pdo,$id,$me,true,(int)$rawRevision,time(),$confirmed);
+        try { operations_audit($pdo,$me,$show?'shop_review_show':'shop_review_hide','shop_review',$id,'فرمان تغییر نمایش دیدگاه در صف'); } catch (Throwable $e) { error_log('Review command global audit failed'); }
+        showToast('فرمان در صف است؛ تغییر نمایش هنوز تأیید نشده است.');
     } catch (Throwable $e) { error_log('Review command enqueue failed: '.get_class($e)); showToast($e instanceof DomainException?$e->getMessage():'ثبت فرمان ممکن نشد.','error'); }
     redirect('index.php?page=shop_review_meta&review='.$id);
 }
@@ -46,14 +49,14 @@ if ($ready) {
     if ($reviewId>0) {
         $st=$pdo->prepare('SELECT * FROM crm_shop_review_meta WHERE id=?'); $st->execute([$reviewId]); $selected=$st->fetch(PDO::FETCH_ASSOC) ?: null;
         if ($selected && $commandReady) {
-            $st=$pdo->prepare('SELECT state,source_id,review_id,created_at FROM crm_shop_review_commands WHERE replica_id=? ORDER BY created_at DESC,command_id DESC LIMIT 10'); $st->execute([$reviewId]); $reviewCommands=$st->fetchAll(PDO::FETCH_ASSOC);
+            $st=$pdo->prepare('SELECT state,source_id,review_id,payload,created_at FROM crm_shop_review_commands WHERE replica_id=? ORDER BY created_at DESC,command_id DESC LIMIT 10'); $st->execute([$reviewId]); $reviewCommands=$st->fetchAll(PDO::FETCH_ASSOC);
             $st=$pdo->prepare("SELECT command_id FROM crm_shop_review_commands WHERE replica_id=? AND state='queued' LIMIT 1"); $st->execute([$reviewId]); $pendingCommand=(bool)$st->fetchColumn();
         }
     }
 }
 include 'includes/header.php';
 ?>
-<div class="page-header"><h1>نمای کلی دیدگاه‌های فروشگاه</h1><p>فقط شناسه، امتیاز و وضعیت ثبت‌شده با تأخیر؛ متن و نام مشتری منتقل نمی‌شود؛ فرمان آزمایشی مخفی‌سازی جداگانه و پیش‌فرض خاموش است. این صفحه ابزار انتشار، حذف یا پاسخ نیست.</p><p><a class="btn" href="index.php?page=shop_catalog">بازگشت به کالاهای فروشگاه</a></p></div>
+<div class="page-header"><h1>نمای کلی دیدگاه‌های فروشگاه</h1><p>فقط شناسه، امتیاز و وضعیت ثبت‌شده با تأخیر؛ متن و نام مشتری منتقل نمی‌شود؛ فرمان‌های آزمایشی مخفی‌سازی و نمایش مجدد جداگانه و پیش‌فرض خاموش‌اند. این صفحه ابزار حذف یا پاسخ نیست.</p><p><a class="btn" href="index.php?page=shop_catalog">بازگشت به کالاهای فروشگاه</a></p></div>
 <div class="card" style="padding:16px">
 <p><strong>فهرست ممکن است ناقص یا قدیمی باشد؛ مشاهدهٔ نبود در سایت فقط در صورت فعال‌بودن تطبیق مستقل و با تأخیر منتقل می‌شود و اثبات حذف عمدی نیست. قبل از هر اقدام، شناسه، متن، هویت و وضعیت واقعی را در پنل فروشگاه جداگانه بررسی کنید.</strong></p>
 <?php if (!crm_review_meta_configured()): ?><p>دریافت در CRM غیرفعال یا پیکربندی نشده است؛ رکوردهای قبلی در صورت وجود باقی می‌مانند.</p><?php endif; ?>
@@ -62,10 +65,14 @@ include 'includes/header.php';
 <?php if ($selected): ?>
 <div style="border:1px solid var(--border);padding:14px;margin-bottom:16px"><h3>دیدگاه فروشگاه #<?= (int)$selected['review_id'] ?></h3><p>منبع <?= $h($selected['source_id']) ?>، کالای فروشگاه <?= (int)$selected['product_id'] ?>، نسخه <?= (int)$selected['revision'] ?>. متن در CRM موجود نیست.</p>
 <?php if ($pendingCommand): ?><p><strong>فرمان در صف است؛ نتیجه هنوز نامشخص است.</strong></p><?php endif; ?>
-<?php foreach ($reviewCommands as $cmd): if ($cmd['source_id']!==$selected['source_id'] || (int)$cmd['review_id']!==(int)$selected['review_id']) continue; $labels=['queued'=>'در صف؛ نتیجه نامشخص','applied'=>'مخفی‌سازی در آن زمان تأیید شد؛ وضعیت فعلی را تطبیق دهید','conflict'=>'رد شد؛ هویت یا نسخه تغییر کرده است','expired'=>'مهلت تمام شد']; ?><p><?= $h($labels[$cmd['state']] ?? 'نامشخص') ?> — <?= $h($cmd['created_at']) ?></p><?php endforeach; ?>
+<?php foreach ($reviewCommands as $cmd): if ($cmd['source_id']!==$selected['source_id'] || (int)$cmd['review_id']!==(int)$selected['review_id']) continue; $payload=json_decode((string)$cmd['payload'],true); $kind=is_array($payload)?($payload['type'] ?? ''):''; $commandName=$kind==='shop_review_show_v1'?'نمایش مجدد':($kind==='shop_review_hide_v1'?'مخفی‌سازی':'فرمان نامشخص'); $labels=['queued'=>'در صف؛ نتیجه نامشخص','applied'=>'تغییر نمایش در آن زمان تأیید شد؛ وضعیت فعلی را تطبیق دهید','conflict'=>'رد شد؛ هویت یا نسخه تغییر کرده است','expired'=>'مهلت تمام شد']; ?><p><?= $h($commandName) ?>: <?= $h($labels[$cmd['state']] ?? 'نامشخص') ?> — <?= $h($cmd['created_at']) ?></p><?php endforeach; ?>
 <?php if (!$readonly && $commandReady && crm_review_command_configured() && crm_review_meta_configured() && crm_review_hide_enabled() && !$pendingCommand && (int)$selected['is_active']===1 && (int)$selected['product_id']>0 && (int)$selected['rating']>=1 && (int)$selected['rating']<=5 && $selected['source_id']===(string)SHOP_CRM_SOURCE_ID): ?>
 <p><strong>این فرمان دیدگاه را در فروشگاه مخفی می‌کند. سایت فقط در صورت فعال‌بودن محافظ محتوای مستقل، متن و هویت فعلی را با آخرین اسکن مقایسه می‌کند؛ CRM از فعال‌بودن یا تازگی آن مطمئن نیست. بررسی متن در پنل سایت همچنان ضروری است.</strong></p>
 <form method="post" onsubmit="return confirm('این دیدگاه از نمایش فروشگاه مخفی شود؟ نتیجه تا رسید نامشخص است.');"><?= get_csrf_field() ?><input type="hidden" name="action" value="hide_review"><input type="hidden" name="replica_id" value="<?= (int)$selected['id'] ?>"><input type="hidden" name="revision" value="<?= (int)$selected['revision'] ?>"><label><input type="checkbox" name="checked_review" value="1" required> متن، شناسه و کالا را در پنل سایت مستقل بررسی کردم</label> <label><input type="checkbox" name="confirmed_hide" value="1" required> می‌دانم این فرمان دیدگاه را در فروشگاه مخفی می‌کند و نتیجه ممکن است نامشخص باشد</label> <button class="btn" type="submit">ثبت فرمان مخفی‌سازی</button></form>
+<?php endif; ?>
+<?php if (!$readonly && $commandReady && crm_review_command_configured() && crm_review_meta_configured() && crm_review_show_enabled() && !$pendingCommand && (int)$selected['is_active']===0 && (int)$selected['product_id']>0 && (int)$selected['rating']>=1 && (int)$selected['rating']<=5 && $selected['source_id']===(string)SHOP_CRM_SOURCE_ID): ?>
+<p><strong>این فرمان می‌تواند متن دیدگاه را برای عموم نمایش دهد. متن در CRM موجود نیست و باید پیش از انتشار در پنل سایت از نظر هویت، محرمانگی و مجوز انتشار مستقل بررسی شود. محافظ سایت بررسی انسانی را اثبات نمی‌کند.</strong></p>
+<form method="post" onsubmit="return confirm('این دیدگاه ممکن است برای عموم منتشر شود؛ متن و محرمانگی را در سایت بررسی کرده‌اید؟ نتیجه تا رسید نامشخص است.');"><?= get_csrf_field() ?><input type="hidden" name="action" value="show_review"><input type="hidden" name="replica_id" value="<?= (int)$selected['id'] ?>"><input type="hidden" name="revision" value="<?= (int)$selected['revision'] ?>"><label><input type="checkbox" name="checked_review" value="1" required> متن، شناسه و کالا را در پنل سایت مستقل بررسی کردم</label> <label><input type="checkbox" name="confirmed_show" value="1" required> محرمانگی و مجوز انتشار عمومی متن را بررسی کردم و می‌دانم نتیجه ممکن است نامشخص باشد</label> <button class="btn" type="submit">ثبت فرمان نمایش مجدد</button></form>
 <?php endif; ?></div><?php endif; ?>
 <form method="get"><input type="hidden" name="page" value="shop_review_meta"><label>وضعیت ثبت‌شده <select name="status"><option value="all" <?= $status==='all'?'selected':'' ?>>همه</option><option value="active" <?= $status==='active'?'selected':'' ?>>نمایش</option><option value="inactive" <?= $status==='inactive'?'selected':'' ?>>مخفی</option><option value="missing" <?= $status==='missing'?'selected':'' ?>>نبود مشاهده‌شده</option></select></label> <button class="btn" type="submit">فیلتر</button></form>
 <div style="overflow-x:auto;margin-top:16px"><table class="data-table"><thead><tr><th>شناسه دیدگاه در فروشگاه</th><th>شناسه کالا در فروشگاه</th><th>امتیاز ثبت‌شده</th><th>وضعیت ثبت‌شده</th><th>آخرین دریافت در CRM</th></tr></thead><tbody>
