@@ -5,7 +5,7 @@ function shop_coupon_sync_configured(): bool {
     if (!defined('SHOP_COUPON_META_ENABLED') || SHOP_COUPON_META_ENABLED!==true || !defined('SHOP_COUPON_META_KEY') || strlen((string)SHOP_COUPON_META_KEY)<32
         || !defined('SHOP_CRM_SOURCE_ID') || !preg_match('/^[a-f0-9]{32}$/D',(string)SHOP_CRM_SOURCE_ID)
         || !defined('SHOP_COUPON_META_URL') || !filter_var(SHOP_COUPON_META_URL,FILTER_VALIDATE_URL) || strtolower((string)parse_url(SHOP_COUPON_META_URL,PHP_URL_SCHEME))!=='https') return false;
-    foreach (['SITE_CRM_BRIDGE_KEY','SHOP_CRM_BRIDGE_KEY','SHOP_CRM_COMMAND_KEY','SHOP_CATALOG_CRM_KEY','SHOP_PRODUCT_COMMAND_KEY','SHOP_REVIEW_META_CRM_KEY','SHOP_REVIEW_COMMAND_KEY','SHOP_REVIEW_CONTENT_GUARD_KEY','SITE_SHIPMENT_META_KEY'] as $key) if (defined($key) && hash_equals((string)constant($key),(string)SHOP_COUPON_META_KEY)) return false;
+    foreach (['SITE_CRM_BRIDGE_KEY','SHOP_CRM_BRIDGE_KEY','SHOP_CRM_COMMAND_KEY','SHOP_CATALOG_CRM_KEY','SHOP_PRODUCT_COMMAND_KEY','SHOP_REVIEW_META_CRM_KEY','SHOP_REVIEW_COMMAND_KEY','SHOP_REVIEW_CONTENT_GUARD_KEY','SITE_SHIPMENT_META_KEY','SITE_BLOG_META_KEY'] as $key) if (defined($key) && hash_equals((string)constant($key),(string)SHOP_COUPON_META_KEY)) return false;
     return true;
 }
 function shop_coupon_sync_deletion_enabled(): bool { return defined('SHOP_COUPON_META_DELETION_ENABLED') && SHOP_COUPON_META_DELETION_ENABLED===true; }

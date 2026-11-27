@@ -573,6 +573,7 @@ function access_gate_page_map() {
         'site_shipment_metadata' => 'crm_customers',
         'shop_coupon_metadata' => 'crm_customers',
         'site_content_drafts' => 'crm_customers',
+        'site_blog_metadata' => 'crm_customers',
         'crm_cold_numbers' => 'crm_leads',
         'crm_leads'       => 'crm_leads',
         'site_inquiries'  => 'crm_leads',

@@ -41,11 +41,11 @@ if ($ready) {
 }
 include 'includes/header.php';
 ?>
-<div class="page-header"><h1>پیش‌نویس محتوای سایت</h1><p>این متن‌ها فقط در CRM ذخیره می‌شوند؛ به محتوای موجود سایت وصل نیستند و نه وارد سایت می‌شوند و نه منتشر می‌شوند. پیوند و انتشار هنوز پیاده‌سازی نشده است.</p></div>
+<div class="page-header"><h1>پیش‌نویس محتوای سایت</h1><p>این متن‌ها فقط در CRM ذخیره می‌شوند؛ ارجاع دستی به شناسهٔ مقاله سایت ممکن است، اما متن نه وارد سایت می‌شود و نه منتشر می‌شود. ارجاع اثبات همسانی محتوا نیست.</p></div>
 <div class="card" style="padding:16px"><p><strong>متن را به‌صورت متن ساده و بدون اطلاعات محرمانه وارد کنید؛ HTML اجرا نمی‌شود. هر ویرایش نسخه‌ای کامل در CRM و بکاپ آن نگه می‌دارد. دسترسی، مالکیت محتوا و سیاست نگهداری را بررسی کنید. عنوان حداکثر ۲۰۰ نویسه و متن حداکثر ۳۲٬۰۰۰ بایت است. هر پیش‌نویس حداکثر ۱۰۰ نسخه دارد؛ ساخت تکراری خودکار تشخیص داده نمی‌شود.</strong></p>
 <?php if (!$ready): ?><p>جدول پیش‌نویس آماده نیست.</p><?php else: ?>
 <?php if ($selected): ?>
-<h3>پیش‌نویس #<?= (int)$selected['id'] ?> — نسخه <?= (int)$selected['version'] ?></h3>
+<h3>پیش‌نویس #<?= (int)$selected['id'] ?> — نسخه <?= (int)$selected['version'] ?></h3><p><a class="btn" href="index.php?page=site_blog_metadata&amp;draft=<?= (int)$selected['id'] ?>">تطبیق دستی با مقاله سایت</a></p>
 <?php if (!$readonly): ?><form method="post"><?= get_csrf_field() ?><input type="hidden" name="action" value="edit"><input type="hidden" name="draft_id" value="<?= (int)$selected['id'] ?>"><input type="hidden" name="version" value="<?= (int)$selected['version'] ?>"><label>عنوان <input name="title" maxlength="200" required value="<?= $h($selected['title']) ?>"></label><br><label>متن ساده<br><textarea name="body" rows="12" style="width:100%" maxlength="32000"><?= $h($selected['body']) ?></textarea></label><br><button class="btn" type="submit">ذخیره نسخه جدید</button></form><?php else: ?><h4><?= $h($selected['title']) ?></h4><pre style="white-space:pre-wrap;overflow-wrap:anywhere"><?= $h($selected['body']) ?></pre><?php endif; ?>
 <h4>تاریخچه داخلی</h4><ul><?php foreach ($versions as $v): ?><li><a href="index.php?<?= $h(http_build_query(['page'=>'site_content_drafts','draft'=>$id,'history'=>(int)$v['version']])) ?>">نسخه <?= (int)$v['version'] ?></a> — <?= $h($v['created_at']) ?> — شناسه مدیر <?= (int)$v['actor_id'] ?> — <?= $h($v['action']) ?><?php if ($v['restored_version']!==null): ?> (بازگردانی نسخه <?= (int)$v['restored_version'] ?>)<?php endif; ?></li><?php endforeach; ?></ul>
 <?php if ($old): ?><h4>نسخه تاریخی <?= (int)$old['version'] ?>: <?= $h($old['title']) ?></h4><pre style="white-space:pre-wrap;overflow-wrap:anywhere"><?= $h($old['body']) ?></pre>

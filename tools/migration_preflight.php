@@ -32,6 +32,10 @@ function preflight_specs(string $component): array {
             'discount_codes'=>['id','type','is_active'], 'shop_coupon_meta_cursor'=>['source_id','last_coupon_id'],
             'shop_coupon_meta_state'=>['source_id','coupon_id','snapshot_hash','latest_revision'], 'shop_coupon_meta_outbox'=>['id','source_id','coupon_id','event_id','snapshot','delivered_at']]],
         'shop_coupon_meta_reconciliation'=>['required'=>false,'tables'=>['shop_coupon_meta_reconcile_cursor'=>['source_id','last_coupon_id']]],
+        'site_blog_meta_bridge'=>['required'=>false,'tables'=>[
+            'blog_posts'=>['id','is_published'], 'site_blog_meta_cursor'=>['source_id','last_post_id'],
+            'site_blog_meta_state'=>['source_id','post_id','snapshot_hash','latest_revision'], 'site_blog_meta_outbox'=>['id','source_id','post_id','event_id','snapshot','delivered_at']]],
+        'site_blog_meta_reconciliation'=>['required'=>false,'tables'=>['site_blog_meta_reconcile_cursor'=>['source_id','last_post_id']]],
         'site_shipment_meta_bridge'=>['required'=>false,'tables'=>[
             'shipments'=>['id','service_type','status','is_public'],
             'site_shipment_meta_cursor'=>['source_id','last_shipment_id'], 'site_shipment_meta_state'=>['source_id','shipment_id','snapshot_hash','latest_revision'],
@@ -54,6 +58,10 @@ function preflight_specs(string $component): array {
     if ($component==='crm') return [
         'crm_core'=>['required'=>true,'tables'=>[
             'users'=>['id','status','role'], 'crm_customers'=>['id'], 'crm_products'=>['id','name'], 'teams'=>['id']]],
+        'site_blog_meta'=>['required'=>false,'tables'=>['crm_site_blog_meta'=>['id','source_id','post_id','revision','event_id','payload_hash','is_published','received_at']]],
+        'site_blog_draft_links'=>['required'=>false,'tables'=>[
+            'crm_site_blog_draft_links'=>['id','draft_id','source_id','post_id','replica_id','draft_version','post_revision','linked_by','linked_at'],
+            'crm_site_blog_draft_link_events'=>['id','link_id','draft_id','source_id','post_id','replica_id','draft_version','post_revision','actor_id','action','created_at']]],
         'site_content_drafts'=>['required'=>false,'tables'=>[
             'crm_site_content_drafts'=>['id','title','body','version','created_by','updated_by','created_at','updated_at'],
             'crm_site_content_draft_versions'=>['id','draft_id','version','title','body','actor_id','action','restored_version','created_at']]],

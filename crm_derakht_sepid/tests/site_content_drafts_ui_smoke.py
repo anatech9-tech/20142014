@@ -36,7 +36,7 @@ include __DIR__.'/pages/site_content_drafts.php';
         r=subprocess.run([php,str(app/'run.php'),case],cwd=app,capture_output=True,text=True,check=True)
         assert 'Fatal error' not in r.stdout+r.stderr and 'Warning:' not in r.stdout+r.stderr,r.stdout+r.stderr
         return r.stdout
-    page=run('selected'); assert 'نه منتشر می‌شوند' in page and 'name="csrf_token"' in page and '&lt;script&gt;body&lt;/script&gt;' in page and '<script>' not in page
+    page=run('selected'); assert 'نه منتشر می‌شود' in page and 'name="csrf_token"' in page and '&lt;script&gt;body&lt;/script&gt;' in page and '<script>' not in page
     history=run('history'); assert '&lt;script&gt;old&lt;/script&gt;' in history and 'name="confirm_restore"' in history and 'name="csrf_token"' in history
     readonly=run('readonly'); assert '<form method="post"' not in readonly and '&lt;script&gt;body&lt;/script&gt;' in readonly
     assert 'RESULT:2:3:2' in run('post_create') and 'RESULT:1:3:3' in run('post_edit') and 'RESULT:1:3:3' in run('post_restore')
