@@ -571,6 +571,7 @@ function access_gate_page_map() {
         'shop_catalog'    => 'crm_customers',
         'shop_review_meta'=> 'crm_customers',
         'site_shipment_metadata' => 'crm_customers',
+        'shop_category_metadata' => 'crm_customers',
         'shop_coupon_metadata' => 'crm_customers',
         'site_content_drafts' => 'crm_customers',
         'site_blog_metadata' => 'crm_customers',

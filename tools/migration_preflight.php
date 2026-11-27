@@ -28,6 +28,10 @@ function preflight_specs(string $component): array {
         'shop_catalog_bridge'=>['required'=>false,'tables'=>[
             'shop_catalog_cursor'=>['source_id','last_product_id'], 'shop_catalog_state'=>['source_id','product_id','snapshot_hash','latest_revision'],
             'shop_catalog_outbox'=>['id','source_id','product_id','event_id','snapshot','delivered_at']]],
+        'shop_category_meta_bridge'=>['required'=>false,'tables'=>[
+            'product_categories'=>['id','name_fa','is_active'], 'shop_category_meta_cursor'=>['source_id','last_category_id'],
+            'shop_category_meta_state'=>['source_id','category_id','snapshot_hash','latest_revision'], 'shop_category_meta_outbox'=>['id','source_id','category_id','event_id','snapshot','delivered_at']]],
+        'shop_category_meta_reconciliation'=>['required'=>false,'tables'=>['shop_category_meta_reconcile_cursor'=>['source_id','last_category_id']]],
         'shop_coupon_meta_bridge'=>['required'=>false,'tables'=>[
             'discount_codes'=>['id','type','is_active'], 'shop_coupon_meta_cursor'=>['source_id','last_coupon_id'],
             'shop_coupon_meta_state'=>['source_id','coupon_id','snapshot_hash','latest_revision'], 'shop_coupon_meta_outbox'=>['id','source_id','coupon_id','event_id','snapshot','delivered_at']]],
@@ -79,6 +83,7 @@ function preflight_specs(string $component): array {
         'shop_catalog'=>['required'=>false,'tables'=>[
             'crm_shop_catalog'=>['id','source_id','shop_product_id','revision','payload'],
             'crm_shop_product_links'=>['source_id','shop_product_id','version'], 'crm_shop_product_link_events'=>['id','source_id','shop_product_id']]],
+        'shop_category_meta'=>['required'=>false,'tables'=>['crm_shop_category_meta'=>['id','source_id','category_id','revision','event_id','payload_hash','category_name','is_active','received_at']]],
         'shop_coupon_meta'=>['required'=>false,'tables'=>['crm_shop_coupon_meta'=>['id','source_id','coupon_id','revision','event_id','payload_hash','coupon_type','is_active','received_at']]],
         'site_shipment_meta'=>['required'=>false,'tables'=>[
             'crm_site_shipment_meta'=>['id','source_id','shipment_id','revision','event_id','payload_hash','service_type','status','is_public','received_at']]],

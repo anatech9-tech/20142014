@@ -4,7 +4,7 @@ require_once __DIR__.'/CrmBlogMetadataContract.php';
 function site_blog_guard_requested(): bool { return defined('SITE_BLOG_CONTENT_GUARD_ENABLED') && SITE_BLOG_CONTENT_GUARD_ENABLED===true; }
 function site_blog_guard_configured(): bool {
     if (!site_blog_guard_requested() || !defined('SITE_BLOG_CONTENT_GUARD_KEY') || strlen((string)SITE_BLOG_CONTENT_GUARD_KEY)<32) return false;
-    foreach (['SITE_CRM_BRIDGE_KEY','SHOP_CRM_BRIDGE_KEY','SHOP_CRM_COMMAND_KEY','SHOP_CATALOG_CRM_KEY','SHOP_PRODUCT_COMMAND_KEY','SHOP_REVIEW_META_CRM_KEY','SHOP_REVIEW_COMMAND_KEY','SHOP_REVIEW_CONTENT_GUARD_KEY','SITE_SHIPMENT_META_KEY','SHOP_COUPON_META_KEY','SITE_BLOG_META_KEY'] as $other)
+    foreach (['SHOP_CATEGORY_META_KEY','SITE_CRM_BRIDGE_KEY','SHOP_CRM_BRIDGE_KEY','SHOP_CRM_COMMAND_KEY','SHOP_CATALOG_CRM_KEY','SHOP_PRODUCT_COMMAND_KEY','SHOP_REVIEW_META_CRM_KEY','SHOP_REVIEW_COMMAND_KEY','SHOP_REVIEW_CONTENT_GUARD_KEY','SITE_SHIPMENT_META_KEY','SHOP_COUPON_META_KEY','SITE_BLOG_META_KEY'] as $other)
         if (defined($other) && hash_equals((string)constant($other),(string)SITE_BLOG_CONTENT_GUARD_KEY)) return false;
     return true;
 }

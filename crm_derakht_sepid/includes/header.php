@@ -183,6 +183,7 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = generate_token()
                 'shop_orders' => ['shop_orders', 'shopping-bag', 'سفارش‌های فروشگاه', true],
                 'site_blog_metadata' => ['site_blog_metadata', 'book-open', 'مقاله‌های سایت', $is_admin],
                 'site_content_drafts' => ['site_content_drafts', 'file-text', 'پیش‌نویس محتوای سایت', $is_admin],
+                'shop_category_metadata' => ['shop_category_metadata', 'layers', 'نمای دسته‌های فروشگاه', $is_admin],
                 'shop_coupon_metadata' => ['shop_coupon_metadata', 'ticket', 'نمای کوپن‌های فروشگاه', $is_admin],
                 'site_shipment_metadata' => ['site_shipment_metadata', 'package', 'محموله‌های مستقل سایت', $is_admin],
                 'crm_deals'      => ['crm_deals', 'trending-up', t('nav_crm_deals'), true],
@@ -212,7 +213,7 @@ if (empty($_SESSION['csrf_token'])) { $_SESSION['csrf_token'] = generate_token()
                 'finance' => ['label' => t('nav_grp_finance'), 'icon' => 'wallet',         'items' => ['work_hours', 'salary', 'advances', 'petty_cash', 'reports']],
                 'hr'      => ['label' => t('nav_grp_hr'),      'icon' => 'users',          'items' => ['personnel', 'leaves', 'contracts']],
                 'ops'     => ['label' => t('nav_grp_ops'),     'icon' => 'package',        'items' => ['forms', 'inventory', 'workshops']],
-                'crm'     => ['label' => t('nav_grp_crm'),     'icon' => 'trending-up',    'items' => ['crm_customers', 'crm_products', 'crm_cold_numbers', 'crm_leads', 'site_inquiries', 'shop_orders', 'shop_coupon_metadata', 'site_shipment_metadata', 'site_content_drafts', 'site_blog_metadata', 'crm_deals', 'quotes', 'crm_tasks', 'crm_teams', 'calls']],
+                'crm'     => ['label' => t('nav_grp_crm'),     'icon' => 'trending-up',    'items' => ['crm_customers', 'crm_products', 'crm_cold_numbers', 'crm_leads', 'site_inquiries', 'shop_orders', 'shop_category_metadata', 'shop_coupon_metadata', 'site_shipment_metadata', 'site_content_drafts', 'site_blog_metadata', 'crm_deals', 'quotes', 'crm_tasks', 'crm_teams', 'calls']],
                 'comms'   => ['label' => t('nav_grp_comms'),   'icon' => 'message-circle', 'items' => ['chat', 'notifications', 'archive']],
                 'mgmt'    => ['label' => t('nav_grp_mgmt'),    'icon' => 'settings',       'items' => ['audit', 'settings', 'profile']],
             ];

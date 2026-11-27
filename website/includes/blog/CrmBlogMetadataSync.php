@@ -6,7 +6,7 @@ function site_blog_sync_configured(): bool {
     if (!defined('SITE_BLOG_META_ENABLED') || SITE_BLOG_META_ENABLED!==true || !defined('SITE_BLOG_META_KEY') || strlen((string)SITE_BLOG_META_KEY)<32
         || !defined('SITE_BLOG_SOURCE_ID') || !preg_match('/^[a-f0-9]{32}$/D',(string)SITE_BLOG_SOURCE_ID)
         || !defined('SITE_BLOG_META_URL') || !filter_var(SITE_BLOG_META_URL,FILTER_VALIDATE_URL) || strtolower((string)parse_url(SITE_BLOG_META_URL,PHP_URL_SCHEME))!=='https') return false;
-    foreach (['SITE_CRM_BRIDGE_KEY','SHOP_CRM_BRIDGE_KEY','SHOP_CRM_COMMAND_KEY','SHOP_CATALOG_CRM_KEY','SHOP_PRODUCT_COMMAND_KEY','SHOP_REVIEW_META_CRM_KEY','SHOP_REVIEW_COMMAND_KEY','SHOP_REVIEW_CONTENT_GUARD_KEY','SITE_SHIPMENT_META_KEY','SHOP_COUPON_META_KEY'] as $key) if (defined($key) && hash_equals((string)constant($key),(string)SITE_BLOG_META_KEY)) return false;
+    foreach (['SHOP_CATEGORY_META_KEY','SITE_CRM_BRIDGE_KEY','SHOP_CRM_BRIDGE_KEY','SHOP_CRM_COMMAND_KEY','SHOP_CATALOG_CRM_KEY','SHOP_PRODUCT_COMMAND_KEY','SHOP_REVIEW_META_CRM_KEY','SHOP_REVIEW_COMMAND_KEY','SHOP_REVIEW_CONTENT_GUARD_KEY','SITE_SHIPMENT_META_KEY','SHOP_COUPON_META_KEY'] as $key) if (defined($key) && hash_equals((string)constant($key),(string)SITE_BLOG_META_KEY)) return false;
     return true;
 }
 function site_blog_sync_deletion_enabled(): bool { return defined('SITE_BLOG_META_DELETION_ENABLED') && SITE_BLOG_META_DELETION_ENABLED===true; }
