@@ -1,6 +1,7 @@
 <?php
 /** Read-only minimal review metadata; does not copy personal fields or moderate reviews. */
 require_once __DIR__.'/CrmOrderSync.php';
+require_once __DIR__.'/CrmReviewContentGuard.php';
 function shop_review_meta_configured(): bool {
     if (!defined('SHOP_REVIEW_META_CRM_ENABLED') || SHOP_REVIEW_META_CRM_ENABLED!==true || !defined('SHOP_REVIEW_META_CRM_KEY') || strlen((string)SHOP_REVIEW_META_CRM_KEY)<32
         || !defined('SHOP_CRM_SOURCE_ID') || !preg_match('/^[a-f0-9]{32}$/D',(string)SHOP_CRM_SOURCE_ID)
@@ -16,12 +17,15 @@ function shop_review_meta_schema(): array {
         "CREATE TABLE IF NOT EXISTS shop_review_meta_cursor(source_id CHAR(32) NOT NULL PRIMARY KEY,last_review_id BIGINT UNSIGNED NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
         "CREATE TABLE IF NOT EXISTS shop_review_meta_state(source_id CHAR(32) NOT NULL,review_id BIGINT UNSIGNED NOT NULL,snapshot_hash CHAR(64) NOT NULL,latest_revision BIGINT UNSIGNED NOT NULL,PRIMARY KEY(source_id,review_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
         "CREATE TABLE IF NOT EXISTS shop_review_meta_outbox(id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,source_id CHAR(32) NOT NULL,review_id BIGINT UNSIGNED NOT NULL,event_id CHAR(32) NOT NULL,snapshot TEXT NULL,attempts INT NOT NULL DEFAULT 0,next_attempt_at DATETIME NOT NULL,delivered_at DATETIME NULL,created_at DATETIME NOT NULL,UNIQUE KEY uq_review_meta_event(event_id),KEY idx_review_meta_pending(delivered_at,next_attempt_at,id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-        "CREATE TABLE IF NOT EXISTS shop_review_meta_reconcile_cursor(source_id CHAR(32) NOT NULL PRIMARY KEY,last_review_id BIGINT UNSIGNED NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        "CREATE TABLE IF NOT EXISTS shop_review_meta_reconcile_cursor(source_id CHAR(32) NOT NULL PRIMARY KEY,last_review_id BIGINT UNSIGNED NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "CREATE TABLE IF NOT EXISTS shop_review_content_guard_state(source_id CHAR(32) NOT NULL,review_id BIGINT UNSIGNED NOT NULL,guard_hash CHAR(64) NOT NULL,latest_revision BIGINT UNSIGNED NOT NULL,PRIMARY KEY(source_id,review_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     ];
 }
 function shop_review_meta_ensure(PDO $pdo): void {
-    $tables=['shop_review_meta_cursor','shop_review_meta_state','shop_review_meta_outbox'];
-    if (shop_review_meta_deletion_enabled()) $tables[]='shop_review_meta_reconcile_cursor';
+    if (shop_review_guard_requested() && !shop_review_guard_configured()) throw new RuntimeException('Review content guard configuration invalid');
+    $tables=[0=>'shop_review_meta_cursor',1=>'shop_review_meta_state',2=>'shop_review_meta_outbox'];
+    if (shop_review_meta_deletion_enabled()) $tables[3]='shop_review_meta_reconcile_cursor';
+    if (shop_review_guard_configured()) $tables[4]='shop_review_content_guard_state';
     foreach ($tables as $i=>$table) {
         try { $pdo->query('SELECT 1 FROM '.$table.' LIMIT 1'); }
         catch (Throwable $e) { $schemas=shop_review_meta_schema(); $pdo->exec($schemas[$i]); }
@@ -31,7 +35,9 @@ function shop_review_meta_require_innodb(PDO $pdo): void {
     if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME)!=='mysql') throw new RuntimeException('MySQL required');
     $st=$pdo->prepare('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?');
     $tables=['product_reviews','shop_review_meta_cursor','shop_review_meta_state','shop_review_meta_outbox'];
+    if (shop_review_guard_requested() && !shop_review_guard_configured()) throw new RuntimeException('Review content guard configuration invalid');
     if (shop_review_meta_deletion_enabled()) $tables[]='shop_review_meta_reconcile_cursor';
+    if (shop_review_guard_configured()) $tables[]='shop_review_content_guard_state';
     foreach ($tables as $table) {
         $st->execute([$table]); if (strtoupper((string)$st->fetchColumn())!=='INNODB') throw new RuntimeException('Transactional review metadata tables required');
     }
@@ -53,18 +59,28 @@ function shop_review_meta_snapshot(array $r): array {
 function shop_review_meta_capture(PDO $pdo,string $source,int $id): bool {
     $pdo->beginTransaction();
     try {
-        $st=$pdo->prepare('SELECT id,product_id,rating,is_active FROM product_reviews WHERE id=? FOR UPDATE');
+        if (shop_review_guard_requested() && !shop_review_guard_configured()) throw new RuntimeException('Review content guard configuration invalid');
+        $columns=shop_review_guard_configured() ? 'id,product_id,rating,is_active,customer_id,customer_name,body,created_at' : 'id,product_id,rating,is_active';
+        $st=$pdo->prepare('SELECT '.$columns.' FROM product_reviews WHERE id=? FOR UPDATE');
         $st->execute([$id]); $row=$st->fetch(PDO::FETCH_ASSOC);
         if (!$row) { $pdo->prepare('UPDATE shop_review_meta_cursor SET last_review_id=? WHERE source_id=?')->execute([$id,$source]); $pdo->commit(); return false; }
         $payload=json_encode(shop_review_meta_snapshot($row),JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($payload===false || strlen($payload)>1024) throw new RuntimeException('Invalid review metadata');
-        $hash=hash('sha256',$payload); $st=$pdo->prepare('SELECT snapshot_hash FROM shop_review_meta_state WHERE source_id=? AND review_id=? FOR UPDATE');
-        $st->execute([$source,$id]); $old=$st->fetchColumn(); $changed=$old===false || !hash_equals((string)$old,$hash);
+        $hash=hash('sha256',$payload); $st=$pdo->prepare('SELECT snapshot_hash,latest_revision FROM shop_review_meta_state WHERE source_id=? AND review_id=? FOR UPDATE');
+        $st->execute([$source,$id]); $old=$st->fetch(PDO::FETCH_ASSOC); $changed=!$old || !hash_equals((string)$old['snapshot_hash'],$hash);
+        $guard=null;
+        if (shop_review_guard_configured()) {
+            $guard=shop_review_guard_hash($source,$row);
+            $st=$pdo->prepare('SELECT guard_hash,latest_revision FROM shop_review_content_guard_state WHERE source_id=? AND review_id=? FOR UPDATE');
+            $st->execute([$source,$id]); $previous=$st->fetch(PDO::FETCH_ASSOC);
+            if (!$previous || !$old || (int)$previous['latest_revision']!==(int)$old['latest_revision'] || !hash_equals((string)$previous['guard_hash'],$guard)) $changed=true;
+        }
         if ($changed) {
             $now=date('Y-m-d H:i:s');
             $pdo->prepare('INSERT INTO shop_review_meta_outbox(source_id,review_id,event_id,snapshot,next_attempt_at,created_at) VALUES (?,?,?,?,?,?)')->execute([$source,$id,bin2hex(random_bytes(16)),$payload,$now,$now]);
             $revision=shop_crm_uint($pdo->lastInsertId(),false);
             $pdo->prepare('INSERT INTO shop_review_meta_state(source_id,review_id,snapshot_hash,latest_revision) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE snapshot_hash=VALUES(snapshot_hash),latest_revision=VALUES(latest_revision)')->execute([$source,$id,$hash,$revision]);
+            if ($guard!==null) $pdo->prepare('INSERT INTO shop_review_content_guard_state(source_id,review_id,guard_hash,latest_revision) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE guard_hash=VALUES(guard_hash),latest_revision=VALUES(latest_revision)')->execute([$source,$id,$guard,$revision]);
         }
         $pdo->prepare('UPDATE shop_review_meta_cursor SET last_review_id=? WHERE source_id=?')->execute([$id,$source]);
         $pdo->commit(); return $changed;

@@ -8,6 +8,7 @@ class ReviewCommandPDO extends PDO {
  }
 }
 define('SHOP_REVIEW_COMMAND_ENABLED',true); define('SHOP_REVIEW_HIDE_ENABLED',true); define('SHOP_REVIEW_COMMAND_KEY',str_repeat('h',32)); define('SHOP_REVIEW_COMMAND_URL','https://example.test/cmd');
+define('SHOP_REVIEW_CONTENT_GUARD_ENABLED',true); define('SHOP_REVIEW_CONTENT_GUARD_KEY',str_repeat('g',32));
 define('SHOP_REVIEW_META_CRM_ENABLED',true); define('SHOP_REVIEW_META_CRM_KEY',str_repeat('r',32)); define('SHOP_REVIEW_META_CRM_URL','https://example.test/sync'); define('SHOP_CRM_SOURCE_ID',str_repeat('a',32));
 require_once __DIR__.'/../../website/includes/shop/CrmReviewCommands.php'; require_once __DIR__.'/../includes/shop_review_commands.php';
 function check($ok,$label) { if (!$ok) { fwrite(STDERR,"FAIL $label\n"); exit(1); } echo "PASS $label\n"; }
@@ -15,12 +16,14 @@ function denied(callable $f,$label) { try { $f(); check(false,$label); } catch (
 function site(): ReviewCommandPDO {
  $p=new ReviewCommandPDO('sqlite::memory:'); $p->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
  foreach ([
-  'CREATE TABLE product_reviews(id INTEGER PRIMARY KEY,product_id INTEGER,rating INTEGER,is_active INTEGER,customer_name TEXT,body TEXT)',
+  'CREATE TABLE product_reviews(id INTEGER PRIMARY KEY,product_id INTEGER,rating INTEGER,is_active INTEGER,customer_id INTEGER,customer_name TEXT,body TEXT,created_at TEXT)',
   'CREATE TABLE shop_review_meta_state(source_id TEXT,review_id INTEGER,snapshot_hash TEXT,latest_revision INTEGER,PRIMARY KEY(source_id,review_id))',
+  'CREATE TABLE shop_review_content_guard_state(source_id TEXT,review_id INTEGER,guard_hash TEXT,latest_revision INTEGER,PRIMARY KEY(source_id,review_id))',
   'CREATE TABLE shop_review_command_receipts(command_id TEXT PRIMARY KEY,request_hash TEXT,review_id INTEGER,result TEXT,created_at TEXT,completed_at TEXT)'
  ] as $sql) $p->exec($sql);
- $p->exec("INSERT INTO product_reviews VALUES(7,10,5,1,'PRIVATE NAME','PRIVATE BODY')");
- $p->prepare('INSERT INTO shop_review_meta_state VALUES(?,?,?,?)')->execute([SHOP_CRM_SOURCE_ID,7,hash('sha256',json_encode(snapshot($p),JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)),15]); return $p;
+ $p->exec("INSERT INTO product_reviews VALUES(7,10,5,1,NULL,'PRIVATE NAME','PRIVATE BODY','2025-01-01 10:00:00')");
+ $p->prepare('INSERT INTO shop_review_meta_state VALUES(?,?,?,?)')->execute([SHOP_CRM_SOURCE_ID,7,hash('sha256',json_encode(snapshot($p),JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)),15]);
+ $p->prepare('INSERT INTO shop_review_content_guard_state VALUES(?,?,?,?)')->execute([SHOP_CRM_SOURCE_ID,7,shop_review_guard_hash(SHOP_CRM_SOURCE_ID,$p->query('SELECT * FROM product_reviews')->fetch(PDO::FETCH_ASSOC)),15]); return $p;
 }
 function snapshot(PDO $p): array { return shop_review_meta_snapshot($p->query('SELECT * FROM product_reviews WHERE id=7')->fetch(PDO::FETCH_ASSOC)); }
 function cmd(PDO $p,int $id): array { return ['type'=>'shop_review_hide_v1','command_id'=>str_pad(dechex($id),32,'0',STR_PAD_LEFT),'source_id'=>SHOP_CRM_SOURCE_ID,'review_id'=>7,'revision'=>15,'snapshot_hash'=>hash('sha256',json_encode(snapshot($p),JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)),'issued_at'=>1700000000,'expires_at'=>1700000900]; }
@@ -65,7 +68,9 @@ $t=site(); $one=cmd($t,23); $two=cmd($t,24); check(shop_review_command_apply($t,
 $t=site(); $old=cmd($t,25); check(shop_review_command_apply($t,$old,$source,$now+901,true)==='expired' && (int)$t->query('SELECT is_active FROM product_reviews')->fetchColumn()===1,'expired command does not hide');
 $t=site(); $old=cmd($t,26); try { shop_review_command_apply($t,$old,$source,$now,false); check(false,'receiver disabled'); } catch (RuntimeException $e) {}
 check((int)$t->query('SELECT COUNT(*) FROM shop_review_command_receipts')->fetchColumn()===0,'disabled receiver rolls back new receipt');
-$t=site(); $old=cmd($t,27); $t->exec("UPDATE product_reviews SET body='CHANGED PRIVATE BODY'"); check(shop_review_command_apply($t,$old,$source,$now,true)==='applied','known limitation: body changes are not in metadata comparison');
+$t=site(); $old=cmd($t,28); $t->exec('DROP TABLE shop_review_content_guard_state');
+try { shop_review_command_apply($t,$old,$source,$now,true); check(false,'missing guard table'); } catch (PDOException $e) { check(!$t->inTransaction() && (int)$t->query('SELECT is_active FROM product_reviews')->fetchColumn()===1,'missing guard table fails closed'); }
+$t=site(); $old=cmd($t,27); $t->exec("UPDATE product_reviews SET body='CHANGED PRIVATE BODY'"); check(shop_review_command_apply($t,$old,$source,$now,true)==='conflict','changed body now blocks hide');
 
 $crm->exec("UPDATE crm_shop_review_commands SET state='queued',payload='{\"type\":\"shop_review_hide_v1\",\"body\":\"SECRET\"}',next_attempt_at='2020-01-01'"); $called=false;
 try { crm_review_command_pump($crm,function($body) use (&$called) { $called=true; return [200,null]; },$now+6000); check(false,'tampered queued command'); } catch (RuntimeException $e) { check(!$called,'tampered queued command is never sent'); }

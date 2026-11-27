@@ -8,7 +8,7 @@ function shop_review_command_configured(): bool {
     return true;
 }
 function shop_review_command_action_enabled(string $type): bool {
-    if ($type==='shop_review_hide_v1') return defined('SHOP_REVIEW_HIDE_ENABLED') && SHOP_REVIEW_HIDE_ENABLED===true && shop_review_meta_configured();
+    if ($type==='shop_review_hide_v1') return defined('SHOP_REVIEW_HIDE_ENABLED') && SHOP_REVIEW_HIDE_ENABLED===true && shop_review_meta_configured() && shop_review_guard_configured();
     return false;
 }
 function shop_review_command_signature_valid(string $key,string $ts,string $sig,string $body,int $now): bool {
@@ -24,7 +24,9 @@ function shop_review_command_ensure(PDO $pdo): void {
 function shop_review_command_require_innodb(PDO $pdo): void {
     if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME)!=='mysql') throw new RuntimeException('MySQL required');
     $st=$pdo->prepare('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?');
-    foreach (['product_reviews','shop_review_meta_state','shop_review_command_receipts'] as $table) {
+    $tables=['product_reviews','shop_review_meta_state','shop_review_command_receipts'];
+    if (shop_review_guard_configured()) $tables[]='shop_review_content_guard_state';
+    foreach ($tables as $table) {
         $st->execute([$table]); if (strtoupper((string)$st->fetchColumn())!=='INNODB') throw new RuntimeException('Transactional review tables required');
     }
 }
@@ -47,18 +49,22 @@ function shop_review_command_apply(PDO $pdo,array $c,string $source,int $now,boo
         $st=$pdo->prepare('SELECT request_hash,result FROM shop_review_command_receipts WHERE command_id=? FOR UPDATE'); $st->execute([$c['command_id']]); $receipt=$st->fetch(PDO::FETCH_ASSOC);
         if (!$receipt || !hash_equals((string)$receipt['request_hash'],$hash)) throw new DomainException('Command id conflict');
         if ($receipt['result']!=='processing') { $pdo->commit(); return (string)$receipt['result']; }
-        if (!$enabled) throw new RuntimeException('Review command disabled');
+        if (!$enabled || !shop_review_guard_configured()) throw new RuntimeException('Review command or content guard disabled');
         if ($c['issued_at']>$now+300 || $now>$c['expires_at']) $result='expired';
         else {
             $result='conflict';
-            $st=$pdo->prepare('SELECT id,product_id,rating,is_active FROM product_reviews WHERE id=? FOR UPDATE');
+            $st=$pdo->prepare('SELECT id,product_id,rating,is_active,customer_id,customer_name,body,created_at FROM product_reviews WHERE id=? FOR UPDATE');
             $st->execute([$c['review_id']]); $review=$st->fetch(PDO::FETCH_ASSOC);
             if ($review) {
                 $st=$pdo->prepare('SELECT snapshot_hash,latest_revision FROM shop_review_meta_state WHERE source_id=? AND review_id=? FOR UPDATE');
                 $st->execute([$source,$c['review_id']]); $state=$st->fetch(PDO::FETCH_ASSOC);
+                $st=$pdo->prepare('SELECT guard_hash,latest_revision FROM shop_review_content_guard_state WHERE source_id=? AND review_id=? FOR UPDATE');
+                $st->execute([$source,$c['review_id']]); $guard=$st->fetch(PDO::FETCH_ASSOC);
+                $currentGuard=shop_review_guard_hash($source,$review);
                 $snapshot=json_encode(shop_review_meta_snapshot($review),JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
                 if ($snapshot===false || strlen($snapshot)>1024) throw new RuntimeException('Review snapshot unavailable');
                 if ((int)$review['is_active']===1 && $state && (int)$state['latest_revision']===$c['revision']
+                    && $guard && (int)$guard['latest_revision']===$c['revision'] && hash_equals((string)$guard['guard_hash'],$currentGuard)
                     && hash_equals((string)$state['snapshot_hash'],$c['snapshot_hash']) && hash_equals(hash('sha256',$snapshot),$c['snapshot_hash'])) {
                     $st=$pdo->prepare('UPDATE product_reviews SET is_active=0 WHERE id=? AND is_active=1'); $st->execute([$c['review_id']]);
                     if ($st->rowCount()!==1) throw new RuntimeException('Review update failed');

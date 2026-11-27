@@ -49,7 +49,7 @@ include __DIR__.'/pages/shop_review_meta.php';
     missingfilter=run('missing_filter'); assert 'review=32">99</a>' in missingfilter and 'review=31">31</a>' not in missingfilter and 'نبود مشاهده‌شده' in missingfilter and '—' in missingfilter
     disabled=run('disabled'); assert 'دریافت در CRM غیرفعال' in disabled and 'review=31">31</a>' in disabled
     missing=run('missing'); assert 'جدول نمای دیدگاه آماده نیست' in missing
-    hide=run('hide'); assert 'name="checked_review"' in hide and 'name="confirmed_hide"' in hide and 'csrf_token' in hide and 'متن در مقایسهٔ نسخه پوشش داده نشده' in hide
+    hide=run('hide'); assert 'name="checked_review"' in hide and 'name="confirmed_hide"' in hide and 'csrf_token' in hide and 'محافظ محتوای مستقل' in hide
     assert 'ثبت فرمان مخفی‌سازی</button>' not in run('readonly') and 'ثبت فرمان مخفی‌سازی</button>' not in run('queued')
     assert 'COMMAND_RESULT:0:0' in run('post_none') and 'COMMAND_RESULT:0:0' in run('post_one') and 'COMMAND_RESULT:0:0' in run('post_readonly')
     assert 'COMMAND_RESULT:1:1' in run('post_both')
