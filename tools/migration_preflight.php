@@ -28,6 +28,10 @@ function preflight_specs(string $component): array {
         'shop_catalog_bridge'=>['required'=>false,'tables'=>[
             'shop_catalog_cursor'=>['source_id','last_product_id'], 'shop_catalog_state'=>['source_id','product_id','snapshot_hash','latest_revision'],
             'shop_catalog_outbox'=>['id','source_id','product_id','event_id','snapshot','delivered_at']]],
+        'shop_coupon_meta_bridge'=>['required'=>false,'tables'=>[
+            'discount_codes'=>['id','type','is_active'], 'shop_coupon_meta_cursor'=>['source_id','last_coupon_id'],
+            'shop_coupon_meta_state'=>['source_id','coupon_id','snapshot_hash','latest_revision'], 'shop_coupon_meta_outbox'=>['id','source_id','coupon_id','event_id','snapshot','delivered_at']]],
+        'shop_coupon_meta_reconciliation'=>['required'=>false,'tables'=>['shop_coupon_meta_reconcile_cursor'=>['source_id','last_coupon_id']]],
         'site_shipment_meta_bridge'=>['required'=>false,'tables'=>[
             'shipments'=>['id','service_type','status','is_public'],
             'site_shipment_meta_cursor'=>['source_id','last_shipment_id'], 'site_shipment_meta_state'=>['source_id','shipment_id','snapshot_hash','latest_revision'],
@@ -59,6 +63,7 @@ function preflight_specs(string $component): array {
         'shop_catalog'=>['required'=>false,'tables'=>[
             'crm_shop_catalog'=>['id','source_id','shop_product_id','revision','payload'],
             'crm_shop_product_links'=>['source_id','shop_product_id','version'], 'crm_shop_product_link_events'=>['id','source_id','shop_product_id']]],
+        'shop_coupon_meta'=>['required'=>false,'tables'=>['crm_shop_coupon_meta'=>['id','source_id','coupon_id','revision','event_id','payload_hash','coupon_type','is_active','received_at']]],
         'site_shipment_meta'=>['required'=>false,'tables'=>[
             'crm_site_shipment_meta'=>['id','source_id','shipment_id','revision','event_id','payload_hash','service_type','status','is_public','received_at']]],
         'shop_review_meta'=>['required'=>false,'tables'=>[

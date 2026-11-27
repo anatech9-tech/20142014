@@ -4,7 +4,7 @@ require_once __DIR__.'/site_shipment_metadata_contract.php';
 function crm_site_shipment_sync_configured(): bool {
     if (!defined('SITE_SHIPMENT_META_ENABLED') || SITE_SHIPMENT_META_ENABLED!==true || !defined('SITE_SHIPMENT_META_KEY') || strlen((string)SITE_SHIPMENT_META_KEY)<32
         || !defined('SITE_SHIPMENT_SOURCE_ID') || !preg_match('/^[a-f0-9]{32}$/D',(string)SITE_SHIPMENT_SOURCE_ID)) return false;
-    foreach (['SITE_CRM_BRIDGE_KEY','SHOP_CRM_BRIDGE_KEY','SHOP_CRM_COMMAND_KEY','SHOP_CATALOG_CRM_KEY','SHOP_PRODUCT_COMMAND_KEY','SHOP_REVIEW_META_CRM_KEY','SHOP_REVIEW_COMMAND_KEY','SHOP_REVIEW_CONTENT_GUARD_KEY'] as $key) if (defined($key) && hash_equals((string)constant($key),(string)SITE_SHIPMENT_META_KEY)) return false;
+    foreach (['SITE_CRM_BRIDGE_KEY','SHOP_CRM_BRIDGE_KEY','SHOP_CRM_COMMAND_KEY','SHOP_CATALOG_CRM_KEY','SHOP_PRODUCT_COMMAND_KEY','SHOP_REVIEW_META_CRM_KEY','SHOP_REVIEW_COMMAND_KEY','SHOP_REVIEW_CONTENT_GUARD_KEY','SHOP_COUPON_META_KEY'] as $key) if (defined($key) && hash_equals((string)constant($key),(string)SITE_SHIPMENT_META_KEY)) return false;
     return true;
 }
 function crm_site_shipment_sync_deletion_enabled(): bool { return defined('SITE_SHIPMENT_META_DELETION_ENABLED') && SITE_SHIPMENT_META_DELETION_ENABLED===true; }

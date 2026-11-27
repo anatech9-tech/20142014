@@ -248,6 +248,10 @@ switch ($page) {
         require_login();
         include 'pages/inventory_count_print.php';
         break;
+    case 'shop_coupon_metadata':
+        require_login();
+        include 'pages/shop_coupon_metadata.php';
+        break;
     case 'site_shipment_metadata':
         require_login();
         include 'pages/site_shipment_metadata.php';
