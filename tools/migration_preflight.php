@@ -28,6 +28,10 @@ function preflight_specs(string $component): array {
         'shop_catalog_bridge'=>['required'=>false,'tables'=>[
             'shop_catalog_cursor'=>['source_id','last_product_id'], 'shop_catalog_state'=>['source_id','product_id','snapshot_hash','latest_revision'],
             'shop_catalog_outbox'=>['id','source_id','product_id','event_id','snapshot','delivered_at']]],
+        'shop_review_meta_bridge'=>['required'=>false,'tables'=>[
+            'product_reviews'=>['id','product_id','rating','is_active'],
+            'shop_review_meta_cursor'=>['source_id','last_review_id'], 'shop_review_meta_state'=>['source_id','review_id','snapshot_hash','latest_revision'],
+            'shop_review_meta_outbox'=>['id','source_id','review_id','event_id','snapshot','delivered_at']]],
         'shop_command_receiver'=>['required'=>false,'tables'=>['shop_crm_command_receipts'=>['command_id','request_hash','shop_order_id','result']]],
         'shop_product_command_receiver'=>['required'=>false,'tables'=>['shop_product_command_receipts'=>['command_id','request_hash','product_id','result']]],
     ];
@@ -43,6 +47,8 @@ function preflight_specs(string $component): array {
         'shop_catalog'=>['required'=>false,'tables'=>[
             'crm_shop_catalog'=>['id','source_id','shop_product_id','revision','payload'],
             'crm_shop_product_links'=>['source_id','shop_product_id','version'], 'crm_shop_product_link_events'=>['id','source_id','shop_product_id']]],
+        'shop_review_meta'=>['required'=>false,'tables'=>[
+            'crm_shop_review_meta'=>['id','source_id','review_id','product_id','revision','event_id','payload_hash','rating','is_active','received_at']]],
         'shop_commands'=>['required'=>false,'tables'=>[
             'crm_shop_status_requests'=>['id','replica_id','source_id','shop_order_id','replica_revision','state'],
             'crm_shop_status_request_events'=>['id','request_id','replica_id','action'],

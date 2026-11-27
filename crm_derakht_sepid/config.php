@@ -569,6 +569,7 @@ function access_gate_page_map() {
         'crm_customers'   => 'crm_customers',
         'crm_products'    => 'crm_customers',
         'shop_catalog'    => 'crm_customers',
+        'shop_review_meta'=> 'crm_customers',
         'crm_cold_numbers' => 'crm_leads',
         'crm_leads'       => 'crm_leads',
         'site_inquiries'  => 'crm_leads',
