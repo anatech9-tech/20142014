@@ -42,7 +42,7 @@ include __DIR__.'/pages/site_blog_metadata.php';
         r=subprocess.run([php,str(app/'run.php'),case],cwd=app,capture_output=True,text=True,check=True)
         assert 'Fatal error' not in r.stdout+r.stderr and 'Warning:' not in r.stdout+r.stderr,r.stdout+r.stderr
         return r.stdout
-    page=run('admin'); assert 'تغییر متن' in page and 'اثبات همسانی محتوا نیست' in page and 'name="confirm_identity"' in page and 'name="confirm_internal"' in page and 'csrf_token' in page
+    page=run('admin'); assert 'محافظ اختیاری سایت' in page and 'اثبات همسانی محتوا نیست' in page and 'name="confirm_identity"' in page and 'name="confirm_internal"' in page and 'csrf_token' in page
     assert '&lt;script&gt;title&lt;/script&gt;' in page and '<script>' not in page and page.count('ثبت ارجاع داخلی</button>')==1
     assert '<form method="post"' not in run('readonly') and '<form method="post"' not in run('disabled')
     assert 'قطع ارجاع داخلی</button>' in run('linked') and 'تطبیق دستی لازم است' in run('drift')

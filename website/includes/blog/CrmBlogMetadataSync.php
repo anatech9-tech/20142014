@@ -1,6 +1,7 @@
 <?php
 /** Opt-in, read-only source projection with durable outbox. No post writes. */
 require_once __DIR__.'/CrmBlogMetadataContract.php';
+require_once __DIR__.'/CrmBlogContentGuard.php';
 function site_blog_sync_configured(): bool {
     if (!defined('SITE_BLOG_META_ENABLED') || SITE_BLOG_META_ENABLED!==true || !defined('SITE_BLOG_META_KEY') || strlen((string)SITE_BLOG_META_KEY)<32
         || !defined('SITE_BLOG_SOURCE_ID') || !preg_match('/^[a-f0-9]{32}$/D',(string)SITE_BLOG_SOURCE_ID)
@@ -14,11 +15,13 @@ function site_blog_sync_schema(): array {
       "CREATE TABLE IF NOT EXISTS site_blog_meta_cursor(source_id CHAR(32) NOT NULL PRIMARY KEY,last_post_id BIGINT UNSIGNED NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
       "CREATE TABLE IF NOT EXISTS site_blog_meta_state(source_id CHAR(32) NOT NULL,post_id BIGINT UNSIGNED NOT NULL,snapshot_hash CHAR(64) NOT NULL,latest_revision BIGINT UNSIGNED NOT NULL,PRIMARY KEY(source_id,post_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
       "CREATE TABLE IF NOT EXISTS site_blog_meta_outbox(id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,source_id CHAR(32) NOT NULL,post_id BIGINT UNSIGNED NOT NULL,event_id CHAR(32) NOT NULL,snapshot TEXT NULL,attempts INT NOT NULL DEFAULT 0,next_attempt_at DATETIME NOT NULL,delivered_at DATETIME NULL,created_at DATETIME NOT NULL,UNIQUE KEY uq_post_meta_event(event_id),KEY idx_post_meta_pending(delivered_at,next_attempt_at,id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-      "CREATE TABLE IF NOT EXISTS site_blog_meta_reconcile_cursor(source_id CHAR(32) NOT NULL PRIMARY KEY,last_post_id BIGINT UNSIGNED NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+      "CREATE TABLE IF NOT EXISTS site_blog_meta_reconcile_cursor(source_id CHAR(32) NOT NULL PRIMARY KEY,last_post_id BIGINT UNSIGNED NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+      "CREATE TABLE IF NOT EXISTS site_blog_content_guard_state(source_id CHAR(32) NOT NULL,post_id BIGINT UNSIGNED NOT NULL,guard_hash CHAR(64) NOT NULL,latest_revision BIGINT UNSIGNED NOT NULL,PRIMARY KEY(source_id,post_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     ];
 }
 function site_blog_sync_ensure(PDO $pdo): void {
-    $tables=['site_blog_meta_cursor','site_blog_meta_state','site_blog_meta_outbox']; if (site_blog_sync_deletion_enabled()) $tables[]='site_blog_meta_reconcile_cursor';
+    if (site_blog_guard_requested() && !site_blog_guard_configured()) throw new RuntimeException('Blog content guard configuration invalid');
+    $tables=[0=>'site_blog_meta_cursor',1=>'site_blog_meta_state',2=>'site_blog_meta_outbox']; if (site_blog_sync_deletion_enabled()) $tables[3]='site_blog_meta_reconcile_cursor'; if (site_blog_guard_configured()) $tables[4]='site_blog_content_guard_state';
     foreach ($tables as $i=>$table) {
         try { $pdo->query('SELECT 1 FROM '.$table.' LIMIT 1'); } catch (Throwable $e) { $schemas=site_blog_sync_schema(); $pdo->exec($schemas[$i]); }
     }
@@ -26,7 +29,8 @@ function site_blog_sync_ensure(PDO $pdo): void {
 function site_blog_sync_require_innodb(PDO $pdo): void {
     if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME)!=='mysql') throw new RuntimeException('MySQL required');
     $st=$pdo->prepare('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?');
-    $tables=['blog_posts','site_blog_meta_cursor','site_blog_meta_state','site_blog_meta_outbox']; if (site_blog_sync_deletion_enabled()) $tables[]='site_blog_meta_reconcile_cursor';
+    if (site_blog_guard_requested() && !site_blog_guard_configured()) throw new RuntimeException('Blog content guard configuration invalid');
+    $tables=['blog_posts','site_blog_meta_cursor','site_blog_meta_state','site_blog_meta_outbox']; if (site_blog_sync_deletion_enabled()) $tables[]='site_blog_meta_reconcile_cursor'; if (site_blog_guard_configured()) $tables[]='site_blog_content_guard_state';
     foreach ($tables as $table) {
         $st->execute([$table]); if (strtoupper((string)$st->fetchColumn())!=='INNODB') throw new RuntimeException('InnoDB required');
     }
@@ -39,16 +43,24 @@ function site_blog_sync_require_innodb(PDO $pdo): void {
 function site_blog_sync_capture(PDO $pdo,string $source,int $id): bool {
     $pdo->beginTransaction();
     try {
-        $st=$pdo->prepare('SELECT id,is_published FROM blog_posts WHERE id=? FOR UPDATE'); $st->execute([$id]); $row=$st->fetch(PDO::FETCH_ASSOC);
+        if (site_blog_guard_requested() && !site_blog_guard_configured()) throw new RuntimeException('Blog content guard configuration invalid');
+        $columns=site_blog_guard_configured()?'id,is_published,category_id,author_id,is_featured,slug,title_fa,title_en,excerpt_fa,excerpt_en,content_fa,content_en,cover_image,published_at,meta_title,meta_description,meta_keywords,created_at':'id,is_published';
+        $st=$pdo->prepare('SELECT '.$columns.' FROM blog_posts WHERE id=? FOR UPDATE'); $st->execute([$id]); $row=$st->fetch(PDO::FETCH_ASSOC);
         if (!$row) { $pdo->prepare('UPDATE site_blog_meta_cursor SET last_post_id=? WHERE source_id=?')->execute([$id,$source]); $pdo->commit(); return false; }
         $snapshot=json_encode(site_blog_metadata_snapshot($row),JSON_UNESCAPED_SLASHES); if ($snapshot===false) throw new RuntimeException('Invalid post metadata');
-        $hash=hash('sha256',$snapshot); $st=$pdo->prepare('SELECT snapshot_hash FROM site_blog_meta_state WHERE source_id=? AND post_id=? FOR UPDATE'); $st->execute([$source,$id]); $old=$st->fetchColumn();
-        $changed=$old===false || !hash_equals((string)$old,$hash);
+        $hash=hash('sha256',$snapshot); $st=$pdo->prepare('SELECT snapshot_hash,latest_revision FROM site_blog_meta_state WHERE source_id=? AND post_id=? FOR UPDATE'); $st->execute([$source,$id]); $old=$st->fetch(PDO::FETCH_ASSOC);
+        $changed=!$old || !hash_equals((string)$old['snapshot_hash'],$hash); $guard=null;
+        if (site_blog_guard_configured()) {
+            $guard=site_blog_guard_hash($source,$row);
+            $st=$pdo->prepare('SELECT guard_hash,latest_revision FROM site_blog_content_guard_state WHERE source_id=? AND post_id=? FOR UPDATE'); $st->execute([$source,$id]); $previous=$st->fetch(PDO::FETCH_ASSOC);
+            if (!$previous || !$old || (int)$previous['latest_revision']!==(int)$old['latest_revision'] || !hash_equals((string)$previous['guard_hash'],$guard)) $changed=true;
+        }
         if ($changed) {
             $stamp=date('Y-m-d H:i:s');
             $pdo->prepare('INSERT INTO site_blog_meta_outbox(source_id,post_id,event_id,snapshot,next_attempt_at,created_at) VALUES (?,?,?,?,?,?)')->execute([$source,$id,bin2hex(random_bytes(16)),$snapshot,$stamp,$stamp]);
             $revision=site_blog_metadata_uint($pdo->lastInsertId());
             $pdo->prepare('INSERT INTO site_blog_meta_state(source_id,post_id,snapshot_hash,latest_revision) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE snapshot_hash=VALUES(snapshot_hash),latest_revision=VALUES(latest_revision)')->execute([$source,$id,$hash,$revision]);
+            if ($guard!==null) $pdo->prepare('INSERT INTO site_blog_content_guard_state(source_id,post_id,guard_hash,latest_revision) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE guard_hash=VALUES(guard_hash),latest_revision=VALUES(latest_revision)')->execute([$source,$id,$guard,$revision]);
         }
         $pdo->prepare('UPDATE site_blog_meta_cursor SET last_post_id=? WHERE source_id=?')->execute([$id,$source]); $pdo->commit(); return $changed;
     } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }

@@ -36,6 +36,9 @@ function preflight_specs(string $component): array {
             'blog_posts'=>['id','is_published'], 'site_blog_meta_cursor'=>['source_id','last_post_id'],
             'site_blog_meta_state'=>['source_id','post_id','snapshot_hash','latest_revision'], 'site_blog_meta_outbox'=>['id','source_id','post_id','event_id','snapshot','delivered_at']]],
         'site_blog_meta_reconciliation'=>['required'=>false,'tables'=>['site_blog_meta_reconcile_cursor'=>['source_id','last_post_id']]],
+        'site_blog_content_guard'=>['required'=>false,'tables'=>[
+            'blog_posts'=>['id','is_published','category_id','author_id','is_featured','slug','title_fa','title_en','excerpt_fa','excerpt_en','content_fa','content_en','cover_image','published_at','meta_title','meta_description','meta_keywords','created_at'],
+            'site_blog_content_guard_state'=>['source_id','post_id','guard_hash','latest_revision']]],
         'site_shipment_meta_bridge'=>['required'=>false,'tables'=>[
             'shipments'=>['id','service_type','status','is_public'],
             'site_shipment_meta_cursor'=>['source_id','last_shipment_id'], 'site_shipment_meta_state'=>['source_id','shipment_id','snapshot_hash','latest_revision'],

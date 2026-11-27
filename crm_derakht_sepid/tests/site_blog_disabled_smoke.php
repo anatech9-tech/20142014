@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__.'/../../website/includes/blog/CrmBlogMetadataSync.php'; require_once __DIR__.'/../includes/site_blog_draft_links.php';
 function check($ok,$label) { if (!$ok) { fwrite(STDERR,"FAIL $label\n"); exit(1); } echo "PASS $label\n"; }
-check(!site_blog_sync_configured() && !crm_site_blog_sync_configured() && !site_blog_sync_deletion_enabled() && !crm_site_blog_sync_deletion_enabled(),'blog bridge and reconciliation default disabled');
+check(!site_blog_sync_configured() && !crm_site_blog_sync_configured() && !site_blog_sync_deletion_enabled() && !crm_site_blog_sync_deletion_enabled() && !site_blog_guard_requested() && !site_blog_guard_configured(),'blog bridge, reconciliation and guard default disabled');
 $p=new PDO('sqlite::memory:'); $p->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
 try { site_blog_draft_link($p,1,1,1,1,1,true,true); check(false,'disabled link'); } catch (DomainException $e) { check(true,'disabled bridge refuses new links'); }
 try { site_blog_sync_send('{}'); check(false,'disabled sender'); } catch (RuntimeException $e) { check(true,'disabled sender refuses network'); }
