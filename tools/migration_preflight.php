@@ -32,6 +32,8 @@ function preflight_specs(string $component): array {
             'product_reviews'=>['id','product_id','rating','is_active'],
             'shop_review_meta_cursor'=>['source_id','last_review_id'], 'shop_review_meta_state'=>['source_id','review_id','snapshot_hash','latest_revision'],
             'shop_review_meta_outbox'=>['id','source_id','review_id','event_id','snapshot','delivered_at']]],
+        'shop_review_meta_reconciliation'=>['required'=>false,'tables'=>[
+            'shop_review_meta_reconcile_cursor'=>['source_id','last_review_id']]],
         'shop_command_receiver'=>['required'=>false,'tables'=>['shop_crm_command_receipts'=>['command_id','request_hash','shop_order_id','result']]],
         'shop_product_command_receiver'=>['required'=>false,'tables'=>['shop_product_command_receipts'=>['command_id','request_hash','product_id','result']]],
     ];

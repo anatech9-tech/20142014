@@ -10,6 +10,7 @@ if ($body===false || strlen($body)>2048) { http_response_code(413); echo '{"ok":
 if (!crm_review_meta_signature_valid((string)SHOP_REVIEW_META_CRM_KEY,(string)($_SERVER['HTTP_X_REVIEW_META_TIMESTAMP'] ?? ''),(string)($_SERVER['HTTP_X_REVIEW_META_SIGNATURE'] ?? ''),$body,time())) { http_response_code(403); echo '{"ok":false}'; exit; }
 $data=json_decode($body,true);
 if (!crm_review_meta_validate($data,(string)SHOP_CRM_SOURCE_ID)) { http_response_code(422); echo '{"ok":false,"error":"invalid"}'; exit; }
+if ($data['type']==='shop_review_meta_deleted' && !crm_review_meta_deletion_enabled()) { http_response_code(503); echo '{"ok":false,"error":"deletion_disabled"}'; exit; }
 require_once __DIR__.'/../config.php';
 if (!crm_review_meta_ensure($pdo)) { http_response_code(503); echo '{"ok":false}'; exit; }
 try {

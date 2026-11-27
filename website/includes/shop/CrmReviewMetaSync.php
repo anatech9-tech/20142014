@@ -9,15 +9,20 @@ function shop_review_meta_configured(): bool {
     foreach (['SITE_CRM_BRIDGE_KEY','SHOP_CRM_BRIDGE_KEY','SHOP_CRM_COMMAND_KEY','SHOP_CATALOG_CRM_KEY','SHOP_PRODUCT_COMMAND_KEY'] as $other) if (defined($other) && hash_equals((string)constant($other),(string)SHOP_REVIEW_META_CRM_KEY)) return false;
     return true;
 }
+/** Separate opt-in for reconciling records absent at the source. */
+function shop_review_meta_deletion_enabled(): bool { return defined('SHOP_REVIEW_META_DELETION_ENABLED') && SHOP_REVIEW_META_DELETION_ENABLED===true; }
 function shop_review_meta_schema(): array {
     return [
         "CREATE TABLE IF NOT EXISTS shop_review_meta_cursor(source_id CHAR(32) NOT NULL PRIMARY KEY,last_review_id BIGINT UNSIGNED NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
         "CREATE TABLE IF NOT EXISTS shop_review_meta_state(source_id CHAR(32) NOT NULL,review_id BIGINT UNSIGNED NOT NULL,snapshot_hash CHAR(64) NOT NULL,latest_revision BIGINT UNSIGNED NOT NULL,PRIMARY KEY(source_id,review_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-        "CREATE TABLE IF NOT EXISTS shop_review_meta_outbox(id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,source_id CHAR(32) NOT NULL,review_id BIGINT UNSIGNED NOT NULL,event_id CHAR(32) NOT NULL,snapshot TEXT NULL,attempts INT NOT NULL DEFAULT 0,next_attempt_at DATETIME NOT NULL,delivered_at DATETIME NULL,created_at DATETIME NOT NULL,UNIQUE KEY uq_review_meta_event(event_id),KEY idx_review_meta_pending(delivered_at,next_attempt_at,id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        "CREATE TABLE IF NOT EXISTS shop_review_meta_outbox(id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,source_id CHAR(32) NOT NULL,review_id BIGINT UNSIGNED NOT NULL,event_id CHAR(32) NOT NULL,snapshot TEXT NULL,attempts INT NOT NULL DEFAULT 0,next_attempt_at DATETIME NOT NULL,delivered_at DATETIME NULL,created_at DATETIME NOT NULL,UNIQUE KEY uq_review_meta_event(event_id),KEY idx_review_meta_pending(delivered_at,next_attempt_at,id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        "CREATE TABLE IF NOT EXISTS shop_review_meta_reconcile_cursor(source_id CHAR(32) NOT NULL PRIMARY KEY,last_review_id BIGINT UNSIGNED NOT NULL DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     ];
 }
 function shop_review_meta_ensure(PDO $pdo): void {
-    foreach (['shop_review_meta_cursor','shop_review_meta_state','shop_review_meta_outbox'] as $i=>$table) {
+    $tables=['shop_review_meta_cursor','shop_review_meta_state','shop_review_meta_outbox'];
+    if (shop_review_meta_deletion_enabled()) $tables[]='shop_review_meta_reconcile_cursor';
+    foreach ($tables as $i=>$table) {
         try { $pdo->query('SELECT 1 FROM '.$table.' LIMIT 1'); }
         catch (Throwable $e) { $schemas=shop_review_meta_schema(); $pdo->exec($schemas[$i]); }
     }
@@ -25,8 +30,16 @@ function shop_review_meta_ensure(PDO $pdo): void {
 function shop_review_meta_require_innodb(PDO $pdo): void {
     if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME)!=='mysql') throw new RuntimeException('MySQL required');
     $st=$pdo->prepare('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?');
-    foreach (['product_reviews','shop_review_meta_cursor','shop_review_meta_state','shop_review_meta_outbox'] as $table) {
+    $tables=['product_reviews','shop_review_meta_cursor','shop_review_meta_state','shop_review_meta_outbox'];
+    if (shop_review_meta_deletion_enabled()) $tables[]='shop_review_meta_reconcile_cursor';
+    foreach ($tables as $table) {
         $st->execute([$table]); if (strtoupper((string)$st->fetchColumn())!=='INNODB') throw new RuntimeException('Transactional review metadata tables required');
+    }
+    if (shop_review_meta_deletion_enabled()) {
+        $st=$pdo->prepare("SELECT COLUMN_NAME,SUB_PART FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND INDEX_NAME='PRIMARY' ORDER BY SEQ_IN_INDEX");
+        $st->execute(['product_reviews']);
+        $primary=$st->fetchAll(PDO::FETCH_ASSOC);
+        if (count($primary)!==1 || $primary[0]['COLUMN_NAME']!=='id' || $primary[0]['SUB_PART']!==null) throw new RuntimeException('Review primary key required for safe reconciliation');
     }
 }
 /** No review text, customer name or customer identity leaves the site. */
@@ -66,6 +79,43 @@ function shop_review_meta_scan(PDO $pdo,string $source,int $limit=50): array {
     $count=0; foreach ($ids as $id) { try { if (shop_review_meta_capture($pdo,$source,(int)$id)) $count++; } catch (Throwable $e) { error_log('Shop review metadata capture failed for review id '.(int)$id); throw $e; } }
     return ['scanned'=>count($ids),'queued'=>$count,'sweep_complete'=>false];
 }
+/** A missing source row gets an id-only tombstone; the order of locks matches capture.
+ * For MySQL, repeatable-read plus a locking unique-PK lookup protects the missing-key gap.
+ * The worker advisory lock must serialize all scans/pumps of this source. */
+function shop_review_meta_reconcile_one(PDO $pdo,string $source,int $id): bool {
+    if (!shop_review_meta_deletion_enabled() || $id<=0) throw new DomainException('Review reconciliation disabled or invalid');
+    if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME)==='mysql') $pdo->exec('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+    $pdo->beginTransaction();
+    try {
+        $st=$pdo->prepare('SELECT id FROM product_reviews WHERE id=? FOR UPDATE'); $st->execute([$id]); $exists=$st->fetchColumn()!==false;
+        $st=$pdo->prepare('SELECT snapshot_hash FROM shop_review_meta_state WHERE source_id=? AND review_id=? FOR UPDATE'); $st->execute([$source,$id]); $old=$st->fetchColumn();
+        $queued=false;
+        if (!$exists && $old!==false) {
+            $payload=json_encode(['id'=>$id,'deleted'=>true],JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if ($payload===false) throw new RuntimeException('Invalid tombstone');
+            $hash=hash('sha256',$payload);
+            if (!hash_equals((string)$old,$hash)) {
+                $now=date('Y-m-d H:i:s');
+                $pdo->prepare('INSERT INTO shop_review_meta_outbox(source_id,review_id,event_id,snapshot,next_attempt_at,created_at) VALUES (?,?,?,?,?,?)')->execute([$source,$id,bin2hex(random_bytes(16)),$payload,$now,$now]);
+                $revision=shop_crm_uint($pdo->lastInsertId(),false);
+                $pdo->prepare('UPDATE shop_review_meta_state SET snapshot_hash=?,latest_revision=? WHERE source_id=? AND review_id=?')->execute([$hash,$revision,$source,$id]);
+                $queued=true;
+            }
+        }
+        $pdo->prepare('UPDATE shop_review_meta_reconcile_cursor SET last_review_id=? WHERE source_id=?')->execute([$id,$source]);
+        $pdo->commit(); return $queued;
+    } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
+}
+function shop_review_meta_reconcile(PDO $pdo,string $source,int $limit=50): array {
+    if (!shop_review_meta_deletion_enabled()) throw new DomainException('Review reconciliation disabled');
+    $limit=max(1,min(500,$limit));
+    $pdo->prepare('INSERT INTO shop_review_meta_reconcile_cursor(source_id,last_review_id) VALUES (?,0) ON DUPLICATE KEY UPDATE source_id=VALUES(source_id)')->execute([$source]);
+    $st=$pdo->prepare('SELECT last_review_id FROM shop_review_meta_reconcile_cursor WHERE source_id=?'); $st->execute([$source]); $cursor=(int)$st->fetchColumn();
+    $st=$pdo->prepare("SELECT review_id FROM shop_review_meta_state WHERE source_id=? AND review_id>? ORDER BY review_id LIMIT $limit"); $st->execute([$source,$cursor]); $ids=$st->fetchAll(PDO::FETCH_COLUMN);
+    if (!$ids) { $pdo->prepare('UPDATE shop_review_meta_reconcile_cursor SET last_review_id=0 WHERE source_id=?')->execute([$source]); return ['scanned'=>0,'queued'=>0,'sweep_complete'=>true]; }
+    $count=0; foreach ($ids as $id) { try { if (shop_review_meta_reconcile_one($pdo,$source,shop_crm_uint($id,false))) $count++; } catch (Throwable $e) { error_log('Review metadata reconciliation failed for review id '.(int)$id); throw $e; } }
+    return ['scanned'=>count($ids),'queued'=>$count,'sweep_complete'=>false];
+}
 function shop_review_meta_ack(PDO $pdo,array $row,$reply,int $http): bool {
     if ($http<200 || $http>=300 || !is_array($reply) || ($reply['ok'] ?? null)!==true || ($reply['event_id'] ?? '')!==$row['event_id']
         || ($reply['revision'] ?? null)!==(int)$row['id'] || !in_array($reply['result'] ?? '',['updated','duplicate','stale'],true)) return false;
@@ -81,10 +131,12 @@ function shop_review_meta_pump(PDO $pdo,string $source,callable $send,int $now,i
     $st=$pdo->prepare("SELECT * FROM shop_review_meta_outbox WHERE source_id=? AND delivered_at IS NULL AND next_attempt_at<=? ORDER BY id LIMIT $limit"); $st->execute([$source,date('Y-m-d H:i:s',$now)]); $result=['sent'=>0,'failed'=>0];
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $review=json_decode((string)$row['snapshot'],true);
-        if (!is_string($row['event_id']) || !preg_match('/^[a-f0-9]{32}$/D',$row['event_id']) || !is_array($review) || array_keys($review)!==['id','product_id','rating','is_active'] || !is_int($review['id']) || $review['id']!==(int)$row['review_id']
-            || !is_int($review['product_id']) || $review['product_id']<=0 || !is_int($review['rating']) || $review['rating']<1 || $review['rating']>5
-            || !is_int($review['is_active']) || !in_array($review['is_active'],[0,1],true)) throw new RuntimeException('Invalid queued review metadata');
-        $body=json_encode(['type'=>'shop_review_meta','source_id'=>$source,'event_id'=>$row['event_id'],'revision'=>(int)$row['id'],'review'=>$review],JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (!is_string($row['event_id']) || !preg_match('/^[a-f0-9]{32}$/D',$row['event_id']) || !is_array($review) || !is_int($review['id'] ?? null) || $review['id']<=0 || $review['id']!==(int)$row['review_id']) throw new RuntimeException('Invalid queued review metadata');
+        $deleted=array_keys($review)===['id','deleted'] && ($review['deleted'] ?? null)===true;
+        if (!$deleted && (array_keys($review)!==['id','product_id','rating','is_active'] || !is_int($review['product_id'] ?? null) || $review['product_id']<=0
+            || !is_int($review['rating'] ?? null) || $review['rating']<1 || $review['rating']>5 || !is_int($review['is_active'] ?? null) || !in_array($review['is_active'],[0,1],true))) throw new RuntimeException('Invalid queued review metadata');
+        // Already queued tombstones are still sent after disabling the scan. Stop the worker and receiver to halt delivery.
+        $body=json_encode(['type'=>$deleted?'shop_review_meta_deleted':'shop_review_meta','source_id'=>$source,'event_id'=>$row['event_id'],'revision'=>(int)$row['id'],'review'=>$review],JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($body===false || strlen($body)>2048) throw new RuntimeException('Oversized review metadata event');
         [$http,$reply]=$send($body);
         if (shop_review_meta_ack($pdo,$row,$reply,(int)$http)) { $pdo->prepare('UPDATE shop_review_meta_outbox SET delivered_at=?,snapshot=NULL WHERE id=? AND delivered_at IS NULL')->execute([date('Y-m-d H:i:s',$now),$row['id']]); $result['sent']++; }
