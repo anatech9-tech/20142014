@@ -14,9 +14,14 @@ try {
         if ((int)$st->fetchColumn()>0) throw new RuntimeException('Pending events from another source');
         $scanFailed=false; try { $scan=site_shipment_sync_scan($pdo,(string)SITE_SHIPMENT_SOURCE_ID,50); }
         catch (Throwable $e) { $scanFailed=true; $scan=['scanned'=>0,'queued'=>0,'sweep_complete'=>false]; error_log('Shipment metadata scan stopped; pending delivery continues'); }
+        $reconcile=['scanned'=>0,'queued'=>0,'sweep_complete'=>false]; $reconcileFailed=false;
+        if (site_shipment_sync_deletion_enabled()) {
+            try { $reconcile=site_shipment_sync_reconcile($pdo,(string)SITE_SHIPMENT_SOURCE_ID,50); }
+            catch (Throwable $e) { $reconcileFailed=true; error_log('Shipment reconciliation stopped; pending delivery continues'); }
+        }
         $sent=site_shipment_sync_pump($pdo,(string)SITE_SHIPMENT_SOURCE_ID,'site_shipment_sync_send',time());
         $pending=(int)$pdo->query('SELECT COUNT(*) FROM site_shipment_meta_outbox WHERE delivered_at IS NULL')->fetchColumn();
-        echo 'scanned='.$scan['scanned'].' queued='.$scan['queued'].' sweep_complete='.(int)$scan['sweep_complete'].' sent='.$sent['sent'].' failed='.$sent['failed'].' pending='.$pending.' scan_failed='.(int)$scanFailed."\n";
+        echo 'scanned='.$scan['scanned'].' queued='.$scan['queued'].' sweep_complete='.(int)$scan['sweep_complete'].' sent='.$sent['sent'].' failed='.$sent['failed'].' pending='.$pending.' scan_failed='.(int)$scanFailed.' reconcile_enabled='.(int)site_shipment_sync_deletion_enabled().' reconcile_scanned='.$reconcile['scanned'].' reconcile_queued='.$reconcile['queued'].' reconcile_sweep_complete='.(int)$reconcile['sweep_complete'].' reconcile_failed='.(int)$reconcileFailed."\n";
     } finally { try { $pdo->query("SELECT RELEASE_LOCK('wttp_site_shipment_meta_sync')"); } catch (Throwable $e) {} }
-    if ($scanFailed || $sent['failed']) exit(1);
+    if ($scanFailed || $reconcileFailed || $sent['failed']) exit(1);
 } catch (Throwable $e) { error_log('Shipment metadata sync failed'); fwrite(STDERR,"Shipment metadata sync failed; inspect configuration privately\n"); exit(1); }

@@ -20,6 +20,8 @@ if ($case!=='missing') {
  $st=$pdo->prepare('INSERT INTO crm_site_shipment_meta VALUES(?,?,?,?,?,?,?,?,?,?)');
  for ($i=1;$i<=31;$i++) $st->execute([$i,$i===31?'<script>':str_repeat('a',32),$i,1,str_repeat('b',32),str_repeat('c',64),'air',$i===31?'delivered':'registered',1,'2025-01-01']);
 }
+if ($case==='missing_filter') { $_GET['status']='missing'; $st->execute([32,str_repeat('a',32),99,3,str_repeat('b',32),str_repeat('c',64),'','',0,'2025-01-01']); }
+if ($case==='deletion_on') define('SITE_SHIPMENT_META_DELETION_ENABLED',true);
 if ($case==='filter') $_GET['status']='delivered'; if ($case==='page2') $_GET['before']='2';
 include __DIR__.'/pages/site_shipment_metadata.php';
 ''')
@@ -27,8 +29,10 @@ include __DIR__.'/pages/site_shipment_metadata.php';
         r=subprocess.run([php,str(app/'run.php'),case],cwd=app,capture_output=True,text=True,check=True)
         assert 'Fatal error' not in r.stdout+r.stderr and 'Warning:' not in r.stdout+r.stderr, r.stdout+r.stderr
         return r.stdout
-    page=run('admin'); assert 'محموله‌های مستقل سایت' in page and 'حذف محموله در سایت منتقل نمی‌شود' in page and 'صفحه بعد' in page
+    page=run('admin'); assert 'محموله‌های مستقل سایت' in page and 'نبود مشاهده‌شده فقط با تطبیق جداگانه' in page and 'صفحه بعد' in page
     assert '&lt;script&gt;' in page and '<script>' not in page and '<form method="post"' not in page
+    assert 'دریافت رویداد نبود محموله غیرفعال' in page and 'دریافت رویداد نبود محموله غیرفعال' not in run('deletion_on')
+    missing=run('missing_filter'); assert '<td>99</td>' in missing and '<td>31</td>' not in missing and 'نبود مشاهده‌شده' in missing and '—' in missing
     assert 'دریافت در CRM غیرفعال' in run('disabled')
     assert 'جدول نمای محموله آماده نیست' in run('missing')
     assert '<td>31</td>' in run('filter') and '<td>30</td>' not in run('filter')

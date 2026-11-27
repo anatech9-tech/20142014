@@ -32,6 +32,8 @@ function preflight_specs(string $component): array {
             'shipments'=>['id','service_type','status','is_public'],
             'site_shipment_meta_cursor'=>['source_id','last_shipment_id'], 'site_shipment_meta_state'=>['source_id','shipment_id','snapshot_hash','latest_revision'],
             'site_shipment_meta_outbox'=>['id','source_id','shipment_id','event_id','snapshot','delivered_at']]],
+        'site_shipment_meta_reconciliation'=>['required'=>false,'tables'=>[
+            'site_shipment_meta_reconcile_cursor'=>['source_id','last_shipment_id']]],
         'shop_review_meta_bridge'=>['required'=>false,'tables'=>[
             'product_reviews'=>['id','product_id','rating','is_active'],
             'shop_review_meta_cursor'=>['source_id','last_review_id'], 'shop_review_meta_state'=>['source_id','review_id','snapshot_hash','latest_revision'],

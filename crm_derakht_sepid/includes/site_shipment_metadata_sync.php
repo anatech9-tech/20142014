@@ -7,6 +7,7 @@ function crm_site_shipment_sync_configured(): bool {
     foreach (['SITE_CRM_BRIDGE_KEY','SHOP_CRM_BRIDGE_KEY','SHOP_CRM_COMMAND_KEY','SHOP_CATALOG_CRM_KEY','SHOP_PRODUCT_COMMAND_KEY','SHOP_REVIEW_META_CRM_KEY','SHOP_REVIEW_COMMAND_KEY','SHOP_REVIEW_CONTENT_GUARD_KEY'] as $key) if (defined($key) && hash_equals((string)constant($key),(string)SITE_SHIPMENT_META_KEY)) return false;
     return true;
 }
+function crm_site_shipment_sync_deletion_enabled(): bool { return defined('SITE_SHIPMENT_META_DELETION_ENABLED') && SITE_SHIPMENT_META_DELETION_ENABLED===true; }
 function crm_site_shipment_sync_signature_valid(string $key,string $ts,string $sig,string $body,int $now): bool {
     return strlen($key)>=32 && preg_match('/^[0-9]{10}$/D',$ts)===1 && abs($now-(int)$ts)<=300 && preg_match('/^[a-f0-9]{64}$/D',$sig)===1
         && hash_equals(hash_hmac('sha256','site-shipment-meta-v1.'.$ts.'.'.$body,$key),$sig);
@@ -25,7 +26,9 @@ function crm_site_shipment_sync_require_innodb(PDO $pdo): void {
 }
 function crm_site_shipment_sync_store(PDO $pdo,array $data,string $hash): string {
     if (!crm_site_shipment_sync_configured() || !crm_site_shipment_metadata_validate($data,(string)SITE_SHIPMENT_SOURCE_ID) || !preg_match('/^[a-f0-9]{64}$/D',$hash)) throw new DomainException('Invalid shipment event');
-    $r=$data['shipment']; $pdo->beginTransaction();
+    $r=$data['shipment']; $deleted=$data['type']==='site_shipment_meta_deleted_v1';
+    if ($deleted && !crm_site_shipment_sync_deletion_enabled()) throw new DomainException('Shipment reconciliation disabled');
+    $service=$deleted?'':$r['service_type']; $status=$deleted?'':$r['status']; $public=$deleted?0:$r['is_public']; $pdo->beginTransaction();
     try {
         $st=$pdo->prepare("INSERT INTO crm_site_shipment_meta(source_id,shipment_id,revision,event_id,payload_hash,service_type,status,is_public,received_at) VALUES (?,?,0,'','','','',0,?) ON DUPLICATE KEY UPDATE id=id");
         $st->execute([$data['source_id'],$r['id'],date('Y-m-d H:i:s')]);
@@ -35,7 +38,7 @@ function crm_site_shipment_sync_store(PDO $pdo,array $data,string $hash): string
         elseif ($data['revision']===(int)$old['revision']) $result=hash_equals((string)$old['event_id'],$data['event_id']) && hash_equals((string)$old['payload_hash'],$hash)?'duplicate':'conflict';
         else {
             $st=$pdo->prepare('UPDATE crm_site_shipment_meta SET revision=?,event_id=?,payload_hash=?,service_type=?,status=?,is_public=?,received_at=? WHERE source_id=? AND shipment_id=?');
-            $st->execute([$data['revision'],$data['event_id'],$hash,$r['service_type'],$r['status'],$r['is_public'],date('Y-m-d H:i:s'),$data['source_id'],$r['id']]); $result='updated';
+            $st->execute([$data['revision'],$data['event_id'],$hash,$service,$status,$public,date('Y-m-d H:i:s'),$data['source_id'],$r['id']]); $result='updated';
         }
         $pdo->commit(); return $result;
     } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
