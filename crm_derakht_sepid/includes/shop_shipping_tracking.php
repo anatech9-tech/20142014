@@ -25,10 +25,12 @@ function shop_shipping_ensure(PDO $pdo): bool {
     }
     return true;
 }
-function shop_shipping_require_transactions(PDO $pdo): void {
+function shop_shipping_require_transactions(PDO $pdo,bool $checkPackages=false): void {
     if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME)!=='mysql') return; // SQLite fixture only.
     $st=$pdo->prepare('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?');
-    foreach (['users','crm_shop_orders','crm_shop_shipping_tracking','crm_shop_shipping_tracking_events'] as $table) {
+    $tables=['users','crm_shop_orders','crm_shop_shipping_tracking','crm_shop_shipping_tracking_events'];
+    if ($checkPackages) $tables[]='crm_shop_shipping_packages';
+    foreach ($tables as $table) {
         $st->execute([$table]); if (strtoupper((string)$st->fetchColumn())!=='INNODB') throw new DomainException('جدول‌های رهگیری باید تراکنشی و InnoDB باشند.');
     }
 }
@@ -39,7 +41,7 @@ function shop_shipping_apply(PDO $pdo,int $replica,int $actor,bool $admin,int $r
         $carrier=trim($carrier); $tracking=trim($tracking);
         if (!preg_match('/^[\p{L}\p{M}\p{N} .&()\-]{2,80}$/uD',$carrier) || !preg_match('/^[\p{L}\p{M}\p{N} ._\/-]{3,100}$/uD',$tracking)) throw new DomainException('نام شرکت یا کد رهگیری معتبر نیست.');
     } else { $carrier=null; $tracking=null; }
-    shop_shipping_require_transactions($pdo); $pdo->beginTransaction();
+    shop_shipping_require_transactions($pdo,$action==='save'); $pdo->beginTransaction();
     try {
         shop_status_request_check_admin($pdo,$actor,$admin);
         $st=$pdo->prepare('SELECT source_id,shop_order_id,revision,payload FROM crm_shop_orders WHERE id=? FOR UPDATE'); $st->execute([$replica]); $order=$st->fetch(PDO::FETCH_ASSOC);
@@ -50,6 +52,15 @@ function shop_shipping_apply(PDO $pdo,int $replica,int $actor,bool $admin,int $r
         $st=$pdo->prepare('SELECT * FROM crm_shop_shipping_tracking WHERE replica_id=? FOR UPDATE'); $st->execute([$replica]); $current=$st->fetch(PDO::FETCH_ASSOC);
         if ($current && ($current['source_id']!==$order['source_id'] || (int)$current['shop_order_id']!==(int)$order['shop_order_id'])) throw new DomainException('هویت سفارش با رهگیری ثبت‌شده متفاوت است؛ تطبیق دستی لازم است.');
         if ((int)($current['version'] ?? 0)!==$version) throw new DomainException('اطلاعات رهگیری تغییر کرده است؛ صفحه را دوباره بارگذاری کنید.');
+        if ($action==='save') {
+            // The order lock serializes this check with package writes. Compare exact bytes in PHP,
+            // not database collation; do not claim to detect format/case/Unicode equivalents.
+            $st=$pdo->prepare('SELECT source_id,shop_order_id,tracking_code FROM crm_shop_shipping_packages WHERE replica_id=? FOR UPDATE'); $st->execute([$replica]);
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                if ($row['source_id']!==$order['source_id'] || (int)$row['shop_order_id']!==(int)$order['shop_order_id']) throw new DomainException('هویت بسته با سفارش متفاوت است؛ تطبیق دستی لازم است.');
+                if ($row['tracking_code']!==null && $row['tracking_code']===$tracking) throw new DomainException('این کد در بسته دیگری از همین سفارش ثبت شده است.');
+            }
+        }
         if ($action==='clear' && (!$current || $current['tracking_code']===null)) throw new DomainException('کد رهگیری فعالی ثبت نشده است.');
         if ($action==='save' && $current && $current['carrier']===$carrier && $current['tracking_code']===$tracking) throw new DomainException('اطلاعات رهگیری تغییری ندارد.');
         $now=date('Y-m-d H:i:s'); $next=$version+1;

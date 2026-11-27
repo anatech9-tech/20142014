@@ -11,6 +11,7 @@ foreach ([
  'CREATE TABLE users(id INTEGER PRIMARY KEY,status TEXT,role TEXT)',
  'CREATE TABLE crm_shop_orders(id INTEGER PRIMARY KEY,source_id TEXT,shop_order_id INTEGER,revision INTEGER,payload TEXT)',
  'CREATE TABLE crm_shop_shipping_packages(package_id TEXT PRIMARY KEY,replica_id INTEGER,source_id TEXT,shop_order_id INTEGER,version INTEGER,carrier TEXT,tracking_code TEXT,replica_revision INTEGER,updated_by INTEGER,updated_at TEXT)',
+ 'CREATE TABLE crm_shop_shipping_tracking(replica_id INTEGER PRIMARY KEY,source_id TEXT,shop_order_id INTEGER,version INTEGER,carrier TEXT,tracking_code TEXT,replica_revision INTEGER,updated_by INTEGER,updated_at TEXT)',
  'CREATE TABLE crm_shop_shipping_package_events(id INTEGER PRIMARY KEY AUTOINCREMENT,package_id TEXT,replica_id INTEGER,source_id TEXT,shop_order_id INTEGER,version INTEGER,replica_revision INTEGER,action TEXT,actor_id INTEGER,created_at TEXT)'
 ] as $sql) $pdo->exec($sql);
 $pdo->exec("INSERT INTO users VALUES(1,'active','admin'),(2,'active','user'),(3,'inactive','admin')");

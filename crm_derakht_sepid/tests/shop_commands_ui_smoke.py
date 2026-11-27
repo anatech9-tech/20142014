@@ -43,7 +43,7 @@ foreach ([
  'CREATE TABLE crm_shop_order_commands(command_id TEXT PRIMARY KEY,request_id INTEGER,replica_id INTEGER,actor_id INTEGER,payload TEXT,state TEXT,attempts INTEGER,next_attempt_at TEXT,created_at TEXT,completed_at TEXT)'
 ] as $q) $pdo->exec($q);
 $pdo->exec("INSERT INTO users VALUES(1,'active','admin',NULL,'admin','Admin')");
-$order=['id'=>1,'order_no'=>'<order>','order_status'=>(in_array(($argv[1] ?? ''),['return_new','return_open','return_list','return_mismatch','return_mismatch_list','return_mismatch_post','readonly','viewer','shipping_new','shipping_existing','shipping_stale','shipping_mismatch','shipping_readonly','shipping_viewer','post_shipping','post_shipping_readonly','post_shipping_viewer','package_new','package_existing','package_mismatch','package_readonly','package_viewer','post_package','post_package_readonly','post_package_viewer','cancel_enabled','cancel_paid','cancel_queued','cancel_disabled','cancel_post_no_ack','cancel_post_one','cancel_post_both']) ? 'shipped' : 'pending'),'payment_status'=>'pending','order_event_id'=>1,'created_at'=>'2025-01-01 10:00:00','items'=>[]];
+$order=['id'=>1,'order_no'=>'<order>','order_status'=>(in_array(($argv[1] ?? ''),['return_new','return_open','return_list','return_mismatch','return_mismatch_list','return_mismatch_post','readonly','viewer','cross_duplicate','cross_post_primary','cross_post_package','shipping_new','shipping_existing','shipping_stale','shipping_mismatch','shipping_readonly','shipping_viewer','post_shipping','post_shipping_readonly','post_shipping_viewer','package_new','package_existing','package_mismatch','package_readonly','package_viewer','post_package','post_package_readonly','post_package_viewer','cancel_enabled','cancel_paid','cancel_queued','cancel_disabled','cancel_post_no_ack','cancel_post_one','cancel_post_both']) ? 'shipped' : 'pending'),'payment_status'=>'pending','order_event_id'=>1,'created_at'=>'2025-01-01 10:00:00','items'=>[]];
 $st=$pdo->prepare('INSERT INTO crm_shop_orders VALUES(1,?,1,1,?,?)'); $st->execute([str_repeat('a',32),json_encode($order),'2025-01-01 10:00:00']);
 $pdo->prepare("INSERT INTO crm_shop_status_requests VALUES(1,1,?,1,1,'pending','pending','confirmed','open',1,'2025-01-01 10:00:00',NULL,NULL)")->execute([str_repeat('a',32)]);
 if (in_array(($argv[1] ?? ''),['return_open','return_list','return_mismatch','return_mismatch_list','return_mismatch_post','readonly','viewer'],true)) $pdo->prepare("INSERT INTO crm_shop_return_requests VALUES(1,1,?,1,1,'shipped','damaged','open',1,'2025-01-01',NULL,NULL)")->execute([str_repeat(str_starts_with($case,'return_mismatch')?'b':'a',32)]);
@@ -69,6 +69,13 @@ if (in_array($case,['cancel_post_no_ack','cancel_post_one','cancel_post_both'],t
  $_SERVER['REQUEST_METHOD']='POST'; $_POST=['id'=>'1','action'=>'send_status_command','request_number'=>'1'];
  if ($case!=='cancel_post_no_ack') $_POST['cancel_unpaid']='1'; if ($case==='cancel_post_both') $_POST['cancel_unshipped']='1';
  register_shutdown_function(function() use ($pdo) { echo 'CANCEL_RESULT:'.$pdo->query('SELECT COUNT(*) FROM crm_shop_order_commands')->fetchColumn(); });
+}
+if (in_array($case,['cross_duplicate','cross_post_primary','cross_post_package'],true)) {
+ if ($case!=='cross_post_primary') $pdo->prepare("INSERT INTO crm_shop_shipping_tracking VALUES(1,?,1,1,'Post','SAME123',1,1,'2025-01-01')")->execute([str_repeat('a',32)]);
+ if ($case!=='cross_post_package') $pdo->prepare("INSERT INTO crm_shop_shipping_packages VALUES(?,1,?,1,1,'Post','SAME123',1,1,'2025-01-01')")->execute([str_repeat('1',32),str_repeat('a',32)]);
+ if ($case==='cross_post_primary') { $_SERVER['REQUEST_METHOD']='POST'; $_POST=['id'=>'1','action'=>'save_shipping','shipping_revision'=>'1','shipping_version'=>'0','carrier'=>'Post','tracking_code'=>'SAME123']; }
+ if ($case==='cross_post_package') { $_SERVER['REQUEST_METHOD']='POST'; $_POST=['id'=>'1','action'=>'create_package','package_revision'=>'1','package_version'=>'0','package_id'=>str_repeat('2',32),'carrier'=>'Post','tracking_code'=>'SAME123']; }
+ if ($case!=='cross_duplicate') register_shutdown_function(function() use ($pdo) { echo 'CROSS_RESULT:'.$pdo->query('SELECT COUNT(*) FROM crm_shop_shipping_tracking_events')->fetchColumn().':'.$pdo->query('SELECT COUNT(*) FROM crm_shop_shipping_package_events')->fetchColumn(); });
 }
 if (in_array($case,['shipping_existing','shipping_stale','shipping_mismatch','shipping_readonly','shipping_viewer'],true)) {
  $source=$case==='shipping_mismatch'?str_repeat('b',32):str_repeat('a',32); $revision=$case==='shipping_stale'?2:1;
@@ -108,10 +115,12 @@ include __DIR__.'/pages/shop_orders.php';
     assert 'RETURN_RESULT:open:0' in run('return_mismatch_post')
     readonly=run('readonly'); assert 'بستن پیگیری مرجوعی</button>' not in readonly and 'پیگیری داخلی بررسی مرجوعی' in readonly
     viewer=run('viewer'); assert 'پیگیری داخلی بررسی مرجوعی' not in viewer and 'بستن پیگیری مرجوعی</button>' not in viewer
+    duplicate=run('cross_duplicate'); assert 'کد رهگیری اصلی با یک بستهٔ اضافی تکراری است' in duplicate and 'پاک‌کردن رهگیری داخلی</button>' in duplicate and 'پاک‌کردن بسته</button>' in duplicate
+    assert 'CROSS_RESULT:0:0' in run('cross_post_primary') and 'CROSS_RESULT:0:0' in run('cross_post_package')
     shipnew=run('shipping_new'); assert 'ثبت رهگیری داخلی</button>' in shipnew and 'csrf_token' in shipnew and 'اثبات ارسال یا تحویل نیست' in shipnew
     existing=run('shipping_existing'); assert '&lt;Carrier&gt;' in existing and '<Carrier>' not in existing and 'پاک‌کردن رهگیری داخلی</button>' in existing
     assert 'نسخهٔ دریافتی سفارش پس از ثبت تغییر کرده' in run('shipping_stale')
-    mismatch=run('shipping_mismatch'); assert 'هویت رهگیری با سفارش فعلی ناسازگار است' in mismatch and 'AB123' not in mismatch and 'ثبت رهگیری داخلی</button>' not in mismatch
+    mismatch=run('shipping_mismatch'); assert 'هویت رهگیری با سفارش فعلی ناسازگار است' in mismatch and 'AB123' not in mismatch and 'ثبت رهگیری داخلی</button>' not in mismatch and 'ثبت بسته اضافی</button>' not in mismatch
     read=run('shipping_readonly'); assert 'AB123' in read and 'پاک‌کردن رهگیری داخلی</button>' not in read and 'ثبت رهگیری داخلی</button>' not in read
     viewer=run('shipping_viewer'); assert 'AB123' not in viewer and 'رهگیری داخلی ارسال' not in viewer
     assert 'TRACKING_RESULT:1:1' in run('post_shipping')
