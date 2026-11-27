@@ -54,6 +54,9 @@ function preflight_specs(string $component): array {
     if ($component==='crm') return [
         'crm_core'=>['required'=>true,'tables'=>[
             'users'=>['id','status','role'], 'crm_customers'=>['id'], 'crm_products'=>['id','name'], 'teams'=>['id']]],
+        'site_content_drafts'=>['required'=>false,'tables'=>[
+            'crm_site_content_drafts'=>['id','title','body','version','created_by','updated_by','created_at','updated_at'],
+            'crm_site_content_draft_versions'=>['id','draft_id','version','title','body','actor_id','action','restored_version','created_at']]],
         'site_inquiries'=>['required'=>false,'tables'=>[
             'crm_site_inquiries'=>['id','event_id','payload_hash','owner_user_id','lead_id'],
             'crm_site_inquiry_owner_events'=>['id']]],
