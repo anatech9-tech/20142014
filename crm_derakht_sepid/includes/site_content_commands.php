@@ -18,7 +18,7 @@ function crm_content_command_require_innodb(PDO $pdo): void {
 }
 /** Caller enforces login, CSRF, read-only policy and explicit review/identity confirmations. */
 function crm_content_command_enqueue(PDO $pdo,int $actor,bool $admin,string $kind,int $object,string $token,array $fields,int $now,bool $confirmed): string {
-    if (!content_command_configured(true) || !content_command_kind_enabled($kind) || !$confirmed || !$admin || $actor<=0 || $object<=0 || $now<=0 || $now>PHP_INT_MAX-900) throw new DomainException('دسترسی، پیکربندی یا تأیید معتبر نیست.');
+    if (!content_command_configured(true) || !content_command_kind_enabled($kind) || !$confirmed || !$admin || $actor<=0 || ($object<=0 && !(in_array($kind,['service_create','team_create'],true) && $object===0)) || $now<=0 || $now>PHP_INT_MAX-900) throw new DomainException('دسترسی، پیکربندی یا تأیید معتبر نیست.');
     $c=['type'=>content_command_type($kind),'command_id'=>bin2hex(random_bytes(16)),'source_id'=>SITE_CONTENT_COMMAND_SOURCE_ID,'object_id'=>$object,'actor_id'=>$actor,'expected_token'=>$token,'issued_at'=>$now,'expires_at'=>$now+900,'fields'=>$fields];
     $targetKind=content_command_kind($c);
     if (!content_command_validate($c,SITE_CONTENT_COMMAND_SOURCE_ID)) throw new DomainException('فیلدها یا نسخهٔ سایت معتبر نیستند.');
@@ -40,12 +40,23 @@ function crm_content_command_enqueue(PDO $pdo,int $actor,bool $admin,string $kin
 }
 function crm_content_command_settle(PDO $pdo,array $row,$reply,int $http,int $now): bool {
     if ($http<200 || $http>=300 || !is_array($reply) || ($reply['ok'] ?? null)!==true || ($reply['command_id'] ?? null)!==$row['command_id'] || !in_array($reply['result'] ?? null,['applied','conflict','expired'],true)) return false;
+    $payload=json_decode((string)($row['payload'] ?? ''),true); $mode=is_array($payload)?content_command_mode($payload):'';
+    $create=in_array($mode,['service_create','team_create'],true); $createdId=null;
+    if ($create) {
+        if ($reply['result']==='applied') {
+            if (count($reply)!==4 || array_diff(array_keys($reply),['ok','command_id','result','created_id']) || !is_int($reply['created_id'] ?? null) || $reply['created_id']<=0 || $reply['created_id']>4294967295) return false;
+            $createdId=$reply['created_id'];
+        } elseif ($reply['result']!=='expired' || count($reply)!==3 || array_diff(array_keys($reply),['ok','command_id','result'])) return false;
+    }
     $pdo->beginTransaction();
     try {
-        $st=$pdo->prepare('SELECT state,actor_id FROM crm_site_content_commands WHERE command_id=? FOR UPDATE'); $st->execute([$row['command_id']]); $c=$st->fetch(PDO::FETCH_ASSOC);
+        $st=$pdo->prepare('SELECT state,actor_id,object_id FROM crm_site_content_commands WHERE command_id=? FOR UPDATE'); $st->execute([$row['command_id']]); $c=$st->fetch(PDO::FETCH_ASSOC);
         if (!$c) throw new RuntimeException('Command missing');
-        if ($c['state']!=='queued') { $pdo->commit(); return $c['state']===$reply['result']; }
-        $stamp=date('Y-m-d H:i:s',$now); $st=$pdo->prepare("UPDATE crm_site_content_commands SET state=?,completed_at=? WHERE command_id=? AND state='queued'"); $st->execute([$reply['result'],$stamp,$row['command_id']]); if ($st->rowCount()!==1) throw new RuntimeException('Settlement failed');
+        if ($c['state']!=='queued') { $pdo->commit(); return $c['state']===$reply['result'] && (!$create || $createdId===null || (int)$c['object_id']===$createdId); }
+        $stamp=date('Y-m-d H:i:s',$now);
+        if ($createdId!==null) { $st=$pdo->prepare("UPDATE crm_site_content_commands SET state=?,completed_at=?,object_id=? WHERE command_id=? AND state='queued' AND object_id=0"); $st->execute([$reply['result'],$stamp,$createdId,$row['command_id']]); }
+        else { $st=$pdo->prepare("UPDATE crm_site_content_commands SET state=?,completed_at=? WHERE command_id=? AND state='queued'"); $st->execute([$reply['result'],$stamp,$row['command_id']]); }
+        if ($st->rowCount()!==1) throw new RuntimeException('Settlement failed');
         $pdo->prepare('INSERT INTO crm_site_content_command_events(command_id,actor_id,action,created_at) VALUES (?,?,?,?)')->execute([$row['command_id'],$c['actor_id'],$reply['result'],$stamp]); $pdo->commit(); return true;
     } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
 }
