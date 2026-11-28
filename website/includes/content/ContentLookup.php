@@ -3,11 +3,11 @@
 require_once __DIR__.'/ContentLookupContract.php'; require_once __DIR__.'/../ContentEditGuard.php';
 function content_lookup_read(PDO $pdo,array $request): array {
     if (!content_lookup_request_valid($request,SITE_CONTENT_LOOKUP_SOURCE_ID) || !content_lookup_kind_enabled($request['kind'])) throw new DomainException('Invalid lookup');
-    $kind=$request['kind']; $rowKind=$kind==='service_en'?'service':$kind; $sql='SELECT '.implode(',',content_edit_fields($rowKind)).' FROM '.content_edit_table($rowKind).' WHERE id=? LIMIT 1';
+    $kind=$request['kind']; $rowKind=$kind==='service_en'?'service':($kind==='team_profile'?'team':$kind); $sql='SELECT '.implode(',',content_edit_fields($rowKind)).' FROM '.content_edit_table($rowKind).' WHERE id=? LIMIT 1';
     $st=$pdo->prepare($sql); $st->execute([$request['object_id']]); $row=$st->fetch(PDO::FETCH_ASSOC);
     $response=['type'=>'site_content_lookup_result_v1','source_id'=>$request['source_id'],'request_id'=>$request['request_id'],'kind'=>$kind,'object_id'=>$request['object_id'],'found'=>(bool)$row];
     if ($row) {
-        $first=$kind==='service'?$row['title_fa']:($kind==='service_en'?($row['title_en'] ?? ''):$row['name']); $second=$kind==='service'?$row['description_fa']:($kind==='service_en'?($row['description_en'] ?? ''):$row['role']);
+        $first=$kind==='service'?$row['title_fa']:($kind==='service_en'?($row['title_en'] ?? ''):($kind==='team_profile'?($row['handle'] ?? ''):$row['name'])); $second=$kind==='service'?$row['description_fa']:($kind==='service_en'?($row['description_en'] ?? ''):($kind==='team_profile'?($row['bio'] ?? ''):$row['role']));
         if (!content_lookup_text_valid($first) || !content_lookup_text_valid($second)) throw new RuntimeException('Content unavailable');
         $response['token']=content_edit_token($rowKind,$row); $response['first']=$first; $response['second']=$second;
     }

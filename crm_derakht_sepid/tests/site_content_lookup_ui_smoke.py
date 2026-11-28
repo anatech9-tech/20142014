@@ -24,19 +24,19 @@ function require_login(){} function is_strict_admin(){return $GLOBALS['case']!==
 function access_is_special_account(){return true;} function access_mode($x){return 'editor';} function get_csrf_field(){return '<input name="csrf_token" value="token">';}
 function showToast($s,$t=''){} function redirect($s){exit;}
 $case=$argv[1]; $calls=0;
-define('SITE_CONTENT_COMMAND_ENABLED',true); define('SITE_CONTENT_SERVICE_EDIT_ENABLED',true); define('SITE_CONTENT_SERVICE_EN_EDIT_ENABLED',$case!=='en_disabled'); define('SITE_CONTENT_COMMAND_SOURCE_ID',str_repeat('a',32)); define('SITE_CONTENT_COMMAND_KEY',str_repeat('c',32)); define('SITE_CONTENT_COMMAND_URL','https://example.test/api/command');
-define('SITE_CONTENT_LOOKUP_ENABLED',true); define('SITE_CONTENT_SERVICE_LOOKUP_ENABLED',true); define('SITE_CONTENT_SERVICE_EN_LOOKUP_ENABLED',$case!=='en_disabled'); define('SITE_CONTENT_SERVICE_LIST_ENABLED',$case!=='disabled_list'); define('SITE_CONTENT_LOOKUP_SOURCE_ID',str_repeat('a',32)); define('SITE_CONTENT_LOOKUP_KEY',str_repeat('l',32)); define('SITE_CONTENT_LOOKUP_URL',$case==='origin_mismatch'?'https://different.test/api':'https://example.test/api/lookup');
+define('SITE_CONTENT_COMMAND_ENABLED',true); define('SITE_CONTENT_SERVICE_EDIT_ENABLED',true); define('SITE_CONTENT_SERVICE_EN_EDIT_ENABLED',$case!=='en_disabled'); define('SITE_CONTENT_TEAM_EDIT_ENABLED',true); define('SITE_CONTENT_TEAM_PROFILE_EDIT_ENABLED',$case!=='profile_disabled'); define('SITE_CONTENT_COMMAND_SOURCE_ID',str_repeat('a',32)); define('SITE_CONTENT_COMMAND_KEY',str_repeat('c',32)); define('SITE_CONTENT_COMMAND_URL','https://example.test/api/command');
+define('SITE_CONTENT_LOOKUP_ENABLED',true); define('SITE_CONTENT_SERVICE_LOOKUP_ENABLED',true); define('SITE_CONTENT_SERVICE_EN_LOOKUP_ENABLED',$case!=='en_disabled'); define('SITE_CONTENT_TEAM_LOOKUP_ENABLED',true); define('SITE_CONTENT_TEAM_PROFILE_LOOKUP_ENABLED',$case!=='profile_disabled'); define('SITE_CONTENT_TEAM_LIST_ENABLED',true); define('SITE_CONTENT_SERVICE_LIST_ENABLED',$case!=='disabled_list'); define('SITE_CONTENT_LOOKUP_SOURCE_ID',str_repeat('a',32)); define('SITE_CONTENT_LOOKUP_KEY',str_repeat('l',32)); define('SITE_CONTENT_LOOKUP_URL',$case==='origin_mismatch'?'https://different.test/api':'https://example.test/api/lookup');
 class UIPDO extends PDO { public function prepare(string $sql,array $options=[]): PDOStatement|false { $sql=str_replace(' FOR UPDATE','',$sql); if (str_contains($sql,'ON DUPLICATE KEY UPDATE object_id=object_id')) { $sql=str_replace('INSERT INTO crm_site_content_command_targets','INSERT OR IGNORE INTO crm_site_content_command_targets',$sql); $sql=str_replace(' ON DUPLICATE KEY UPDATE object_id=object_id','',$sql); } return parent::prepare($sql,$options); } }
 $_SESSION=['user_id'=>1]; $_SERVER['REQUEST_METHOD']='GET'; $pdo=new UIPDO('sqlite::memory:'); $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
 $pdo->exec('CREATE TABLE users(id INTEGER PRIMARY KEY,status TEXT,role TEXT)'); $pdo->prepare('INSERT INTO users VALUES(1,?,?)')->execute([$case==='inactive'?'inactive':'active',$case==='forged'?'user':'admin']);
 $pdo->exec('CREATE TABLE crm_site_content_command_targets(source_id TEXT,kind TEXT,object_id INTEGER,PRIMARY KEY(source_id,kind,object_id))');
 $pdo->exec('CREATE TABLE crm_site_content_commands(command_id TEXT PRIMARY KEY,source_id TEXT,kind TEXT,object_id INTEGER,actor_id INTEGER,payload TEXT,payload_hash TEXT,state TEXT,attempts INTEGER,next_attempt_at TEXT,created_at TEXT,completed_at TEXT)');
 $pdo->exec('CREATE TABLE crm_site_content_command_events(id INTEGER PRIMARY KEY,command_id TEXT,actor_id INTEGER,action TEXT,created_at TEXT)');
-if (in_array($case,['lookup','compare','changed','missing','http_error','origin_mismatch','readonly','viewer','inactive','forged','list','list_next','list_bad','disabled_list','list_readonly','en_lookup','en_compare','en_enqueue','en_empty','en_disabled'],true)) {
- $_SERVER['REQUEST_METHOD']='POST'; $_POST=['action'=>in_array($case,['list','list_next','list_bad','disabled_list','list_readonly'],true)?'list':(in_array($case,['compare','changed','origin_mismatch','en_compare','en_empty'],true)?'preview':($case==='en_enqueue'?'enqueue':'lookup')),'kind'=>str_starts_with($case,'en_')?'service_en':'service','object_id'=>'1','after_id'=>$case==='list_next'?'10':($case==='list_bad'?'-1':'0'),'token'=>str_repeat('a',64),'compare'=>'1','first'=>'New <script>title</script>','second'=>'New body'];
- if ($case==='list_readonly') $case='readonly';
- if ($case==='en_enqueue') { $_POST['confirm_identity']='1'; $_POST['confirm_change']='1'; }
- if ($case==='en_empty') { $_POST['first']=''; $_POST['second']=''; }
+if (in_array($case,['lookup','compare','changed','missing','http_error','origin_mismatch','readonly','viewer','inactive','forged','list','list_next','list_bad','disabled_list','list_readonly','en_lookup','en_compare','en_enqueue','en_empty','en_disabled','profile_lookup','profile_compare','profile_enqueue','profile_empty','profile_disabled','profile_list','profile_readonly'],true)) {
+ $_SERVER['REQUEST_METHOD']='POST'; $_POST=['action'=>in_array($case,['list','list_next','list_bad','disabled_list','list_readonly','profile_list'],true)?'list':(in_array($case,['compare','changed','origin_mismatch','en_compare','en_empty','profile_compare','profile_empty'],true)?'preview':(in_array($case,['en_enqueue','profile_enqueue'],true)?'enqueue':'lookup')),'kind'=>str_starts_with($case,'en_')?'service_en':($case==='profile_list'?'team':(str_starts_with($case,'profile_')?'team_profile':'service')),'object_id'=>'1','after_id'=>$case==='list_next'?'10':($case==='list_bad'?'-1':'0'),'token'=>str_repeat('a',64),'compare'=>'1','first'=>'New <script>title</script>','second'=>'New body'];
+ if (in_array($case,['list_readonly','profile_readonly'],true)) $case='readonly';
+ if (in_array($case,['en_enqueue','profile_enqueue'],true)) { $_POST['confirm_identity']='1'; $_POST['confirm_change']='1'; }
+ if (in_array($case,['en_empty','profile_empty'],true)) { $_POST['first']=''; $_POST['second']=''; }
 }
 register_shutdown_function(function() use ($pdo) { echo '|RESULT:'.$GLOBALS['calls'].':'.$pdo->query('SELECT COUNT(*) FROM crm_site_content_commands')->fetchColumn(); });
 include __DIR__.'/pages/site_content_commands.php';
@@ -60,4 +60,11 @@ include __DIR__.'/pages/site_content_commands.php';
     assert '|RESULT:1:0' in run('en_empty') and 'name="action" value="enqueue"' in run('en_empty')
     assert '|RESULT:0:1' in run('en_enqueue')
     assert '|RESULT:0:0' in run('en_disabled') and 'name="kind" value="service_en"' not in run('en_disabled')
-    print('PASS CRM lookup/comparison and paginated listing fixtures: escaping, gating, authorization, read-only and no queue')
+    profile=run('profile_lookup'); assert '|RESULT:1:0' in profile and 'شناسه و معرفی عضو تیم' in profile and 'name="kind" value="team_profile"' in profile and '&lt;script&gt;' in profile
+    profile=run('profile_compare'); assert '|RESULT:1:0' in profile and 'مقایسه دو فیلد' in profile and 'name="action" value="enqueue"' in profile
+    assert '|RESULT:1:0' in run('profile_empty') and 'name="action" value="enqueue"' in run('profile_empty')
+    assert '|RESULT:0:1' in run('profile_enqueue')
+    assert '|RESULT:0:0' in run('profile_disabled') and 'name="kind" value="team_profile"' not in run('profile_disabled')
+    assert '|RESULT:0:0' in run('profile_readonly')
+    assert '|RESULT:1:0' in run('profile_list') and 'دریافت شناسه و معرفی' in run('profile_list')
+    print('PASS CRM lookup/comparison, listing and opt-in profile fixtures: escaping, gating, authorization, read-only and enqueue')

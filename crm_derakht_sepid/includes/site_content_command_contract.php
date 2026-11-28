@@ -12,6 +12,7 @@ function content_command_kind_enabled(string $kind): bool {
     if ($kind==='service') return defined('SITE_CONTENT_SERVICE_EDIT_ENABLED') && SITE_CONTENT_SERVICE_EDIT_ENABLED===true;
     if ($kind==='service_en') return content_command_kind_enabled('service') && defined('SITE_CONTENT_SERVICE_EN_EDIT_ENABLED') && SITE_CONTENT_SERVICE_EN_EDIT_ENABLED===true;
     if ($kind==='team') return defined('SITE_CONTENT_TEAM_EDIT_ENABLED') && SITE_CONTENT_TEAM_EDIT_ENABLED===true;
+    if ($kind==='team_profile') return content_command_kind_enabled('team') && defined('SITE_CONTENT_TEAM_PROFILE_EDIT_ENABLED') && SITE_CONTENT_TEAM_PROFILE_EDIT_ENABLED===true;
     return false;
 }
 function content_command_text($value,int $min,int $max,bool $multiline=false): bool {
@@ -27,6 +28,7 @@ function content_command_validate($c,string $source): bool {
     $f=$c['fields'];
     if (($c['type'] ?? null)==='service_text_v1') return !array_diff(array_keys($f),['title_fa','description_fa']) && content_command_text($f['title_fa'] ?? null,2,200) && content_command_text($f['description_fa'] ?? null,1,1000,true);
     if (($c['type'] ?? null)==='service_english_text_v1') return !array_diff(array_keys($f),['title_en','description_en']) && content_command_text($f['title_en'] ?? null,0,200) && content_command_text($f['description_en'] ?? null,0,1000,true);
+    if (($c['type'] ?? null)==='team_profile_v1') return !array_diff(array_keys($f),['handle','bio']) && content_command_text($f['handle'] ?? null,0,100) && content_command_text($f['bio'] ?? null,0,1000,true);
     if (($c['type'] ?? null)==='team_text_v1') return !array_diff(array_keys($f),['name','role']) && content_command_text($f['name'] ?? null,2,100) && content_command_text($f['role'] ?? null,2,200);
     return false;
 }
@@ -34,10 +36,11 @@ function content_command_mode(array $c): string {
     if (($c['type'] ?? '')==='service_text_v1') return 'service';
     if (($c['type'] ?? '')==='service_english_text_v1') return 'service_en';
     if (($c['type'] ?? '')==='team_text_v1') return 'team';
+    if (($c['type'] ?? '')==='team_profile_v1') return 'team_profile';
     return '';
 }
-function content_command_kind(array $c): string { $mode=content_command_mode($c); return $mode==='service_en'?'service':$mode; }
-function content_command_type(string $mode): string { return $mode==='service'?'service_text_v1':($mode==='service_en'?'service_english_text_v1':($mode==='team'?'team_text_v1':'')); }
+function content_command_kind(array $c): string { $mode=content_command_mode($c); return $mode==='service_en'?'service':($mode==='team_profile'?'team':$mode); }
+function content_command_type(string $mode): string { return $mode==='service'?'service_text_v1':($mode==='service_en'?'service_english_text_v1':($mode==='team'?'team_text_v1':($mode==='team_profile'?'team_profile_v1':''))); }
 function content_command_signature_valid(string $key,string $ts,string $sig,string $body,int $now): bool {
     return strlen($key)>=32 && preg_match('/^[0-9]{10}$/D',$ts)===1 && abs($now-(int)$ts)<=300 && preg_match('/^[a-f0-9]{64}$/D',$sig)===1 && hash_equals(hash_hmac('sha256','site-content-command-v1.'.$ts.'.'.$body,$key),$sig);
 }
