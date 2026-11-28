@@ -19,7 +19,8 @@ function crm_content_command_require_innodb(PDO $pdo): void {
 /** Caller enforces login, CSRF, read-only policy and explicit review/identity confirmations. */
 function crm_content_command_enqueue(PDO $pdo,int $actor,bool $admin,string $kind,int $object,string $token,array $fields,int $now,bool $confirmed): string {
     if (!content_command_configured(true) || !content_command_kind_enabled($kind) || !$confirmed || !$admin || $actor<=0 || $object<=0 || $now<=0 || $now>PHP_INT_MAX-900) throw new DomainException('دسترسی، پیکربندی یا تأیید معتبر نیست.');
-    $c=['type'=>$kind==='service'?'service_text_v1':'team_text_v1','command_id'=>bin2hex(random_bytes(16)),'source_id'=>SITE_CONTENT_COMMAND_SOURCE_ID,'object_id'=>$object,'actor_id'=>$actor,'expected_token'=>$token,'issued_at'=>$now,'expires_at'=>$now+900,'fields'=>$fields];
+    $c=['type'=>content_command_type($kind),'command_id'=>bin2hex(random_bytes(16)),'source_id'=>SITE_CONTENT_COMMAND_SOURCE_ID,'object_id'=>$object,'actor_id'=>$actor,'expected_token'=>$token,'issued_at'=>$now,'expires_at'=>$now+900,'fields'=>$fields];
+    $targetKind=content_command_kind($c);
     if (!content_command_validate($c,SITE_CONTENT_COMMAND_SOURCE_ID)) throw new DomainException('فیلدها یا نسخهٔ سایت معتبر نیستند.');
     $body=json_encode($c,JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); if ($body===false || strlen($body)>8192) throw new DomainException('داده بیش از حد مجاز است.');
     if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME)==='mysql') crm_content_command_require_innodb($pdo);
@@ -27,12 +28,12 @@ function crm_content_command_enqueue(PDO $pdo,int $actor,bool $admin,string $kin
     try {
         $st=$pdo->prepare('SELECT status,role FROM users WHERE id=? FOR UPDATE'); $st->execute([$actor]); $user=$st->fetch(PDO::FETCH_ASSOC);
         if (!$user || $user['status']!=='active' || $user['role']!=='admin') throw new DomainException('دسترسی مدیر معتبر نیست.');
-        $st=$pdo->prepare('INSERT INTO crm_site_content_command_targets(source_id,kind,object_id) VALUES (?,?,?) ON DUPLICATE KEY UPDATE object_id=object_id'); $st->execute([$c['source_id'],$kind,$object]);
-        $st=$pdo->prepare('SELECT object_id FROM crm_site_content_command_targets WHERE source_id=? AND kind=? AND object_id=? FOR UPDATE'); $st->execute([$c['source_id'],$kind,$object]); if ($st->fetchColumn()===false) throw new RuntimeException('Target unavailable');
-        $st=$pdo->prepare("SELECT command_id FROM crm_site_content_commands WHERE source_id=? AND kind=? AND object_id=? AND state='queued' LIMIT 1"); $st->execute([$c['source_id'],$kind,$object]);
+        $st=$pdo->prepare('INSERT INTO crm_site_content_command_targets(source_id,kind,object_id) VALUES (?,?,?) ON DUPLICATE KEY UPDATE object_id=object_id'); $st->execute([$c['source_id'],$targetKind,$object]);
+        $st=$pdo->prepare('SELECT object_id FROM crm_site_content_command_targets WHERE source_id=? AND kind=? AND object_id=? FOR UPDATE'); $st->execute([$c['source_id'],$targetKind,$object]); if ($st->fetchColumn()===false) throw new RuntimeException('Target unavailable');
+        $st=$pdo->prepare("SELECT command_id FROM crm_site_content_commands WHERE source_id=? AND kind=? AND object_id=? AND state='queued' LIMIT 1"); $st->execute([$c['source_id'],$targetKind,$object]);
         if ($st->fetchColumn()!==false) throw new DomainException('فرمان قبلی این رکورد هنوز تعیین تکلیف نشده است.');
         $stamp=date('Y-m-d H:i:s',$now); $st=$pdo->prepare("INSERT INTO crm_site_content_commands(command_id,source_id,kind,object_id,actor_id,payload,payload_hash,state,attempts,next_attempt_at,created_at) VALUES (?,?,?,?,?,?,?,'queued',0,?,?)");
-        $st->execute([$c['command_id'],$c['source_id'],$kind,$object,$actor,$body,hash('sha256',$body),$stamp,$stamp]);
+        $st->execute([$c['command_id'],$c['source_id'],$targetKind,$object,$actor,$body,hash('sha256',$body),$stamp,$stamp]);
         $pdo->prepare('INSERT INTO crm_site_content_command_events(command_id,actor_id,action,created_at) VALUES (?,?,?,?)')->execute([$c['command_id'],$actor,'queued',$stamp]);
         $pdo->commit(); return $c['command_id'];
     } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
@@ -55,7 +56,7 @@ function crm_content_command_pump(PDO $pdo,callable $send,int $now,int $limit=10
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $body=(string)$row['payload']; $c=json_decode($body,true);
         if (strlen($body)>8192 || !is_string($row['payload_hash']) || !hash_equals($row['payload_hash'],hash('sha256',$body)) || !content_command_validate($c,SITE_CONTENT_COMMAND_SOURCE_ID) || $c['command_id']!==$row['command_id'] || content_command_kind($c)!==$row['kind'] || $c['object_id']!==(int)$row['object_id'] || $c['actor_id']!==(int)$row['actor_id'] || $c['source_id']!==$row['source_id']) throw new RuntimeException('Invalid queued command');
-        if (!content_command_kind_enabled($row['kind'])) { $result['blocked']++; continue; }
+        if (!content_command_kind_enabled(content_command_mode($c))) { $result['blocked']++; continue; }
         [$http,$reply]=$send($body);
         if (crm_content_command_settle($pdo,$row,$reply,(int)$http,$now)) $result['settled']++;
         else { $attempt=(int)$row['attempts']+1; $delay=min(1800,30*(2 ** min($attempt,6))); $pdo->prepare("UPDATE crm_site_content_commands SET attempts=?,next_attempt_at=? WHERE command_id=? AND state='queued'")->execute([$attempt,date('Y-m-d H:i:s',$now+$delay),$row['command_id']]); $result['failed']++; }

@@ -1,5 +1,5 @@
 <?php
-/** Opt-in CRM service/team text updates. No create/delete, media, visibility or account changes. */
+/** Opt-in CRM service/team text updates including independently opt-in service English. No create/delete, media, visibility or account changes. */
 require_once __DIR__.'/ContentCommandContract.php';
 require_once __DIR__.'/../ContentEditGuard.php';
 function content_receiver_schema(): string {
@@ -14,7 +14,7 @@ function content_receiver_require_innodb(PDO $pdo,string $kind): void {
 /** Receiver checks authenticated source/config and InnoDB before calling. Same receipt+write transaction. */
 function content_receiver_apply(PDO $pdo,array $c,string $source,string $hash,int $now): string {
     if (!content_command_validate($c,$source) || !preg_match('/^[a-f0-9]{64}$/D',$hash)) throw new InvalidArgumentException('Invalid command');
-    $kind=content_command_kind($c); if (!content_command_kind_enabled($kind)) throw new RuntimeException('Action disabled');
+    $kind=content_command_kind($c); if (!content_command_kind_enabled(content_command_mode($c))) throw new RuntimeException('Action disabled');
     $table=content_edit_table($kind); $pdo->beginTransaction();
     try {
         $st=$pdo->prepare("INSERT INTO site_content_command_receipts(command_id,request_hash,source_id,kind,object_id,actor_id,result,created_at) VALUES (?,?,?,?,?,?,'processing',?) ON DUPLICATE KEY UPDATE command_id=command_id");
@@ -26,9 +26,11 @@ function content_receiver_apply(PDO $pdo,array $c,string $source,string $hash,in
         else {
             $result='conflict'; $st=$pdo->prepare('SELECT '.implode(',',content_edit_fields($kind)).' FROM '.$table.' WHERE id=? FOR UPDATE'); $st->execute([$c['object_id']]); $row=$st->fetch(PDO::FETCH_ASSOC);
             if ($row && hash_equals(content_edit_token($kind,$row),$c['expected_token'])) {
-                if ($kind==='service') $st=$pdo->prepare('UPDATE services SET title_fa=?,description_fa=? WHERE id=?');
-                else $st=$pdo->prepare('UPDATE team_members SET name=?,role=? WHERE id=?');
-                $f=$c['fields']; $st->execute($kind==='service'?[$f['title_fa'],$f['description_fa'],$c['object_id']]:[$f['name'],$f['role'],$c['object_id']]);
+                $mode=content_command_mode($c); $f=$c['fields'];
+                if ($mode==='service') { $st=$pdo->prepare('UPDATE services SET title_fa=?,description_fa=? WHERE id=?'); $args=[$f['title_fa'],$f['description_fa'],$c['object_id']]; }
+                elseif ($mode==='service_en') { $st=$pdo->prepare('UPDATE services SET title_en=?,description_en=? WHERE id=?'); $args=[$f['title_en'],$f['description_en'],$c['object_id']]; }
+                else { $st=$pdo->prepare('UPDATE team_members SET name=?,role=? WHERE id=?'); $args=[$f['name'],$f['role'],$c['object_id']]; }
+                $st->execute($args);
                 $result='applied';
             }
         }
