@@ -2,6 +2,35 @@
 $pageTitle = t('nav_settings');
 require_once __DIR__ . '/../includes/letterhead.php';
 
+// Legacy web SQL restore is unsafe: never read or execute an uploaded dump here.
+// These early paths must run before the settings page's automatic schema changes.
+if (($_SERVER['REQUEST_METHOD'] ?? '')==='POST' && ($_POST['action'] ?? null)==='restore') {
+    http_response_code(403); echo 'بازیابی از طریق وب غیرفعال است؛ بازیابی فقط در محیط ایزوله و توسط مسئول پایگاه داده انجام شود.'; return;
+}
+if (($_SERVER['REQUEST_METHOD'] ?? '')==='POST' && in_array($_POST['action'] ?? null,['backup','download_backup'],true)) {
+    $token=$_POST['csrf_token'] ?? null;
+    if (!is_string($token) || !function_exists('verify_csrf') || !verify_csrf($token)) { http_response_code(419); echo 'درخواست معتبر نیست.'; return; }
+    try {
+        if (!is_strict_admin() || is_nazer_kol() || (!access_is_special_account() && access_mode('settings')==='viewer')) throw new DomainException('Forbidden');
+        $st=$pdo->prepare('SELECT status,role FROM users WHERE id=?'); $st->execute([(int)($_SESSION['user_id'] ?? 0)]); $actor=$st->fetch(PDO::FETCH_ASSOC);
+        if (!$actor || $actor['status']!=='active' || $actor['role']!=='admin') throw new DomainException('Forbidden');
+    } catch (Throwable $e) { http_response_code(403); echo 'دسترسی مجاز نیست.'; return; }
+    require_once __DIR__.'/../includes/backup_web.php';
+    if ($_POST['action']==='download_backup') {
+        $filename=$_POST['filename'] ?? null; if (!is_string($filename)) { http_response_code(404); echo 'فایل بکاپ در دسترس نیست.'; return; }
+        backup_web_send(BACKUP_DIR,$filename); return;
+    }
+    try {
+        if (!is_dir(BACKUP_DIR) && !@mkdir(BACKUP_DIR,0700,true) && !is_dir(BACKUP_DIR)) throw new RuntimeException('Backup directory unavailable');
+        $filename='backup_'.date('Y-m-d_His').'_'.bin2hex(random_bytes(4)).'.sql';
+        $tmp=BACKUP_DIR.'.manual_'.bin2hex(random_bytes(8)).'.tmp'; $file=BACKUP_DIR.$filename;
+        try { operations_stream_database($pdo,$tmp); if (!rename($tmp,$file)) throw new RuntimeException('Backup publication failed'); }
+        finally { if (is_file($tmp)) @unlink($tmp); }
+        backup_web_send(BACKUP_DIR,$filename);
+    } catch (Throwable $e) { error_log('Manual backup failed'); http_response_code(503); echo 'تهیه بکاپ ممکن نیست.'; }
+    return;
+}
+
 // Auto-migration: add hours and hourly_rate to bonuses_penalties
 try {
     $chk = $pdo->query("SHOW COLUMNS FROM bonuses_penalties LIKE 'hours'");
@@ -186,69 +215,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect("index.php?page=settings");
     }
 
-    if ($action === 'backup') {
-        // §fix: بکاپ دستی قبلاً بدون CREATE TABLE و با addslashes (فرار نادرست
-        // کوتیشن) ساخته می‌شد؛ نتیجه روی دیتابیس خالی اصلاً ریستور نمی‌شد.
-        // حالا از همان موتور بکاپ خودکار (SHOW CREATE TABLE + quote امن) استفاده می‌شود.
-        if (!is_dir(BACKUP_DIR)) mkdir(BACKUP_DIR, 0755, true);
-        $filename = 'backup_' . date('Y-m-d_His') . '_' . bin2hex(random_bytes(4)) . '.sql';
-        $file = BACKUP_DIR . $filename;
-        $tmp = BACKUP_DIR . '.manual_' . bin2hex(random_bytes(8)) . '.tmp';
-        try {
-            operations_stream_database($pdo, $tmp);
-            if (!rename($tmp, $file)) throw new RuntimeException('Cannot publish backup');
-        } catch (Throwable $e) {
-            if (is_file($tmp)) @unlink($tmp);
-            error_log('Manual backup failed: ' . $e->getMessage());
-            showToast('بکاپ ناموفق بود؛ لاگ سرور را بررسی کنید.', 'error');
-            redirect('index.php?page=settings');
-        }
-        
-        header('Content-Type: application/octet-stream');
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
-        header('Content-Length: ' . filesize($file));
-        readfile($file);
-        exit;
-    }
-    
-    if ($action === 'restore') {
-        if (!isset($_FILES['restore_file']) || $_FILES['restore_file']['error'] !== UPLOAD_ERR_OK) {
-            showToast(t('فایل بکاپ انتخاب نشده'), 'error');
-            redirect("index.php?page=settings");
-        }
-        $sql = file_get_contents($_FILES['restore_file']['tmp_name']);
-        if (empty($sql)) {
-            showToast(t('فایل خالی است'), 'error');
-            redirect("index.php?page=settings");
-        }
-        // §fix: اگر جدول‌ها از قبل موجود باشند CREATE TABLE خطا می‌دهد و ریکاوری
-        // شکست می‌خورد؛ ابتدا جدول‌های داخل فایل بکاپ حذف می‌شوند تا بازسازی کامل باشد.
-        try {
-            if (preg_match_all('/CREATE TABLE `([a-z0-9_]+)`/i', $sql, $tm) && !empty($tm[1])) {
-                $drops = "SET FOREIGN_KEY_CHECKS=0;\n";
-                foreach (array_unique($tm[1]) as $tb) $drops .= "DROP TABLE IF EXISTS `$tb`;\n";
-                $drops .= "SET FOREIGN_KEY_CHECKS=1;\n";
-                $sql = $drops . $sql;
-            }
-            $pdo->exec($sql);
-            showToast(t('ریکاوری با موفقیت انجام شد'));
-        } catch (PDOException $e) {
-            showToast(t('خطا در ریکاوری: ') . $e->getMessage(), 'error');
-        }
-        redirect("index.php?page=settings");
-    }
-    
-    if ($action === 'download_backup') {
-        $filename = $_POST['filename'] ?? '';
-        $file = BACKUP_DIR . basename($filename);
-        if (file_exists($file)) {
-            header('Content-Type: application/octet-stream');
-            header('Content-Disposition: attachment; filename="' . basename($file) . '"');
-            header('Content-Length: ' . filesize($file));
-            readfile($file);
-            exit;
-        }
-    }
+
 }
 
 $settings = get_workshop_settings($pdo, $ws_id);

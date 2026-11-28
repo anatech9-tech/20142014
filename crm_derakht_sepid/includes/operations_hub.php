@@ -52,10 +52,39 @@ function operations_dump_database(PDO $pdo): string {
     return $sql . "\nSET FOREIGN_KEY_CHECKS=1;\n";
 }
 
+/** New backup files must not be created world-readable even briefly. Existing files are not changed. */
+function operations_backup_open_exclusive(string $path) {
+    $old=umask(0077);
+    try { $out=@fopen($path,'xb'); } finally { umask($old); }
+    if (!$out) throw new RuntimeException('Cannot create backup temporary file');
+    clearstatcache(true,$path); $stat=fstat($out); $named=@lstat($path);
+    if (!$stat || !$named || (($stat['mode'] & 0170000)!==0100000) || (($named['mode'] & 0170000)!==0100000) || $stat['dev']!==$named['dev'] || $stat['ino']!==$named['ino']) { fclose($out); throw new RuntimeException('Cannot secure backup temporary file'); }
+    // A restrictive umask should already apply on the host; correct and recheck before writing any content.
+    if (($stat['mode'] & 0777)!==0600 && !@chmod($path,0600)) { fclose($out); @unlink($path); throw new RuntimeException('Cannot secure backup temporary file'); }
+    clearstatcache(true,$path); $stat=fstat($out); $named=@lstat($path);
+    if (!$stat || !$named || (($stat['mode'] & 0777)!==0600) || (($named['mode'] & 0170000)!==0100000) || $stat['dev']!==$named['dev'] || $stat['ino']!==$named['ino']) { fclose($out); throw new RuntimeException('Cannot secure backup temporary file'); }
+    return $out;
+}
+/** Copy a daily backup via a private temporary file; never publish a partial weekly/monthly copy. Caller holds lock. */
+function operations_backup_copy_atomic(string $source,string $target,string $dir): void {
+    $before=@lstat($source);
+    if (!$before || (($before['mode'] & 0170000)!==0100000)) throw new RuntimeException('Backup source unavailable');
+    $in=@fopen($source,'rb'); if (!$in) throw new RuntimeException('Backup source unavailable');
+    $tmp=$dir.'.backup_copy_'.bin2hex(random_bytes(8)).'.tmp'; $out=null;
+    try {
+        $stat=fstat($in); $current=@lstat($source);
+        if (!$stat || !$current || (($stat['mode'] & 0170000)!==0100000) || (($current['mode'] & 0170000)!==0100000) || $before['dev']!==$stat['dev'] || $before['ino']!==$stat['ino'] || $current['dev']!==$stat['dev'] || $current['ino']!==$stat['ino']) throw new RuntimeException('Backup source changed');
+        $out=operations_backup_open_exclusive($tmp);
+        $copied=stream_copy_to_stream($in,$out); $after=fstat($in);
+        if ($copied===false || !$after || $copied!==$stat['size'] || $after['size']!==$stat['size'] || $after['mtime']!==$stat['mtime'] || !fflush($out)) throw new RuntimeException('Backup copy failed');
+        $closed=fclose($out); $out=null; if (!$closed) throw new RuntimeException('Backup close failed');
+        if (!rename($tmp,$target)) throw new RuntimeException('Backup copy publication failed');
+    } finally { if (is_resource($out)) fclose($out); fclose($in); if (is_file($tmp)) @unlink($tmp); }
+}
+
 /** Stream a consistent DB snapshot to a temporary file; no partial file is published. */
 function operations_stream_database(PDO $pdo, string $path): void {
-    $out = fopen($path, 'xb');
-    if (!$out) throw new RuntimeException('Cannot create backup temporary file');
+    $out = operations_backup_open_exclusive($path);
     $transaction = false;
     try {
         $write = static function(string $data) use ($out): void {
@@ -93,11 +122,12 @@ function operations_stream_database(PDO $pdo, string $path): void {
         }
         $write("SET FOREIGN_KEY_CHECKS=1;\n");
         if (!fflush($out)) throw new RuntimeException('Backup flush failed');
+        $closed=fclose($out); $out=null; if (!$closed) throw new RuntimeException('Backup close failed');
         $pdo->commit(); $transaction = false;
     } catch (Throwable $e) {
         if ($transaction && $pdo->inTransaction()) $pdo->rollBack();
         throw $e;
-    } finally { fclose($out); }
+    } finally { if (is_resource($out)) fclose($out); }
 }
 
 function operations_backup_retention(string $dir, string $type, int $keep): void {
@@ -115,14 +145,15 @@ function operations_setting(PDO $pdo, string $key, $default) {
 
 function operations_auto_backups(PDO $pdo): array {
     $dir = BACKUP_DIR;
-    if (!is_dir($dir)) @mkdir($dir,0755,true);
+    if (!is_dir($dir)) @mkdir($dir,0700,true);
     if (!is_writable($dir)) return ['ok'=>false,'reason'=>t('پوشه بکاپ قابل‌نوشتن نیست')];
     $today=date('Y-m-d');
     $daily=$dir.'auto_daily_'.$today.'.sql';
     $made=[];
     try {
-        $lock = fopen($dir.'.backup.lock','c');
-        if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) return ['ok'=>false,'reason'=>'Backup already running or lock unavailable'];
+        $lock = @fopen($dir.'.backup.lock','c');
+        if (!$lock) return ['ok'=>false,'reason'=>'Backup already running or lock unavailable'];
+        if (!flock($lock, LOCK_EX | LOCK_NB)) { fclose($lock); return ['ok'=>false,'reason'=>'Backup already running or lock unavailable']; }
         try {
             if (!file_exists($daily)) {
                 $tmp = $dir.'.backup_'.bin2hex(random_bytes(8)).'.tmp';
@@ -132,20 +163,22 @@ function operations_auto_backups(PDO $pdo): array {
                 } finally { if (is_file($tmp)) @unlink($tmp); }
                 $made[]='daily';
             }
+            clearstatcache(true,$daily); $dailyStat=@lstat($daily);
+            if (!$dailyStat || (($dailyStat['mode'] & 0170000)!==0100000) || (int)$dailyStat['size']<=0) throw new RuntimeException('Existing daily backup unavailable');
+            // Keep periodic publication and retention under the same nonblocking lock.
+            if ((int)date('w')===6) {
+                $week=$dir.'auto_weekly_'.date('o_W').'.sql';
+                if(!file_exists($week)){operations_backup_copy_atomic($daily,$week,$dir); $made[]='weekly';}
+            }
+            $j=gregorian_to_jalali((int)date('Y'),(int)date('m'),(int)date('d'));
+            if ((int)$j[2]===1) {
+                $month=$dir.'auto_monthly_'.$j[0].'_'.str_pad((string)$j[1],2,'0',STR_PAD_LEFT).'.sql';
+                if(!file_exists($month)){operations_backup_copy_atomic($daily,$month,$dir); $made[]='monthly';}
+            }
+            operations_backup_retention($dir,'daily',max(1,(int)operations_setting($pdo,'backup_daily_retention',7)));
+            operations_backup_retention($dir,'weekly',max(1,(int)operations_setting($pdo,'backup_weekly_retention',4)));
+            operations_backup_retention($dir,'monthly',max(1,(int)operations_setting($pdo,'backup_monthly_retention',12)));
         } finally { flock($lock, LOCK_UN); fclose($lock); }
-        // شنبه = شروع هفتهٔ کاری ایران
-        if ((int)date('w')===6) {
-            $week=$dir.'auto_weekly_'.date('o_W').'.sql';
-            if(!file_exists($week)){if (!copy($daily,$week)) throw new RuntimeException('Weekly backup copy failed'); $made[]='weekly';}
-        }
-        $j=gregorian_to_jalali((int)date('Y'),(int)date('m'),(int)date('d'));
-        if ((int)$j[2]===1) {
-            $month=$dir.'auto_monthly_'.$j[0].'_'.str_pad((string)$j[1],2,'0',STR_PAD_LEFT).'.sql';
-            if(!file_exists($month)){if (!copy($daily,$month)) throw new RuntimeException('Monthly backup copy failed'); $made[]='monthly';}
-        }
-        operations_backup_retention($dir,'daily',max(1,(int)operations_setting($pdo,'backup_daily_retention',7)));
-        operations_backup_retention($dir,'weekly',max(1,(int)operations_setting($pdo,'backup_weekly_retention',4)));
-        operations_backup_retention($dir,'monthly',max(1,(int)operations_setting($pdo,'backup_monthly_retention',12)));
         return ['ok'=>true,'made'=>$made,'latest'=>file_exists($daily)?$daily:null];
     } catch(Throwable $e) { error_log('Auto backup failed: '.$e->getMessage()); return ['ok'=>false,'reason'=>'خطا در بکاپ؛ لاگ سرور را بررسی کنید']; }
 }
