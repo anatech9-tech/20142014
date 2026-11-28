@@ -1,5 +1,5 @@
 <?php
-/** Opt-in CRM service/team text updates including independently opt-in service English. No create/delete, media, visibility or account changes. */
+/** Opt-in CRM service/team text and independently opt-in visibility updates. No create/delete, media or account changes. */
 require_once __DIR__.'/ContentCommandContract.php';
 require_once __DIR__.'/../ContentEditGuard.php';
 function content_receiver_schema(): string {
@@ -27,7 +27,8 @@ function content_receiver_apply(PDO $pdo,array $c,string $source,string $hash,in
             $result='conflict'; $st=$pdo->prepare('SELECT '.implode(',',content_edit_fields($kind)).' FROM '.$table.' WHERE id=? FOR UPDATE'); $st->execute([$c['object_id']]); $row=$st->fetch(PDO::FETCH_ASSOC);
             if ($row && hash_equals(content_edit_token($kind,$row),$c['expected_token'])) {
                 $mode=content_command_mode($c); $f=$c['fields'];
-                if ($mode==='service') { $st=$pdo->prepare('UPDATE services SET title_fa=?,description_fa=? WHERE id=?'); $args=[$f['title_fa'],$f['description_fa'],$c['object_id']]; }
+                if ($mode==='service_visibility' || $mode==='team_visibility') { $st=$pdo->prepare('UPDATE '.$table.' SET is_active=? WHERE id=?'); $args=[$f['is_active'],$c['object_id']]; }
+                elseif ($mode==='service') { $st=$pdo->prepare('UPDATE services SET title_fa=?,description_fa=? WHERE id=?'); $args=[$f['title_fa'],$f['description_fa'],$c['object_id']]; }
                 elseif ($mode==='service_en') { $st=$pdo->prepare('UPDATE services SET title_en=?,description_en=? WHERE id=?'); $args=[$f['title_en'],$f['description_en'],$c['object_id']]; }
                 elseif ($mode==='team_profile') { $st=$pdo->prepare('UPDATE team_members SET handle=?,bio=? WHERE id=?'); $args=[$f['handle'],$f['bio'],$c['object_id']]; }
                 else { $st=$pdo->prepare('UPDATE team_members SET name=?,role=? WHERE id=?'); $args=[$f['name'],$f['role'],$c['object_id']]; }

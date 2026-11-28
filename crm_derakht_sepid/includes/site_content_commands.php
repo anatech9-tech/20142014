@@ -1,5 +1,5 @@
 <?php
-/** Manual, opt-in CRM command outbox for two service/team text fields. */
+/** Manual, opt-in CRM command outbox for selected service/team fields. */
 require_once __DIR__.'/site_content_command_contract.php';
 function crm_content_command_schema(): array { return [
  "CREATE TABLE IF NOT EXISTS crm_site_content_command_targets(source_id CHAR(32) NOT NULL,kind VARCHAR(12) NOT NULL,object_id BIGINT UNSIGNED NOT NULL,PRIMARY KEY(source_id,kind,object_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
