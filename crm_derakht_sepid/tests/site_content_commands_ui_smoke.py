@@ -6,7 +6,7 @@ with tempfile.TemporaryDirectory() as tmp:
     app=pathlib.Path(tmp)
     for d in ('pages','includes'): (app/d).mkdir()
     shutil.copy(root/'pages/site_content_commands.php',app/'pages/site_content_commands.php')
-    for name in ('site_content_commands.php','site_content_command_contract.php'): shutil.copy(root/'includes'/name,app/'includes'/name)
+    for name in ('site_content_commands.php','site_content_command_contract.php','site_content_lookup.php','site_content_lookup_contract.php'): shutil.copy(root/'includes'/name,app/'includes'/name)
     (app/'includes/header.php').write_text('<header>shell</header>'); (app/'includes/footer.php').write_text('<footer>shell</footer>')
     (app/'run.php').write_text('''<?php
 function require_login(){} function is_strict_admin(){return $GLOBALS['case']!=='viewer';}

@@ -34,5 +34,6 @@ base="define('SITE_CONTENT_COMMAND_ENABLED',true);define('SITE_CONTENT_COMMAND_K
 assert config_result('')=='0000'
 assert config_result(base+"define('SITE_CONTENT_COMMAND_URL','http://example.test');define('SITE_CONTENT_SERVICE_EDIT_ENABLED',true);")=='1010'
 assert config_result(base+"define('SITE_CONTENT_COMMAND_URL','https://example.test');define('SITE_BLOG_META_KEY',str_repeat('b',32));")=='0000'
+assert config_result(base+"define('SITE_CONTENT_COMMAND_URL','https://example.test');define('SITE_CONTENT_LOOKUP_KEY',str_repeat('b',32));")=='0000'
 assert config_result(base+"define('SITE_CONTENT_COMMAND_URL','https://example.test');define('SITE_CONTENT_TEAM_EDIT_ENABLED',true);")=='1101'
 print('PASS identical contracts, separate opt-ins and key/HTTPS restrictions; endpoint rejects method, disabled state and unauthenticated requests')
