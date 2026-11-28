@@ -9,6 +9,7 @@ require_once BASE_PATH . '/includes/db.php';
 require_once BASE_PATH . '/includes/Auth.php';
 // ----------------------------------------------------
 Auth::requirePermission('services.view');
+header('Cache-Control: no-store');
 $pageTitle = 'مدیریت خدمات';
 $activeMenu = 'services';
 $services = DB::fetchAll('SELECT * FROM services ORDER BY display_order, id');
@@ -46,6 +47,7 @@ unset($entry);
                         <td><span class="badge <?= $s['is_active'] ? 'new' : 'closed' ?>"><?= $s['is_active'] ? 'فعال' : 'غیرفعال' ?></span></td>
                         <td>
                             <?php if (Auth::can('services.edit')): ?>
+                                <details><summary>شناسه و نسخه برای تطبیق CRM</summary><small>شناسه سایت: <?= (int)$s['id'] ?>. این نسخه فقط وضعیت زمان بارگذاری صفحه است.</small><input type="text" readonly aria-label="نسخه تطبیق" value="<?= $s['__edit_token'] ?>" onclick="this.select()"></details>
                                 <button class="btn btn-sm" onclick='editSrv(<?= json_encode($s, JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>ویرایش</button>
                             <?php endif; ?>
                             <?php if (Auth::can('services.delete')): ?>

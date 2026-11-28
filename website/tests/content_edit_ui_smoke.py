@@ -32,5 +32,6 @@ $case=$argv[2]; define('BASE_PATH',__DIR__); include __DIR__.'/admin/'.$argv[1].
         page=run('editor')
         assert 'name="expected_token" value=""' in page and f"document.getElementById('{prefix}EditToken').value" in page and "fd.append('expected_token', expectedToken)" in page
         assert re.search(rf"delete{fn}\(1, '[a-f0-9]{{64}}'\)",page)
-        assert '__edit_token' in html.unescape(page) and f'delete{fn}(1,' not in run('viewer')
+        assert '__edit_token' in html.unescape(page) and 'شناسه و نسخه برای تطبیق CRM' in page
+        viewer=run('viewer'); assert f'delete{fn}(1,' not in viewer and 'شناسه و نسخه برای تطبیق CRM' not in viewer
     print('PASS service/team UI fixtures include version tokens for edit and delete and respect view-only buttons')

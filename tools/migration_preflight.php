@@ -34,6 +34,7 @@ function preflight_specs(string $component): array {
         'legacy_site_analytics'=>['required'=>false,'tables'=>[
             'page_views'=>['id','session_id','page_url','referrer','device_type','viewed_at'],
             'conversion_events'=>['id','event_type','created_at']]],
+        'site_content_command_receiver'=>['required'=>false,'tables'=>['site_content_command_receipts'=>['command_id','request_hash','source_id','kind','object_id','actor_id','result','created_at','completed_at']]],
         'site_inbox_outbox'=>['required'=>false,'tables'=>['website_crm_outbox'=>['id','event_id','payload','delivered_at']]],
         'shop_order_bridge'=>['required'=>false,'tables'=>[
             'shop_crm_cursor'=>['source_id','last_order_id'], 'shop_crm_sync_state'=>['source_id','shop_order_id','snapshot_hash','latest_revision'],
@@ -84,6 +85,10 @@ function preflight_specs(string $component): array {
             'crm_site_blog_draft_link_events'=>['id','link_id','draft_id','source_id','post_id','replica_id','draft_version','post_revision','actor_id','action','created_at']]],
         'site_content_draft_reviews'=>['required'=>false,'tables'=>[
             'crm_site_content_draft_reviews'=>['id','draft_id','draft_version','actor_id','created_at']]],
+        'site_content_commands'=>['required'=>false,'tables'=>[
+            'crm_site_content_command_targets'=>['source_id','kind','object_id'],
+            'crm_site_content_commands'=>['command_id','source_id','kind','object_id','actor_id','payload','payload_hash','state','attempts','next_attempt_at','created_at','completed_at'],
+            'crm_site_content_command_events'=>['id','command_id','actor_id','action','created_at']]],
         'site_content_drafts'=>['required'=>false,'tables'=>[
             'crm_site_content_drafts'=>['id','title','body','version','created_by','updated_by','created_at','updated_at'],
             'crm_site_content_draft_versions'=>['id','draft_id','version','title','body','actor_id','action','restored_version','created_at']]],

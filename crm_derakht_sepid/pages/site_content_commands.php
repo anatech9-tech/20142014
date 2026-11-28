@@ -1,0 +1,42 @@
+<?php
+/** Admin-only manual commands: changes two selected text fields on the website after opt-in. */
+$pageTitle='ویرایش محدود خدمات و تیم سایت'; require_login(); header('Cache-Control: no-store');
+require_once __DIR__.'/../includes/site_content_commands.php';
+$me=(int)($_SESSION['user_id'] ?? 0);
+try { $st=$pdo->prepare('SELECT status,role FROM users WHERE id=?'); $st->execute([$me]); $actor=$st->fetch(PDO::FETCH_ASSOC);
+    if (!is_strict_admin() || !$actor || $actor['status']!=='active' || $actor['role']!=='admin') { http_response_code(403); echo 'دسترسی مجاز نیست.'; return; }
+} catch (Throwable $e) { http_response_code(503); echo 'بررسی دسترسی ممکن نیست.'; return; }
+$readonly=is_nazer_kol() || (!access_is_special_account() && access_mode('crm_customers')==='viewer');
+$configured=content_command_configured(true); $ready=false;
+if ($configured) $ready=crm_content_command_ensure($pdo);
+else { try { $pdo->query('SELECT 1 FROM crm_site_content_commands LIMIT 1'); $ready=true; } catch (Throwable $e) {} }
+$h=static fn($v)=>htmlspecialchars((string)$v,ENT_QUOTES | ENT_SUBSTITUTE,'UTF-8');
+$preview=null; $notice='';
+if (($_SERVER['REQUEST_METHOD'] ?? '')==='POST') {
+    try {
+        $action=$_POST['action'] ?? null; $kind=$_POST['kind'] ?? null; $rawId=$_POST['object_id'] ?? null; $token=$_POST['token'] ?? null;
+        if (!$ready || $readonly || !$configured || !is_string($action) || !in_array($action,['preview','enqueue'],true) || !is_string($kind) || !in_array($kind,['service','team'],true) || !content_command_kind_enabled($kind) || !is_string($rawId) || !preg_match('/^[1-9][0-9]{0,17}$/D',$rawId) || !is_string($token)) throw new DomainException('درخواست یا پیکربندی معتبر نیست.');
+        $first=$_POST['first'] ?? null; $second=$_POST['second'] ?? null; if (!is_string($first) || !is_string($second)) throw new DomainException('متن معتبر نیست.');
+        $fields=$kind==='service'?['title_fa'=>$first,'description_fa'=>$second]:['name'=>$first,'role'=>$second];
+        $now=time(); $probe=['type'=>$kind==='service'?'service_text_v1':'team_text_v1','command_id'=>str_repeat('a',32),'source_id'=>SITE_CONTENT_COMMAND_SOURCE_ID,'object_id'=>(int)$rawId,'actor_id'=>$me,'expected_token'=>$token,'issued_at'=>$now,'expires_at'=>$now+900,'fields'=>$fields];
+        if (!content_command_validate($probe,SITE_CONTENT_COMMAND_SOURCE_ID)) throw new DomainException('متن، شناسه یا نسخه معتبر نیست؛ فاصلهٔ ابتدا/انتها مجاز نیست.');
+        if ($action==='preview') $preview=['kind'=>$kind,'object_id'=>$rawId,'token'=>$token,'first'=>$first,'second'=>$second];
+        else {
+            $id=crm_content_command_enqueue($pdo,$me,true,$kind,(int)$rawId,$token,$fields,$now,($_POST['confirm_identity'] ?? null)==='1' && ($_POST['confirm_change'] ?? null)==='1');
+            showToast('فرمان در صف ثبت شد؛ هنوز تضمینی برای تغییر سایت نیست.'); redirect('index.php?page=site_content_commands');
+        }
+    } catch (Throwable $e) { error_log('Content command request failed: '.get_class($e)); $notice=$e instanceof DomainException?$e->getMessage():'ثبت فرمان ممکن نیست.'; }
+}
+$rows=[]; if ($ready) { try { $st=$pdo->query('SELECT command_id,kind,object_id,actor_id,state,created_at,completed_at FROM crm_site_content_commands ORDER BY created_at DESC,command_id DESC LIMIT 30'); $rows=$st->fetchAll(PDO::FETCH_ASSOC); } catch (Throwable $e) { $ready=false; } }
+include 'includes/header.php';
+?>
+<div class="page-header"><h1>ویرایش محدود خدمات و تیم سایت</h1><p>این قابلیت آزمایشی است: فقط عنوان و توضیح فارسی یک خدمت یا نام و نقش یک عضو موجود را تغییر می‌دهد؛ ایجاد، حذف، انتشار، تصویر و اطلاعات تماس را تغییر نمی‌دهد. دو سامانه مستقل می‌مانند.</p></div>
+<div class="card" style="padding:16px"><p><strong>ابتدا در پنل سایت، رکورد و محتوای فعلی را مستقل بررسی و «شناسه و نسخه برای تطبیق CRM» را کپی کنید. پیش‌نمایش زیر فقط متن جدید است نه مقایسه با سایت. پس از رسیدن فرمان، سایت نسخه را دوباره می‌سنجد؛ نسخه یا شناسه، اثبات هویت یا تازگی نیست و تغییر و بازگشت یا استفادهٔ مجدد شناسه ممکن است شناسایی نشود.</strong></p>
+<p>متن فرمان‌ها در CRM و بکاپ آن باقی می‌ماند؛ نام اعضای تیم می‌تواند اطلاعات شخصی باشد. هر فرمان ۱۵ دقیقه اعتبار دارد؛ دریافت گمشده نتیجه را نامعلوم می‌کند. applied فقط نتیجهٔ لحظهٔ اجراست، نه وضعیت فعلی. پنل قدیمی تا تطبیق و آزمون کامل حفظ شود.</p>
+<?php if (!$configured): ?><p>ارسال غیرفعال یا پیکربندی نشده است.</p><?php endif; ?><?php if (!$ready): ?><p>جدول فرمان آماده نیست.</p><?php endif; ?><?php if ($notice): ?><p role="alert"><?= $h($notice) ?></p><?php endif; ?>
+<?php if ($preview): ?><h3>پیش‌نمایش متن جدید (نه مقایسه با سایت)</h3><p>نوع: <?= $preview['kind']==='service'?'خدمت':'عضو تیم' ?> — شناسه سایت <?= $h($preview['object_id']) ?></p><p><strong><?= $h($preview['first']) ?></strong></p><pre style="white-space:pre-wrap;overflow-wrap:anywhere"><?= $h($preview['second']) ?></pre>
+<form method="post" onsubmit="return confirm('این فرمان ممکن است متن عمومی سایت را تغییر دهد. ارسال شود؟');"><?= get_csrf_field() ?><input type="hidden" name="action" value="enqueue"><?php foreach ($preview as $k=>$v): ?><input type="hidden" name="<?= $h($k) ?>" value="<?= $h($v) ?>"><?php endforeach; ?>
+<label><input type="checkbox" name="confirm_identity" value="1" required> شناسه، نسخه و رکورد فعلی را در پنل سایت بررسی کردم.</label><br><label><input type="checkbox" name="confirm_change" value="1" required> متن جدید را بررسی کردم و می‌دانم ارسال ممکن است سایت را تغییر دهد.</label><br><button class="btn" type="submit">ثبت فرمان برای ارسال</button></form><?php endif; ?>
+<?php if ($ready && !$readonly && $configured): foreach (['service'=>'خدمت','team'=>'عضو تیم'] as $kind=>$label): if (!content_command_kind_enabled($kind)) continue; ?>
+<h3>ویرایش <?= $h($label) ?> موجود</h3><form method="post"><?= get_csrf_field() ?><input type="hidden" name="action" value="preview"><input type="hidden" name="kind" value="<?= $h($kind) ?>"><label>شناسه سایت <input name="object_id" inputmode="numeric" required></label><br><label>نسخه کپی‌شده از پنل سایت <input name="token" minlength="64" maxlength="64" required dir="ltr"></label><br><label><?= $kind==='service'?'عنوان فارسی':'نام' ?> <input name="first" maxlength="<?= $kind==='service'?'200':'100' ?>" required></label><br><label><?= $kind==='service'?'توضیح فارسی':'نقش' ?><br><textarea name="second" rows="4" maxlength="<?= $kind==='service'?'1000':'200' ?>" required></textarea></label><br><button class="btn" type="submit">پیش‌نمایش متن جدید</button></form><?php endforeach; endif; ?>
+<h3>۳۰ فرمان اخیر</h3><table class="data-table"><thead><tr><th>فرمان</th><th>نوع/شناسه سایت</th><th>مدیر</th><th>وضعیت</th><th>زمان ثبت</th></tr></thead><tbody><?php foreach ($rows as $r): ?><tr><td><?= $h($r['command_id']) ?></td><td><?= $h($r['kind']) ?> / <?= (int)$r['object_id'] ?></td><td><?= (int)$r['actor_id'] ?></td><td><?= $h($r['state']) ?></td><td><?= $h($r['created_at']) ?></td></tr><?php endforeach; ?><?php if (!$rows): ?><tr><td colspan="5">فرمانی در این فهرست نیست؛ این اثبات وضعیت سایت نیست.</td></tr><?php endif; ?></tbody></table></div><?php include 'includes/footer.php'; ?>

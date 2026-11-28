@@ -9,6 +9,7 @@ require_once BASE_PATH . '/includes/db.php';
 require_once BASE_PATH . '/includes/Auth.php';
 // ----------------------------------------------------
 Auth::requirePermission('team.view');
+header('Cache-Control: no-store');
 $pageTitle = 'مدیریت تیم';
 $activeMenu = 'team';
 
@@ -55,6 +56,7 @@ unset($entry);
                         </td>
                         <td>
                             <?php if (Auth::can('team.edit')): ?>
+                                <details><summary>شناسه و نسخه برای تطبیق CRM</summary><small>شناسه سایت: <?= (int)$m['id'] ?>. این نسخه فقط وضعیت زمان بارگذاری صفحه است.</small><input type="text" readonly aria-label="نسخه تطبیق" value="<?= $m['__edit_token'] ?>" onclick="this.select()"></details>
                                 <button class="btn btn-sm" onclick='editTeam(<?= json_encode($m, JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>ویرایش</button>
                             <?php endif; ?>
                             <?php if (Auth::can('team.delete')): ?>

@@ -252,6 +252,10 @@ switch ($page) {
         require_login();
         include 'pages/site_blog_metadata.php';
         break;
+    case 'site_content_commands':
+        require_login();
+        include 'pages/site_content_commands.php';
+        break;
     case 'site_content_drafts':
         require_login();
         include 'pages/site_content_drafts.php';
