@@ -62,7 +62,7 @@ function content_receiver_apply(PDO $pdo,array $c,string $source,string $hash,in
         $st=$pdo->prepare('SELECT request_hash,result,object_id FROM site_content_command_receipts WHERE command_id=? FOR UPDATE'); $st->execute([$c['command_id']]); $old=$st->fetch(PDO::FETCH_ASSOC);
         if (!$old || !hash_equals((string)$old['request_hash'],$hash)) throw new DomainException('Receipt conflict');
         if ($old['result']!=='processing') { if (in_array(content_command_mode($c),['service_create','team_create'],true) && $old['result']==='applied' && ((int)$old['object_id']<=0 || (int)$old['object_id']>4294967295)) throw new RuntimeException('Receipt invalid'); $pdo->commit(); return (string)$old['result']; }
-        $createdId=0; $mode=content_command_mode($c);
+        $createdId=0; $verifyBefore=null; $verifyFields=null; $mode=content_command_mode($c);
         if ($c['issued_at']>$now+300 || $now>$c['expires_at']) $result='expired';
         elseif (in_array($mode,['service_create','team_create'],true)) {
             $f=$c['fields'];
@@ -105,6 +105,7 @@ function content_receiver_apply(PDO $pdo,array $c,string $source,string $hash,in
                         elseif ($mode==='team_profile') { $st=$pdo->prepare('UPDATE team_members SET handle=?,bio=? WHERE id=?'); $args=[$f['handle'],$f['bio'],$c['object_id']]; }
                         else { $st=$pdo->prepare('UPDATE team_members SET name=?,role=? WHERE id=?'); $args=[$f['name'],$f['role'],$c['object_id']]; }
                         $st->execute($args);
+                        $verifyBefore=$row; $verifyFields=$f;
                         $result='applied';
                     }
                 }
@@ -113,6 +114,18 @@ function content_receiver_apply(PDO $pdo,array $c,string $source,string $hash,in
         if ($createdId>0) { $st=$pdo->prepare("UPDATE site_content_command_receipts SET result=?,completed_at=?,object_id=? WHERE command_id=? AND result='processing'"); $st->execute([$result,date('Y-m-d H:i:s',$now),$createdId,$c['command_id']]); }
         else { $st=$pdo->prepare("UPDATE site_content_command_receipts SET result=?,completed_at=? WHERE command_id=? AND result='processing'"); $st->execute([$result,date('Y-m-d H:i:s',$now),$c['command_id']]); }
         if ($st->rowCount()!==1) throw new RuntimeException('Receipt update failed');
+        if ($verifyBefore!==null) {
+            // Verify the locked row after updating the receipt and before commit. MySQL may
+            // normalize/truncate values, and triggers can alter tracked columns.
+            $st=$pdo->prepare('SELECT '.implode(',',content_edit_fields($kind)).' FROM '.$table.' WHERE id=? FOR UPDATE');
+            $st->execute([$c['object_id']]); $after=$st->fetch(PDO::FETCH_ASSOC);
+            if (!$after) throw new RuntimeException('Updated content unavailable');
+            foreach (content_edit_fields($kind) as $field) {
+                if ($field==='updated_at') continue; // May be changed by the database.
+                $expected=array_key_exists($field,$verifyFields)?$verifyFields[$field]:$verifyBefore[$field];
+                if (!array_key_exists($field,$after) || ($expected===null ? $after[$field]!==null : ($after[$field]===null || (string)$after[$field] !== (string)$expected))) throw new RuntimeException('Unexpected updated content');
+            }
+        }
         $pdo->commit(); return $result;
     } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
 }
