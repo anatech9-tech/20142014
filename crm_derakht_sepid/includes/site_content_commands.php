@@ -1,6 +1,7 @@
 <?php
 /** Manual, opt-in CRM command outbox for selected service/team fields. */
 require_once __DIR__.'/site_content_command_contract.php';
+const CRM_CONTENT_COMMAND_WORKER_LOCK='wttp_crm_content_commands';
 function crm_content_command_schema(): array { return [
  "CREATE TABLE IF NOT EXISTS crm_site_content_command_targets(source_id CHAR(32) NOT NULL,kind VARCHAR(12) NOT NULL,object_id BIGINT UNSIGNED NOT NULL,PRIMARY KEY(source_id,kind,object_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
  "CREATE TABLE IF NOT EXISTS crm_site_content_commands(command_id CHAR(32) NOT NULL PRIMARY KEY,source_id CHAR(32) NOT NULL,kind VARCHAR(12) NOT NULL,object_id BIGINT UNSIGNED NOT NULL,actor_id INT NOT NULL,payload TEXT NOT NULL,payload_hash CHAR(64) NOT NULL,state VARCHAR(12) NOT NULL DEFAULT 'queued',attempts INT NOT NULL DEFAULT 0,next_attempt_at DATETIME NOT NULL,created_at DATETIME NOT NULL,completed_at DATETIME NULL,KEY idx_content_queue(state,next_attempt_at,created_at),KEY idx_content_target(source_id,kind,object_id,state)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
@@ -30,8 +31,8 @@ function crm_content_command_enqueue(PDO $pdo,int $actor,bool $admin,string $kin
         if (!$user || $user['status']!=='active' || $user['role']!=='admin') throw new DomainException('دسترسی مدیر معتبر نیست.');
         $st=$pdo->prepare('INSERT INTO crm_site_content_command_targets(source_id,kind,object_id) VALUES (?,?,?) ON DUPLICATE KEY UPDATE object_id=object_id'); $st->execute([$c['source_id'],$targetKind,$object]);
         $st=$pdo->prepare('SELECT object_id FROM crm_site_content_command_targets WHERE source_id=? AND kind=? AND object_id=? FOR UPDATE'); $st->execute([$c['source_id'],$targetKind,$object]); if ($st->fetchColumn()===false) throw new RuntimeException('Target unavailable');
-        $st=$pdo->prepare("SELECT command_id FROM crm_site_content_commands WHERE source_id=? AND kind=? AND object_id=? AND state='queued' LIMIT 1"); $st->execute([$c['source_id'],$targetKind,$object]);
-        if ($st->fetchColumn()!==false) throw new DomainException('فرمان قبلی این رکورد هنوز تعیین تکلیف نشده است.');
+        $st=$pdo->prepare("SELECT command_id FROM crm_site_content_commands WHERE source_id=? AND kind=? AND object_id=? AND state IN ('queued','stopped') LIMIT 1"); $st->execute([$c['source_id'],$targetKind,$object]);
+        if ($st->fetchColumn()!==false) throw new DomainException('فرمان قبلی این رکورد هنوز تعیین تکلیف یا بررسی نشده است.');
         $stamp=date('Y-m-d H:i:s',$now); $st=$pdo->prepare("INSERT INTO crm_site_content_commands(command_id,source_id,kind,object_id,actor_id,payload,payload_hash,state,attempts,next_attempt_at,created_at) VALUES (?,?,?,?,?,?,?,'queued',0,?,?)");
         $st->execute([$c['command_id'],$c['source_id'],$targetKind,$object,$actor,$body,hash('sha256',$body),$stamp,$stamp]);
         $pdo->prepare('INSERT INTO crm_site_content_command_events(command_id,actor_id,action,created_at) VALUES (?,?,?,?)')->execute([$c['command_id'],$actor,'queued',$stamp]);
@@ -59,6 +60,42 @@ function crm_content_command_settle(PDO $pdo,array $row,$reply,int $http,int $no
         if ($st->rowCount()!==1) throw new RuntimeException('Settlement failed');
         $pdo->prepare('INSERT INTO crm_site_content_command_events(command_id,actor_id,action,created_at) VALUES (?,?,?,?)')->execute([$row['command_id'],$c['actor_id'],$reply['result'],$stamp]); $pdo->commit(); return true;
     } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
+}
+/** Coordinate stop/resume with the CLI worker on this same MySQL server/session. */
+function crm_content_command_lock(PDO $pdo): bool {
+    if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME)!=='mysql') throw new RuntimeException('MySQL required');
+    $st=$pdo->prepare('SELECT GET_LOCK(?,0)'); $st->execute([CRM_CONTENT_COMMAND_WORKER_LOCK]); return (int)$st->fetchColumn()===1;
+}
+function crm_content_command_unlock(PDO $pdo): void {
+    $st=$pdo->prepare('SELECT RELEASE_LOCK(?)'); $st->execute([CRM_CONTENT_COMMAND_WORKER_LOCK]);
+    if ((int)$st->fetchColumn()!==1) throw new RuntimeException('Lock release failed');
+}
+/** Caller enforces authenticated admin session, CSRF and read-only policy. No remote rollback. */
+function crm_content_command_transition(PDO $pdo,int $actor,bool $admin,string $id,string $action,int $now,bool $confirmed): void {
+    if (!$admin || !$confirmed || $actor<=0 || $now<=0 || !preg_match('/^[a-f0-9]{32}$/D',$id) || !in_array($action,['stop','resume','resolve'],true)) throw new DomainException('درخواست یا تأیید معتبر نیست.');
+    crm_content_command_require_innodb($pdo);
+    if (!crm_content_command_lock($pdo)) throw new DomainException('پردازشگر فعال است؛ بعداً دوباره بررسی کنید.');
+    try {
+        $pdo->beginTransaction();
+        try {
+            $st=$pdo->prepare('SELECT status,role FROM users WHERE id=? FOR UPDATE'); $st->execute([$actor]); $user=$st->fetch(PDO::FETCH_ASSOC);
+            if (!$user || $user['status']!=='active' || $user['role']!=='admin') throw new DomainException('دسترسی مدیر معتبر نیست.');
+            $st=$pdo->prepare('SELECT * FROM crm_site_content_commands WHERE command_id=? FOR UPDATE'); $st->execute([$id]); $row=$st->fetch(PDO::FETCH_ASSOC);
+            if (!$row || ($action==='stop' ? $row['state']!=='queued' : $row['state']!=='stopped')) throw new DomainException('وضعیت فرمان تغییر کرده است؛ صفحه را تازه کنید.');
+            if ($action==='resume') {
+                $body=(string)$row['payload']; $c=json_decode($body,true);
+                if (!content_command_configured(true) || strlen($body)>8192 || !is_string($row['payload_hash']) || !hash_equals($row['payload_hash'],hash('sha256',$body)) || !content_command_validate($c,SITE_CONTENT_COMMAND_SOURCE_ID)
+                    || $c['command_id']!==$row['command_id'] || content_command_kind($c)!==$row['kind'] || $c['object_id']!==(int)$row['object_id'] || $c['actor_id']!==(int)$row['actor_id'] || $c['source_id']!==$row['source_id'] || !content_command_kind_enabled(content_command_mode($c))) throw new DomainException('پیکربندی یا محتوای فرمان برای ارسال دوباره معتبر نیست.');
+            }
+            $newState=$action==='stop'?'stopped':($action==='resume'?'queued':'resolved');
+            $stamp=date('Y-m-d H:i:s',$now);
+            if ($action==='resume') { $st=$pdo->prepare("UPDATE crm_site_content_commands SET state=?,next_attempt_at=? WHERE command_id=? AND state=?"); $st->execute([$newState,$stamp,$id,$row['state']]); }
+            else { $st=$pdo->prepare("UPDATE crm_site_content_commands SET state=?,completed_at=? WHERE command_id=? AND state=?"); $st->execute([$newState,$action==='resolve'?$stamp:null,$id,$row['state']]); }
+            if ($st->rowCount()!==1) throw new RuntimeException('Transition failed');
+            $pdo->prepare('INSERT INTO crm_site_content_command_events(command_id,actor_id,action,created_at) VALUES (?,?,?,?)')->execute([$id,$actor,$newState,$stamp]);
+            $pdo->commit();
+        } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
+    } finally { try { crm_content_command_unlock($pdo); } catch (Throwable $e) { error_log('Content command lock release failed'); } }
 }
 /** Single worker must hold advisory lock; disabled kind is not sent. */
 function crm_content_command_pump(PDO $pdo,callable $send,int $now,int $limit=10): array {

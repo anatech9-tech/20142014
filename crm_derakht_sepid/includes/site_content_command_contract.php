@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-/** Identical, strict wire contract on both systems. Selected text, inactive creation, or independently opt-in visibility fields only. */
+/** Identical, strict wire contract on both systems. Selected text, inactive creation, or independently opt-in visibility or order fields only. */
 function content_command_keys(): array { return ['SITE_CRM_BRIDGE_KEY','SHOP_CRM_BRIDGE_KEY','SHOP_CRM_COMMAND_KEY','SHOP_CATALOG_CRM_KEY','SHOP_CATEGORY_META_KEY','SHOP_COUPON_META_KEY','SHOP_PRODUCT_COMMAND_KEY','SHOP_REVIEW_COMMAND_KEY','SHOP_REVIEW_CONTENT_GUARD_KEY','SHOP_REVIEW_META_CRM_KEY','SITE_BLOG_CONTENT_GUARD_KEY','SITE_BLOG_META_KEY','SITE_SHIPMENT_META_KEY','SITE_CONTENT_LOOKUP_KEY']; }
 function content_command_configured(bool $outgoing): bool {
     if (!defined('SITE_CONTENT_COMMAND_ENABLED') || SITE_CONTENT_COMMAND_ENABLED!==true || !defined('SITE_CONTENT_COMMAND_KEY') || !is_string(SITE_CONTENT_COMMAND_KEY) || strlen(SITE_CONTENT_COMMAND_KEY)<32 || !defined('SITE_CONTENT_COMMAND_SOURCE_ID') || !is_string(SITE_CONTENT_COMMAND_SOURCE_ID) || !preg_match('/^[a-f0-9]{32}$/D',SITE_CONTENT_COMMAND_SOURCE_ID)) return false;
@@ -12,9 +12,11 @@ function content_command_kind_enabled(string $kind): bool {
     if ($kind==='service_create') return PHP_INT_SIZE>=8 && defined('SITE_CONTENT_SERVICE_CREATE_ENABLED') && SITE_CONTENT_SERVICE_CREATE_ENABLED===true;
     if ($kind==='team_create') return PHP_INT_SIZE>=8 && defined('SITE_CONTENT_TEAM_CREATE_ENABLED') && SITE_CONTENT_TEAM_CREATE_ENABLED===true;
     if ($kind==='service') return defined('SITE_CONTENT_SERVICE_EDIT_ENABLED') && SITE_CONTENT_SERVICE_EDIT_ENABLED===true;
+    if ($kind==='service_order') return PHP_INT_SIZE>=8 && content_command_kind_enabled('service') && defined('SITE_CONTENT_SERVICE_ORDER_EDIT_ENABLED') && SITE_CONTENT_SERVICE_ORDER_EDIT_ENABLED===true;
     if ($kind==='service_visibility') return content_command_kind_enabled('service') && defined('SITE_CONTENT_SERVICE_VISIBILITY_EDIT_ENABLED') && SITE_CONTENT_SERVICE_VISIBILITY_EDIT_ENABLED===true;
     if ($kind==='service_en') return content_command_kind_enabled('service') && defined('SITE_CONTENT_SERVICE_EN_EDIT_ENABLED') && SITE_CONTENT_SERVICE_EN_EDIT_ENABLED===true;
     if ($kind==='team') return defined('SITE_CONTENT_TEAM_EDIT_ENABLED') && SITE_CONTENT_TEAM_EDIT_ENABLED===true;
+    if ($kind==='team_order') return PHP_INT_SIZE>=8 && content_command_kind_enabled('team') && defined('SITE_CONTENT_TEAM_ORDER_EDIT_ENABLED') && SITE_CONTENT_TEAM_ORDER_EDIT_ENABLED===true;
     if ($kind==='team_visibility') return content_command_kind_enabled('team') && defined('SITE_CONTENT_TEAM_VISIBILITY_EDIT_ENABLED') && SITE_CONTENT_TEAM_VISIBILITY_EDIT_ENABLED===true;
     if ($kind==='team_profile') return content_command_kind_enabled('team') && defined('SITE_CONTENT_TEAM_PROFILE_EDIT_ENABLED') && SITE_CONTENT_TEAM_PROFILE_EDIT_ENABLED===true;
     return false;
@@ -32,6 +34,7 @@ function content_command_validate($c,string $source): bool {
     foreach (['actor_id','issued_at','expires_at'] as $key) if (!is_int($c[$key] ?? null) || $c[$key]<=0) return false;
     if ($c['issued_at']>PHP_INT_MAX-900 || $c['expires_at']!==$c['issued_at']+900 || !is_array($c['fields'] ?? null)) return false;
     $f=$c['fields'];
+    if (in_array($c['type'] ?? null,['service_order_v1','team_order_v1'],true)) return count($f)===1 && array_key_exists('display_order',$f) && is_int($f['display_order']) && $f['display_order']>=-2147483648 && $f['display_order']<=2147483647;
     if (in_array($c['type'] ?? null,['service_visibility_v1','team_visibility_v1'],true)) return count($f)===1 && array_key_exists('is_active',$f) && is_int($f['is_active']) && in_array($f['is_active'],[0,1],true);
     if (count($f)!==2) return false;
     if (in_array($c['type'] ?? null,['service_text_v1','service_create_v1'],true)) return !array_diff(array_keys($f),['title_fa','description_fa']) && content_command_text($f['title_fa'] ?? null,2,200) && content_command_text($f['description_fa'] ?? null,1,1000,true);
@@ -41,6 +44,8 @@ function content_command_validate($c,string $source): bool {
     return false;
 }
 function content_command_mode(array $c): string {
+    if (($c['type'] ?? '')==='service_order_v1') return 'service_order';
+    if (($c['type'] ?? '')==='team_order_v1') return 'team_order';
     if (($c['type'] ?? '')==='service_create_v1') return 'service_create';
     if (($c['type'] ?? '')==='team_create_v1') return 'team_create';
     if (($c['type'] ?? '')==='service_visibility_v1') return 'service_visibility';
@@ -51,8 +56,8 @@ function content_command_mode(array $c): string {
     if (($c['type'] ?? '')==='team_profile_v1') return 'team_profile';
     return '';
 }
-function content_command_kind(array $c): string { $mode=content_command_mode($c); return in_array($mode,['service_en','service_visibility','service_create'],true)?'service':(in_array($mode,['team_profile','team_visibility','team_create'],true)?'team':$mode); }
-function content_command_type(string $mode): string { if ($mode==='service_create') return 'service_create_v1'; if ($mode==='team_create') return 'team_create_v1'; if ($mode==='service_visibility') return 'service_visibility_v1'; if ($mode==='team_visibility') return 'team_visibility_v1'; return $mode==='service'?'service_text_v1':($mode==='service_en'?'service_english_text_v1':($mode==='team'?'team_text_v1':($mode==='team_profile'?'team_profile_v1':''))); }
+function content_command_kind(array $c): string { $mode=content_command_mode($c); return in_array($mode,['service_en','service_visibility','service_create','service_order'],true)?'service':(in_array($mode,['team_profile','team_visibility','team_create','team_order'],true)?'team':$mode); }
+function content_command_type(string $mode): string { if ($mode==='service_order') return 'service_order_v1'; if ($mode==='team_order') return 'team_order_v1'; if ($mode==='service_create') return 'service_create_v1'; if ($mode==='team_create') return 'team_create_v1'; if ($mode==='service_visibility') return 'service_visibility_v1'; if ($mode==='team_visibility') return 'team_visibility_v1'; return $mode==='service'?'service_text_v1':($mode==='service_en'?'service_english_text_v1':($mode==='team'?'team_text_v1':($mode==='team_profile'?'team_profile_v1':''))); }
 function content_command_signature_valid(string $key,string $ts,string $sig,string $body,int $now): bool {
     return strlen($key)>=32 && preg_match('/^[0-9]{10}$/D',$ts)===1 && abs($now-(int)$ts)<=300 && preg_match('/^[a-f0-9]{64}$/D',$sig)===1 && hash_equals(hash_hmac('sha256','site-content-command-v1.'.$ts.'.'.$body,$key),$sig);
 }
