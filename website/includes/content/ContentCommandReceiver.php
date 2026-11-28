@@ -51,6 +51,15 @@ function content_receiver_delete_metadata_clear(PDO $pdo,string $kind): bool {
     }
     return true;
 }
+/** Check only the fields promised by inactive creation, not DB timestamps or other tables. */
+function content_receiver_verify_created(PDO $pdo,string $kind,int $id,array $fields): void {
+    $st=$pdo->prepare('SELECT '.implode(',',content_edit_fields($kind)).' FROM '.content_edit_table($kind).' WHERE id=? FOR UPDATE');
+    $st->execute([$id]); $new=$st->fetch(PDO::FETCH_ASSOC);
+    $nulls=$kind==='service'?['title_en','description_en','icon_path']:['handle','bio','image_path','email','linkedin_url'];
+    if (!$new || (string)$new['is_active']!=='0' || (string)$new['display_order']!=='0') throw new RuntimeException('Unexpected created content');
+    foreach ($nulls as $field) if (!array_key_exists($field,$new) || $new[$field]!==null) throw new RuntimeException('Unexpected created content');
+    foreach ($fields as $field=>$value) if (($new[$field] ?? null)!==$value) throw new RuntimeException('Unexpected created content');
+}
 /** Receiver checks authenticated source/config and InnoDB before calling. Same receipt+write transaction. */
 function content_receiver_apply(PDO $pdo,array $c,string $source,string $hash,int $now): string {
     if (!content_command_validate($c,$source) || !preg_match('/^[a-f0-9]{64}$/D',$hash)) throw new InvalidArgumentException('Invalid command');
@@ -75,11 +84,7 @@ function content_receiver_apply(PDO $pdo,array $c,string $source,string $hash,in
             }
             $createdId=(int)$pdo->lastInsertId();
             if ($createdId<=0 || $createdId>4294967295) throw new RuntimeException('Invalid created ID');
-            $st=$pdo->prepare('SELECT '.implode(',',content_edit_fields($kind)).' FROM '.$table.' WHERE id=? FOR UPDATE'); $st->execute([$createdId]); $new=$st->fetch(PDO::FETCH_ASSOC);
-            $nulls=$kind==='service'?['title_en','description_en','icon_path']:['handle','bio','image_path','email','linkedin_url'];
-            if (!$new || (string)$new['is_active']!=='0' || (string)$new['display_order']!=='0') throw new RuntimeException('Unexpected created content');
-            foreach ($nulls as $field) if (!array_key_exists($field,$new) || $new[$field]!==null) throw new RuntimeException('Unexpected created content');
-            foreach ($f as $field=>$value) if (($new[$field] ?? null)!==$value) throw new RuntimeException('Unexpected created content');
+            content_receiver_verify_created($pdo,$kind,$createdId,$f);
             $result='applied';
         } else {
             $result='conflict'; $st=$pdo->prepare('SELECT '.implode(',',content_edit_fields($kind)).' FROM '.$table.' WHERE id=? FOR UPDATE'); $st->execute([$c['object_id']]); $row=$st->fetch(PDO::FETCH_ASSOC);
@@ -114,6 +119,17 @@ function content_receiver_apply(PDO $pdo,array $c,string $source,string $hash,in
         if ($createdId>0) { $st=$pdo->prepare("UPDATE site_content_command_receipts SET result=?,completed_at=?,object_id=? WHERE command_id=? AND result='processing'"); $st->execute([$result,date('Y-m-d H:i:s',$now),$createdId,$c['command_id']]); }
         else { $st=$pdo->prepare("UPDATE site_content_command_receipts SET result=?,completed_at=? WHERE command_id=? AND result='processing'"); $st->execute([$result,date('Y-m-d H:i:s',$now),$c['command_id']]); }
         if ($st->rowCount()!==1) throw new RuntimeException('Receipt update failed');
+        // Verify the receipt as well as the row: triggers may change the values written.
+        $st=$pdo->prepare('SELECT request_hash,source_id,kind,object_id,actor_id,result,completed_at FROM site_content_command_receipts WHERE command_id=? FOR UPDATE');
+        $st->execute([$c['command_id']]); $receipt=$st->fetch(PDO::FETCH_ASSOC);
+        $expectedReceipt=['request_hash'=>$hash,'source_id'=>$source,'kind'=>$kind,'object_id'=>$createdId>0?$createdId:$c['object_id'],'actor_id'=>$c['actor_id'],'result'=>$result,'completed_at'=>date('Y-m-d H:i:s',$now)];
+        if (!$receipt) throw new RuntimeException('Receipt unavailable');
+        foreach ($expectedReceipt as $key=>$value) if (!array_key_exists($key,$receipt) || $receipt[$key]===null || (string)$receipt[$key] !== (string)$value) throw new RuntimeException('Unexpected receipt');
+        if ($createdId>0) content_receiver_verify_created($pdo,$kind,$createdId,$c['fields']);
+        if ($result==='applied' && in_array($mode,['service_delete','team_delete'],true)) {
+            $st=$pdo->prepare('SELECT id FROM '.$table.' WHERE id=? FOR UPDATE'); $st->execute([$c['object_id']]);
+            if ($st->fetch(PDO::FETCH_ASSOC)!==false) throw new RuntimeException('Deleted content still present');
+        }
         if ($verifyBefore!==null) {
             // Verify the locked row after updating the receipt and before commit. MySQL may
             // normalize/truncate values, and triggers can alter tracked columns.

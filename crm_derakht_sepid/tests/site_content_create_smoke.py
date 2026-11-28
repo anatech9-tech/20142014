@@ -15,7 +15,11 @@ with tempfile.TemporaryDirectory() as temp:
         for case in ('enabled','disabled'):
             r=subprocess.run([php,str(root/'crm_derakht_sepid/tests/site_content_create_fixture.php'),kind,case],env=env,text=True,capture_output=True,check=True)
             assert not any(x in r.stdout+r.stderr for x in ('FAIL ','Fatal error','Warning:','Uncaught','Parse error')),r.stdout+r.stderr
-            assert 'PASS' in r.stdout;print(r.stdout,end='')
+            assert 'PASS' in r.stdout
+            if case=='enabled':
+                assert all('PASS '+item+' after receipt rolls back create' in r.stdout for item in ('changed_name','changed_null','changed_active','changed_order','deleted','receipt_id')),r.stdout
+                assert 'PASS expired create settles without created ID or row' in r.stdout,r.stdout
+            print(r.stdout,end='')
     contract=d/'website/includes/content/ContentCommandContract.php'
     for kind in ('service','team'):
         for setup,expected in (('', '0'),(f"define('SITE_CONTENT_{kind.upper()}_CREATE_ENABLED',true);",'1')):

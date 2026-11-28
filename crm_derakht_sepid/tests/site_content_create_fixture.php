@@ -51,6 +51,13 @@ ck((int)$site->query('SELECT COUNT(*) FROM '.$table)->fetchColumn()===0 && (int)
 $site->exec('CREATE TRIGGER change_active AFTER INSERT ON '.$table.' BEGIN UPDATE '.$table.' SET is_active=1 WHERE id=NEW.id; END');
 try { content_receiver_apply($site,$payload,SITE_CONTENT_COMMAND_SOURCE_ID,hash('sha256',$row['payload']),$now+1); ck(false,'unexpected row'); } catch (RuntimeException $e) {}
 ck((int)$site->query('SELECT COUNT(*) FROM '.$table)->fetchColumn()===0 && (int)$site->query("SELECT COUNT(*) FROM site_content_command_receipts WHERE command_id='$id'")->fetchColumn()===0,'unexpected trigger modification rolls back create'); $site->exec('DROP TRIGGER change_active');
+foreach (['changed_name','changed_null','changed_active','changed_order','deleted','receipt_id'] as $tamper) {
+ $nameField=$kind==='service'?'title_fa':'name'; $nullField=$kind==='service'?'icon_path':'email';
+ $action=$tamper==='receipt_id'?'UPDATE site_content_command_receipts SET object_id=999 WHERE command_id=NEW.command_id':($tamper==='deleted'?'DELETE FROM '.$table.' WHERE id=NEW.object_id':('UPDATE '.$table.' SET '.($tamper==='changed_name'?$nameField."='altered'":($tamper==='changed_null'?$nullField."='altered'":($tamper==='changed_active'?'is_active=1':'display_order=5'))).' WHERE id=NEW.object_id'));
+ $site->exec('CREATE TRIGGER tamper_receipt AFTER UPDATE ON site_content_command_receipts BEGIN '.$action.'; END');
+ try { content_receiver_apply($site,$payload,SITE_CONTENT_COMMAND_SOURCE_ID,hash('sha256',$row['payload']),$now+1); ck(false,'receipt trigger postcondition'); } catch (RuntimeException $e) {}
+ ck((int)$site->query('SELECT COUNT(*) FROM '.$table)->fetchColumn()===0 && (int)$site->query("SELECT COUNT(*) FROM site_content_command_receipts WHERE command_id='$id'")->fetchColumn()===0,"$tamper after receipt rolls back create"); $site->exec('DROP TRIGGER tamper_receipt');
+}
 $send=function($body) use ($site,$now) { $c=json_decode($body,true); $result=content_receiver_apply($site,$c,SITE_CONTENT_COMMAND_SOURCE_ID,hash('sha256',$body),$now+1); $reply=['ok'=>true,'command_id'=>$c['command_id'],'result'=>$result]; if ($result==='applied') { $reply['created_id']=content_receiver_created_id($site,$c['command_id'],hash('sha256',$body)); } return [200,$reply]; };
 $lost=function($body) use ($send){$send($body);return [0,null];}; $r=crm_content_command_pump($crm,$lost,$now+2); $created=$site->query('SELECT * FROM '.$table)->fetch(PDO::FETCH_ASSOC);
 ck($r['failed']===1 && (int)$created['is_active']===0 && (int)$created['display_order']===0 && $created[$kind==='service'?'title_fa':'name']==='New '.($kind==='service'?'service':'member'),'lost response creates one inactive record but remains queued');

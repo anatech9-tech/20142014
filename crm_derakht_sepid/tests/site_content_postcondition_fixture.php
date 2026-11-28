@@ -63,3 +63,21 @@ $pdo->exec("CREATE TRIGGER timestamp_change AFTER UPDATE ON team_members BEGIN U
 ck(apply_command($pdo,$c)==='applied' && $pdo->query('SELECT updated_at FROM team_members')->fetchColumn()==='after','automatic updated_at changes are allowed');
 $pdo=database(); $c=command($pdo,'team',['name'=>'Old name','role'=>'Old role']);
 ck(apply_command($pdo,$c)==='applied','no-op update is accepted without requiring changed-row count');
+foreach (['command_id', 'request_hash', 'source_id', 'kind', 'object_id', 'actor_id', 'result', 'completed_at'] as $column) {
+    $pdo=database(); $c=command($pdo,'service',['title_fa'=>'Fresh title','description_fa'=>'Fresh body']);
+    $before=$pdo->query('SELECT * FROM services')->fetch(PDO::FETCH_ASSOC);
+    $bad=['command_id'=>str_repeat('c',32),'request_hash'=>str_repeat('d',64),'source_id'=>str_repeat('e',32),'kind'=>'team','object_id'=>2,'actor_id'=>2,'result'=>'conflict','completed_at'=>null][$column];
+    $value=$bad===null?'NULL':$pdo->quote((string)$bad);
+    $pdo->exec('CREATE TRIGGER receipt_tamper AFTER UPDATE ON site_content_command_receipts BEGIN UPDATE site_content_command_receipts SET '.$column.'='.$value.' WHERE command_id=NEW.command_id; END');
+    try { apply_command($pdo,$c); ck(false,"tampered $column must fail"); } catch (RuntimeException $e) {}
+    ck($pdo->query('SELECT * FROM services')->fetch(PDO::FETCH_ASSOC)===$before && (int)$pdo->query('SELECT COUNT(*) FROM site_content_command_receipts')->fetchColumn()===0 && !$pdo->inTransaction(),"tampered $column rolls back row and receipt");
+    $pdo->exec('DROP TRIGGER receipt_tamper'); ck(apply_command($pdo,$c)==='applied',"tampered $column can retry after correction");
+}
+foreach (['conflict','expired'] as $result) {
+    $pdo=database(); $c=command($pdo,'service',['title_fa'=>'Fresh title','description_fa'=>'Fresh body']);
+    if ($result==='conflict') $c['expected_token']=str_repeat('f',64);
+    $pdo->exec("CREATE TRIGGER receipt_tamper AFTER UPDATE ON site_content_command_receipts BEGIN UPDATE site_content_command_receipts SET result='applied' WHERE command_id=NEW.command_id; END");
+    try { content_receiver_apply($pdo,$c,$c['source_id'],hash('sha256',json_encode($c)),$c['issued_at']+($result==='expired'?901:0)); ck(false,"tampered $result must fail"); } catch (RuntimeException $e) {}
+    ck((int)$pdo->query('SELECT COUNT(*) FROM site_content_command_receipts')->fetchColumn()===0 && $pdo->query('SELECT title_fa FROM services')->fetchColumn()==='عنوان قدیم',"tampered $result receipt rolls back");
+    $pdo->exec('DROP TRIGGER receipt_tamper'); ck(content_receiver_apply($pdo,$c,$c['source_id'],hash('sha256',json_encode($c)),$c['issued_at']+($result==='expired'?901:0))===$result,"$result persists after correction");
+}
