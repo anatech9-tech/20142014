@@ -46,8 +46,7 @@ try {
             if (!$ok) sts_json(409,['success'=>false,'error'=>'عضو تغییر کرده یا دیگر موجود نیست؛ صفحه را تازه کنید.']);
         } else {
             $data['created_at'] = date('Y-m-d H:i:s');
-            $id = DB::insert('team_members', $data);
-            Auth::logActivity(Auth::userId(), 'create_team', 'team_member', $id);
+            $id = content_edit_create(DB::pdo(),'team',$data,static function(int $newId) { Auth::logActivity(Auth::userId(),'create_team','team_member',$newId); });
         }
         sts_json(200, ['success' => true, 'id' => $id]);
     }

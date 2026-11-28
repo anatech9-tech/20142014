@@ -29,8 +29,7 @@ try {
             $ok=content_edit_existing(DB::pdo(),'service',$id,$_POST['expected_token'] ?? null,'save',$data,static function() use ($id) { Auth::logActivity(Auth::userId(),'save_service','service',$id); });
             if (!$ok) sts_json(409,['success'=>false,'error'=>'خدمت تغییر کرده یا دیگر موجود نیست؛ صفحه را تازه کنید.']);
         } else {
-            $id = DB::insert('services', $data);
-            Auth::logActivity(Auth::userId(), 'save_service', 'service', $id);
+            $id = content_edit_create(DB::pdo(),'service',$data,static function(int $newId) { Auth::logActivity(Auth::userId(),'save_service','service',$newId); });
         }
         sts_json(200, ['success' => true, 'id' => $id]);
     }

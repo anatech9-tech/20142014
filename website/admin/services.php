@@ -146,14 +146,23 @@ async function deleteSrv(id, expectedToken) {
     catch (err) { alert(err.message); }
 }
 
+let saveInFlight = false;
 document.getElementById('srvForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const fd = new FormData(e.target);
-    fd.append('action', 'save');
+    if (saveInFlight) return;
+    saveInFlight = true;
+    const button = e.target.querySelector('button[type="submit"]');
+    if (button) button.disabled = true;
     try {
+        const fd = new FormData(e.target);
+        fd.append('action', 'save');
         await stsFetch('api/services.php', { method: 'POST', body: fd });
         location.reload();
-    } catch (err) { alert(err.message); }
+    } catch (err) {
+        alert((err.message || 'خطا در ذخیره') + '\nنتیجه ممکن است نامشخص باشد؛ قبل از تلاش دوباره صفحه را تازه و رکوردها را بررسی کنید.');
+        saveInFlight = false;
+        if (button) button.disabled = false;
+    }
 });
 </script>
 

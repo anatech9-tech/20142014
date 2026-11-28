@@ -21,6 +21,31 @@ function content_edit_token(string $kind,array $row): string {
     if ($json===false) throw new RuntimeException('Content snapshot unavailable');
     return hash('sha256',$json);
 }
+/** Fail closed unless the content and audit tables are visible and transactional. */
+function content_edit_require_transactional(PDO $pdo,string $table): void {
+    if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME)!=='mysql') throw new RuntimeException('MySQL required');
+    $check=$pdo->prepare('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?');
+    foreach ([$table,'admin_activity_log'] as $name) { $check->execute([$name]); if (strtoupper((string)$check->fetchColumn())!=='INNODB') throw new RuntimeException('InnoDB required'); }
+}
+/** Create and audit atomically; the callback must use the same PDO connection. */
+function content_edit_create(PDO $pdo,string $kind,array $data,callable $audit): int {
+    $table=content_edit_table($kind);
+    $allowed=array_values(array_diff(content_edit_fields($kind),['id','created_at','updated_at']));
+    if ($kind==='team') $allowed[]='created_at';
+    if (count($data)!==count($allowed) || array_diff(array_keys($data),$allowed)) throw new InvalidArgumentException('Invalid content fields');
+    content_edit_require_transactional($pdo,$table);
+    $pdo->beginTransaction();
+    try {
+        $fields=array_keys($data);
+        $st=$pdo->prepare('INSERT INTO `'.$table.'` (`'.implode('`,`',$fields).'`) VALUES ('.implode(',',array_fill(0,count($fields),'?')).')');
+        $st->execute(array_values($data));
+        $id=(int)$pdo->lastInsertId();
+        if ($id<=0) throw new RuntimeException('Insert failed');
+        $audit($id);
+        $pdo->commit();
+        return $id;
+    } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
+}
 /** Must use a MySQL/InnoDB connection and a transaction-aware audit callback on the same connection. */
 function content_edit_existing(PDO $pdo,string $kind,int $id,$expected,string $action,array $data,callable $audit): bool {
     $table=content_edit_table($kind);
@@ -28,9 +53,7 @@ function content_edit_existing(PDO $pdo,string $kind,int $id,$expected,string $a
     $allowed=array_values(array_diff(content_edit_fields($kind),['id','created_at','updated_at']));
     if ($action==='save' && (count($data)!==count($allowed) || array_diff(array_keys($data),$allowed))) throw new InvalidArgumentException('Invalid content fields');
     if ($action==='delete' && $data) throw new InvalidArgumentException('Invalid delete fields');
-    if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME)!=='mysql') throw new RuntimeException('MySQL required');
-    $check=$pdo->prepare('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=?');
-    foreach ([$table,'admin_activity_log'] as $name) { $check->execute([$name]); if (strtoupper((string)$check->fetchColumn())!=='INNODB') throw new RuntimeException('InnoDB required'); }
+    content_edit_require_transactional($pdo,$table);
     $pdo->beginTransaction();
     try {
         $st=$pdo->prepare('SELECT '.implode(',',content_edit_fields($kind)).' FROM '.$table.' WHERE id=? FOR UPDATE'); $st->execute([$id]); $row=$st->fetch(PDO::FETCH_ASSOC);
