@@ -28,6 +28,7 @@ function preflight_specs(string $component): array {
         'legacy_site_administration'=>['required'=>false,'tables'=>[
             'site_settings'=>['setting_key','setting_value','setting_type','category','updated_by','updated_at'],
             'admin_users'=>['id','username','email','full_name','role','is_active','last_login_at','last_login_ip','created_at'],
+            'admin_activity_log'=>['id','user_id','action','entity_type','entity_id','created_at'],
             'admin_sessions'=>['id','user_id','last_activity'],
             'admin_login_attempts'=>['id','username','ip_address','success','attempted_at']]],
         'legacy_site_analytics'=>['required'=>false,'tables'=>[

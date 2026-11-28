@@ -12,9 +12,13 @@ Auth::requirePermission('services.view');
 $pageTitle = 'مدیریت خدمات';
 $activeMenu = 'services';
 $services = DB::fetchAll('SELECT * FROM services ORDER BY display_order, id');
+require_once BASE_PATH . '/includes/ContentEditGuard.php';
+foreach ($services as &$entry) $entry['__edit_token'] = content_edit_token('service', $entry);
+unset($entry);
 ?>
 <?php ob_start(); ?>
 <div class="card">
+    <p>اگر اطلاعات فعلی با نسخهٔ این صفحه متفاوت باشد، ویرایش یا حذف رد می‌شود؛ صفحه را تازه و اطلاعات را دوباره بررسی کنید.</p>
     <div class="card-header">
         <h2 class="card-title">خدمات</h2>
         <?php if (Auth::can('services.edit')): ?>
@@ -45,7 +49,7 @@ $services = DB::fetchAll('SELECT * FROM services ORDER BY display_order, id');
                                 <button class="btn btn-sm" onclick='editSrv(<?= json_encode($s, JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>ویرایش</button>
                             <?php endif; ?>
                             <?php if (Auth::can('services.delete')): ?>
-                                <button class="btn btn-sm btn-danger" onclick="deleteSrv(<?= $s['id'] ?>)">حذف</button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteSrv(<?= (int)$s['id'] ?>, '<?= $s['__edit_token'] ?>')">حذف</button>
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -65,6 +69,7 @@ $services = DB::fetchAll('SELECT * FROM services ORDER BY display_order, id');
         <form id="srvForm">
             <div class="modal-body">
                 <input type="hidden" id="srvId" name="id" value="0">
+                <input type="hidden" id="srvEditToken" name="expected_token" value="">
                 <input type="hidden" name="csrf_token" value="<?= Auth::csrfToken() ?>">
 
                 <div class="form-row">
@@ -117,6 +122,7 @@ const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 
 function editSrv(s) {
     document.getElementById('srvId').value = s.id;
+    document.getElementById('srvEditToken').value = s.__edit_token;
     document.querySelector('[name="title_fa"]').value = s.title_fa || '';
     document.querySelector('[name="title_en"]').value = s.title_en || '';
     document.querySelector('[name="description_fa"]').value = s.description_fa || '';
@@ -127,14 +133,15 @@ function editSrv(s) {
     openModal('srvModal');
 }
 
-async function deleteSrv(id) {
+async function deleteSrv(id, expectedToken) {
     if (!confirm('حذف شود؟')) return;
     const fd = new FormData();
     fd.append('action', 'delete');
     fd.append('id', id);
     fd.append('csrf_token', csrfToken);
-    await stsFetch('api/services.php', { method: 'POST', body: fd });
-    location.reload();
+    fd.append('expected_token', expectedToken);
+    try { await stsFetch('api/services.php', { method: 'POST', body: fd }); location.reload(); }
+    catch (err) { alert(err.message); }
 }
 
 document.getElementById('srvForm').addEventListener('submit', async (e) => {

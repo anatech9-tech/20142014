@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../config.php';
 require_once BASE_PATH . '/includes/db.php';
 require_once BASE_PATH . '/includes/Auth.php';
+require_once BASE_PATH . '/includes/ContentEditGuard.php';
 Auth::requireLogin();
 
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
@@ -25,11 +26,12 @@ try {
         ];
         if (mb_strlen($data['title_fa']) < 2) sts_json(400, ['success' => false, 'error' => 'عنوان فارسی الزامی است.']);
         if ($id) {
-            DB::update('services', $data, 'id = :id', ['id' => $id]);
+            $ok=content_edit_existing(DB::pdo(),'service',$id,$_POST['expected_token'] ?? null,'save',$data,static function() use ($id) { Auth::logActivity(Auth::userId(),'save_service','service',$id); });
+            if (!$ok) sts_json(409,['success'=>false,'error'=>'خدمت تغییر کرده یا دیگر موجود نیست؛ صفحه را تازه کنید.']);
         } else {
             $id = DB::insert('services', $data);
+            Auth::logActivity(Auth::userId(), 'save_service', 'service', $id);
         }
-        Auth::logActivity(Auth::userId(), 'save_service', 'service', $id);
         sts_json(200, ['success' => true, 'id' => $id]);
     }
 
@@ -37,12 +39,12 @@ try {
         Auth::requirePermission('services.delete');
         $id = (int) ($_POST['id'] ?? 0);
         if (!$id) sts_json(400, ['success' => false]);
-        DB::delete('services', 'id = :id', ['id' => $id]);
-        Auth::logActivity(Auth::userId(), 'delete_service', 'service', $id);
+        $ok=content_edit_existing(DB::pdo(),'service',$id,$_POST['expected_token'] ?? null,'delete',[],static function() use ($id) { Auth::logActivity(Auth::userId(),'delete_service','service',$id); });
+        if (!$ok) sts_json(409,['success'=>false,'error'=>'خدمت تغییر کرده یا دیگر موجود نیست؛ صفحه را تازه کنید.']);
         sts_json(200, ['success' => true]);
     }
 
     sts_json(400, ['success' => false, 'error' => 'Unknown action']);
 } catch (Throwable $e) {
-    sts_json(500, ['success' => false, 'error' => $e->getMessage()]);
+    sts_json(500, ['success' => false, 'error' => 'عملیات انجام نشد؛ لاگ سرور را بررسی کنید.']);
 }

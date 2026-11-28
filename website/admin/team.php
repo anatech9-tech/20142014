@@ -13,9 +13,13 @@ $pageTitle = 'مدیریت تیم';
 $activeMenu = 'team';
 
 $team = DB::fetchAll('SELECT * FROM team_members ORDER BY display_order, id');
+require_once BASE_PATH . '/includes/ContentEditGuard.php';
+foreach ($team as &$entry) $entry['__edit_token'] = content_edit_token('team', $entry);
+unset($entry);
 ?>
 <?php ob_start(); ?>
 <div class="card">
+    <p>اگر اطلاعات فعلی با نسخهٔ این صفحه متفاوت باشد، ویرایش یا حذف رد می‌شود؛ صفحه را تازه و اطلاعات را دوباره بررسی کنید.</p>
     <div class="card-header">
         <h2 class="card-title">اعضای تیم</h2>
         <?php if (Auth::can('team.edit')): ?>
@@ -54,7 +58,7 @@ $team = DB::fetchAll('SELECT * FROM team_members ORDER BY display_order, id');
                                 <button class="btn btn-sm" onclick='editTeam(<?= json_encode($m, JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'>ویرایش</button>
                             <?php endif; ?>
                             <?php if (Auth::can('team.delete')): ?>
-                                <button class="btn btn-sm btn-danger" data-confirm="حذف شود؟" onclick="deleteTeam(<?= $m['id'] ?>)">حذف</button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteTeam(<?= (int)$m['id'] ?>, '<?= $m['__edit_token'] ?>')">حذف</button>
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -75,6 +79,7 @@ $team = DB::fetchAll('SELECT * FROM team_members ORDER BY display_order, id');
         <form id="teamForm">
             <div class="modal-body">
                 <input type="hidden" id="teamId" name="id" value="0">
+                <input type="hidden" id="teamEditToken" name="expected_token" value="">
                 <input type="hidden" name="csrf_token" value="<?= Auth::csrfToken() ?>">
 
                 <div class="form-row">
@@ -142,6 +147,7 @@ const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
 
 function editTeam(m) {
     document.getElementById('teamId').value = m.id;
+    document.getElementById('teamEditToken').value = m.__edit_token;
     document.querySelector('[name="name"]').value = m.name || '';
     document.querySelector('[name="role"]').value = m.role || '';
     document.querySelector('[name="handle"]').value = m.handle || '';
@@ -154,14 +160,15 @@ function editTeam(m) {
     openModal('teamModal');
 }
 
-async function deleteTeam(id) {
+async function deleteTeam(id, expectedToken) {
     if (!confirm('این عضو حذف شود؟')) return;
     const fd = new FormData();
     fd.append('action', 'delete');
     fd.append('id', id);
     fd.append('csrf_token', csrfToken);
-    await stsFetch('api/team.php', { method: 'POST', body: fd });
-    location.reload();
+    fd.append('expected_token', expectedToken);
+    try { await stsFetch('api/team.php', { method: 'POST', body: fd }); location.reload(); }
+    catch (err) { alert(err.message); }
 }
 
 document.getElementById('teamForm').addEventListener('submit', async (e) => {
