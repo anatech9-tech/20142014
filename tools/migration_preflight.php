@@ -83,6 +83,9 @@ function preflight_specs(string $component): array {
         'shop_catalog'=>['required'=>false,'tables'=>[
             'crm_shop_catalog'=>['id','source_id','shop_product_id','revision','payload'],
             'crm_shop_product_links'=>['source_id','shop_product_id','version'], 'crm_shop_product_link_events'=>['id','source_id','shop_product_id']]],
+        'crm_product_groups'=>['required'=>false,'tables'=>[
+            'crm_products'=>['id','name'], 'crm_product_group_links'=>['id','product_id','group_id','is_linked','version','group_version','product_name','updated_by','updated_at'],
+            'crm_product_group_events'=>['id','link_id','product_id','group_id','version','group_version','action','actor_id','created_at']]],
         'shop_category_groups'=>['required'=>false,'tables'=>[
             'crm_shop_category_groups'=>['id','name','is_active','version','updated_by','updated_at'],
             'crm_shop_category_group_events'=>['id','group_id','version','old_name','new_name','old_active','new_active','actor_id','created_at'],

@@ -80,7 +80,7 @@ $page=max(1,(int)($_GET['p'] ?? 1)); $page=min($page,max(1,(int)ceil($total/30))
 $st=$pdo->prepare("SELECT p.* FROM crm_products p WHERE $where ORDER BY p.id DESC LIMIT 30 OFFSET $offset"); $st->execute($args); $items=$st->fetchAll();
 include 'includes/header.php';
 ?>
-<div class="d-flex justify-between align-center mb-4" style="gap:10px;flex-wrap:wrap"><div><h2>📦 بانک کالاهای سورسیابی</h2><span class="text-muted">اطلاعات و قیمت‌های ثبت‌شده برای استفادهٔ مجدد؛ قیمت تاریخی است و قبل از اعلام باید بررسی شود.</span></div><div><?php if (is_strict_admin()): ?><a href="index.php?page=shop_catalog" class="btn">کالاهای فروشگاه</a> <?php endif; ?><a href="index.php?page=crm_products&new=1" class="btn btn-primary">افزودن کالا</a></div></div>
+<div class="d-flex justify-between align-center mb-4" style="gap:10px;flex-wrap:wrap"><div><h2>📦 بانک کالاهای سورسیابی</h2><span class="text-muted">اطلاعات و قیمت‌های ثبت‌شده برای استفادهٔ مجدد؛ قیمت تاریخی است و قبل از اعلام باید بررسی شود.</span></div><div><?php if (is_strict_admin()): ?><a href="index.php?page=shop_catalog" class="btn">کالاهای فروشگاه</a> <a href="index.php?page=crm_product_groups" class="btn">گروه‌بندی داخلی کالا</a> <?php endif; ?><a href="index.php?page=crm_products&new=1" class="btn btn-primary">افزودن کالا</a></div></div>
 <?php if (isset($_GET['new']) || (isset($_GET['edit']) && $item)): $v=$item ?: []; ?>
 <div class="card"><div class="card-header"><h3 class="card-title"><?= $item ? 'ویرایش کالا' : 'ثبت کالا' ?></h3></div>
 <form method="post" enctype="multipart/form-data" style="padding:16px"><?= get_csrf_field() ?><input type="hidden" name="action" value="save"><input type="hidden" name="id" value="<?= (int)($v['id'] ?? 0) ?>">
