@@ -21,6 +21,15 @@ foreach (['site','crm'] as $component) {
  $result=preflight_evaluate($specs,$tables,$columns);
  check($result['required_checks_passed'] && !$result['optional_checks_passed'],$component.' missing optional table reported without claiming bridge ready');
 }
+// Independent, optional legacy groups report missing columns/engines, never alter core result.
+$specs=preflight_specs('site'); $tables=[]; $columns=[];
+foreach ($specs as $spec) foreach ($spec['tables'] as $name=>$cols) { $tables[$name]='InnoDB'; foreach ($cols as $col) $columns[$name][$col]=true; }
+unset($columns['services']['title_fa'], $columns['admin_users']['role'], $columns['page_views']['session_id']); $tables['conversion_events']='MyISAM';
+$r=preflight_evaluate($specs,$tables,$columns);
+check($r['required_checks_passed'] && !$r['optional_checks_passed'],'legacy optional gaps do not claim core failure or overall success');
+check(in_array('services.title_fa',$r['groups']['legacy_site_content']['missing_columns_or_not_visible'],true),'legacy service missing column reported');
+check(in_array('admin_users.role',$r['groups']['legacy_site_administration']['missing_columns_or_not_visible'],true),'legacy user missing role reported');
+check(in_array('page_views.session_id',$r['groups']['legacy_site_analytics']['missing_columns_or_not_visible'],true) && in_array('conversion_events',$r['groups']['legacy_site_analytics']['non_innodb_or_unknown'],true),'analytics column and engine gaps reported');
 try { preflight_specs('other'); check(false,'unknown component denied'); } catch (InvalidArgumentException $e) { check(true,'unknown component denied'); }
 // Exercise main with a synthetic metadata-only connection, without a database.
 if (extension_loaded('pdo_mysql')) {

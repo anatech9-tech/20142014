@@ -23,6 +23,8 @@ $categories = [
     'analytics' => 'آمار',
 ];
 $cat = $_GET['cat'] ?? 'general';
+if (!is_string($cat) || strlen($cat) > 50) $cat = 'general';
+$h = static fn($v) => htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 
 $settings = Settings::getByCategory($cat);
 
@@ -57,9 +59,9 @@ $labels = [
 </div>
 
 <form id="settingsForm">
-    <input type="hidden" name="csrf_token" value="<?= Auth::csrfToken() ?>">
+    <input type="hidden" name="csrf_token" value="<?= $h(Auth::csrfToken()) ?>">
     <div class="card">
-        <h3 class="card-title" style="margin-bottom: 16px;"><?= $categories[$cat] ?? $cat ?></h3>
+        <h3 class="card-title" style="margin-bottom: 16px;"><?= $h($categories[$cat] ?? $cat) ?></h3>
 
         <?php if (empty($settings)): ?>
             <p style="color: var(--text-2);">موردی برای تنظیم در این بخش نیست.</p>
@@ -68,21 +70,21 @@ $labels = [
                 [$label, $type] = $labels[$key] ?? [$key, 'text'];
             ?>
                 <div class="form-field">
-                    <label><?= $label ?></label>
+                    <label><?= $h($label) ?></label>
                     <?php if ($type === 'textarea'): ?>
-                        <textarea name="settings[<?= $key ?>]" rows="3"><?= htmlspecialchars((string) $value) ?></textarea>
+                        <textarea name="settings[<?= $h($key) ?>]" rows="3"><?= $h($value) ?></textarea>
                     <?php elseif ($type === 'select:fa,en'): ?>
-                        <select name="settings[<?= $key ?>]">
+                        <select name="settings[<?= $h($key) ?>]">
                             <option value="fa" <?= $value === 'fa' ? 'selected' : '' ?>>فارسی</option>
                             <option value="en" <?= $value === 'en' ? 'selected' : '' ?>>English</option>
                         </select>
                     <?php elseif ($type === 'boolean'): ?>
                         <label class="checkbox-row">
-                            <input type="checkbox" name="settings[<?= $key ?>]" value="1" <?= $value ? 'checked' : '' ?>>
+                            <input type="checkbox" name="settings[<?= $h($key) ?>]" value="1" <?= $value ? 'checked' : '' ?>>
                             <span>فعال</span>
                         </label>
                     <?php else: ?>
-                        <input type="<?= $type ?>" name="settings[<?= $key ?>]" value="<?= htmlspecialchars((string) $value) ?>" dir="<?= in_array($type, ['email','url']) ? 'ltr' : 'auto' ?>">
+                        <input type="<?= $type ?>" name="settings[<?= $h($key) ?>]" value="<?= $h($value) ?>" dir="<?= in_array($type, ['email','url']) ? 'ltr' : 'auto' ?>">
                     <?php endif; ?>
                 </div>
             <?php endforeach; ?>

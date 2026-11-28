@@ -21,6 +21,18 @@ function preflight_specs(string $component): array {
             'order_items'=>['id','order_id','product_id','product_name','qty','price_toman','total_toman'],
             'order_events'=>['id','order_id','status','note'],
             'discount_codes'=>['id']]],
+        // These groups are scoped inventory checks for legacy panels, not migration readiness.
+        'legacy_site_content'=>['required'=>false,'tables'=>[
+            'services'=>['id','icon_path','title_fa','title_en','description_fa','description_en','display_order','is_active','created_at','updated_at'],
+            'team_members'=>['id','name','role','handle','bio','image_path','email','linkedin_url','display_order','is_active','created_at','updated_at']]],
+        'legacy_site_administration'=>['required'=>false,'tables'=>[
+            'site_settings'=>['setting_key','setting_value','setting_type','category','updated_by','updated_at'],
+            'admin_users'=>['id','username','email','full_name','role','is_active','last_login_at','last_login_ip','created_at'],
+            'admin_sessions'=>['id','user_id','last_activity'],
+            'admin_login_attempts'=>['id','username','ip_address','success','attempted_at']]],
+        'legacy_site_analytics'=>['required'=>false,'tables'=>[
+            'page_views'=>['id','session_id','page_url','referrer','device_type','viewed_at'],
+            'conversion_events'=>['id','event_type','created_at']]],
         'site_inbox_outbox'=>['required'=>false,'tables'=>['website_crm_outbox'=>['id','event_id','payload','delivered_at']]],
         'shop_order_bridge'=>['required'=>false,'tables'=>[
             'shop_crm_cursor'=>['source_id','last_order_id'], 'shop_crm_sync_state'=>['source_id','shop_order_id','snapshot_hash','latest_revision'],
