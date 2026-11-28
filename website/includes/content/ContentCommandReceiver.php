@@ -1,5 +1,5 @@
 <?php
-/** Opt-in CRM service/team text and independently opt-in visibility and display order updates. Creation is inactive and opt-in. No deletion, media or account changes. */
+/** Opt-in CRM service/team text and independently opt-in visibility, display order, and team contact updates. Creation is inactive and opt-in. No deletion, media or account changes. */
 require_once __DIR__.'/ContentCommandContract.php';
 require_once __DIR__.'/../ContentEditGuard.php';
 function content_receiver_schema(): string {
@@ -57,6 +57,7 @@ function content_receiver_apply(PDO $pdo,array $c,string $source,string $hash,in
                 elseif ($mode==='service_visibility' || $mode==='team_visibility') { $st=$pdo->prepare('UPDATE '.$table.' SET is_active=? WHERE id=?'); $args=[$f['is_active'],$c['object_id']]; }
                 elseif ($mode==='service') { $st=$pdo->prepare('UPDATE services SET title_fa=?,description_fa=? WHERE id=?'); $args=[$f['title_fa'],$f['description_fa'],$c['object_id']]; }
                 elseif ($mode==='service_en') { $st=$pdo->prepare('UPDATE services SET title_en=?,description_en=? WHERE id=?'); $args=[$f['title_en'],$f['description_en'],$c['object_id']]; }
+                elseif ($mode==='team_contact') { $st=$pdo->prepare('UPDATE team_members SET email=?,linkedin_url=? WHERE id=?'); $args=[$f['email'],$f['linkedin_url'],$c['object_id']]; }
                 elseif ($mode==='team_profile') { $st=$pdo->prepare('UPDATE team_members SET handle=?,bio=? WHERE id=?'); $args=[$f['handle'],$f['bio'],$c['object_id']]; }
                 else { $st=$pdo->prepare('UPDATE team_members SET name=?,role=? WHERE id=?'); $args=[$f['name'],$f['role'],$c['object_id']]; }
                 $st->execute($args);

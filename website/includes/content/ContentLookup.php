@@ -3,7 +3,7 @@
 require_once __DIR__.'/ContentLookupContract.php'; require_once __DIR__.'/../ContentEditGuard.php';
 function content_lookup_read(PDO $pdo,array $request): array {
     if (!content_lookup_request_valid($request,SITE_CONTENT_LOOKUP_SOURCE_ID) || !content_lookup_kind_enabled($request['kind'])) throw new DomainException('Invalid lookup');
-    $kind=$request['kind']; $rowKind=in_array($kind,['service_en','service_visibility','service_order'],true)?'service':(in_array($kind,['team_profile','team_visibility','team_order'],true)?'team':$kind); $sql='SELECT '.implode(',',content_edit_fields($rowKind)).' FROM '.content_edit_table($rowKind).' WHERE id=? LIMIT 1';
+    $kind=$request['kind']; $rowKind=in_array($kind,['service_en','service_visibility','service_order'],true)?'service':(in_array($kind,['team_profile','team_contact','team_visibility','team_order'],true)?'team':$kind); $sql='SELECT '.implode(',',content_edit_fields($rowKind)).' FROM '.content_edit_table($rowKind).' WHERE id=? LIMIT 1';
     $st=$pdo->prepare($sql); $st->execute([$request['object_id']]); $row=$st->fetch(PDO::FETCH_ASSOC);
     $response=['type'=>'site_content_lookup_result_v1','source_id'=>$request['source_id'],'request_id'=>$request['request_id'],'kind'=>$kind,'object_id'=>$request['object_id'],'found'=>(bool)$row];
     if ($row) {
@@ -15,6 +15,8 @@ function content_lookup_read(PDO $pdo,array $request): array {
             $first=$rowKind==='service'?$row['title_fa']:$row['name']; $active=$row['is_active'];
             if ((!is_int($active) && !is_string($active)) || !in_array((string)$active,['0','1'],true)) throw new RuntimeException('Visibility unavailable');
             $second=(string)$active;
+        } elseif ($kind==='team_contact') {
+            $first=$row['email'] ?? ''; $second=$row['linkedin_url'] ?? '';
         } else {
             $first=$kind==='service'?$row['title_fa']:($kind==='service_en'?($row['title_en'] ?? ''):($kind==='team_profile'?($row['handle'] ?? ''):$row['name'])); $second=$kind==='service'?$row['description_fa']:($kind==='service_en'?($row['description_en'] ?? ''):($kind==='team_profile'?($row['bio'] ?? ''):$row['role']));
         }

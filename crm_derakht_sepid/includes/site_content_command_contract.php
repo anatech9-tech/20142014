@@ -1,6 +1,6 @@
 <?php
 declare(strict_types=1);
-/** Identical, strict wire contract on both systems. Selected text, inactive creation, or independently opt-in visibility or order fields only. */
+/** Identical, strict wire contract on both systems. Selected text, inactive creation, or independently opt-in visibility, order, and team contact fields only. */
 function content_command_keys(): array { return ['SITE_CRM_BRIDGE_KEY','SHOP_CRM_BRIDGE_KEY','SHOP_CRM_COMMAND_KEY','SHOP_CATALOG_CRM_KEY','SHOP_CATEGORY_META_KEY','SHOP_COUPON_META_KEY','SHOP_PRODUCT_COMMAND_KEY','SHOP_REVIEW_COMMAND_KEY','SHOP_REVIEW_CONTENT_GUARD_KEY','SHOP_REVIEW_META_CRM_KEY','SITE_BLOG_CONTENT_GUARD_KEY','SITE_BLOG_META_KEY','SITE_SHIPMENT_META_KEY','SITE_CONTENT_LOOKUP_KEY']; }
 function content_command_configured(bool $outgoing): bool {
     if (!defined('SITE_CONTENT_COMMAND_ENABLED') || SITE_CONTENT_COMMAND_ENABLED!==true || !defined('SITE_CONTENT_COMMAND_KEY') || !is_string(SITE_CONTENT_COMMAND_KEY) || strlen(SITE_CONTENT_COMMAND_KEY)<32 || !defined('SITE_CONTENT_COMMAND_SOURCE_ID') || !is_string(SITE_CONTENT_COMMAND_SOURCE_ID) || !preg_match('/^[a-f0-9]{32}$/D',SITE_CONTENT_COMMAND_SOURCE_ID)) return false;
@@ -16,6 +16,7 @@ function content_command_kind_enabled(string $kind): bool {
     if ($kind==='service_visibility') return content_command_kind_enabled('service') && defined('SITE_CONTENT_SERVICE_VISIBILITY_EDIT_ENABLED') && SITE_CONTENT_SERVICE_VISIBILITY_EDIT_ENABLED===true;
     if ($kind==='service_en') return content_command_kind_enabled('service') && defined('SITE_CONTENT_SERVICE_EN_EDIT_ENABLED') && SITE_CONTENT_SERVICE_EN_EDIT_ENABLED===true;
     if ($kind==='team') return defined('SITE_CONTENT_TEAM_EDIT_ENABLED') && SITE_CONTENT_TEAM_EDIT_ENABLED===true;
+    if ($kind==='team_contact') return content_command_kind_enabled('team') && defined('SITE_CONTENT_TEAM_CONTACT_EDIT_ENABLED') && SITE_CONTENT_TEAM_CONTACT_EDIT_ENABLED===true;
     if ($kind==='team_order') return PHP_INT_SIZE>=8 && content_command_kind_enabled('team') && defined('SITE_CONTENT_TEAM_ORDER_EDIT_ENABLED') && SITE_CONTENT_TEAM_ORDER_EDIT_ENABLED===true;
     if ($kind==='team_visibility') return content_command_kind_enabled('team') && defined('SITE_CONTENT_TEAM_VISIBILITY_EDIT_ENABLED') && SITE_CONTENT_TEAM_VISIBILITY_EDIT_ENABLED===true;
     if ($kind==='team_profile') return content_command_kind_enabled('team') && defined('SITE_CONTENT_TEAM_PROFILE_EDIT_ENABLED') && SITE_CONTENT_TEAM_PROFILE_EDIT_ENABLED===true;
@@ -24,6 +25,16 @@ function content_command_kind_enabled(string $kind): bool {
 function content_command_text($value,int $min,int $max,bool $multiline=false): bool {
     if (!is_string($value) || strlen($value)>$max*4 || preg_match('//u',$value)!==1 || trim($value)!==$value || preg_match($multiline?'/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/':'/[\x00-\x1f\x7f]/',$value)) return false;
     $length=preg_match_all('/./us',$value); return $length!==false && $length >= $min && $length <= $max;
+}
+/** Blank clears a contact; nonblank links are limited to HTTPS LinkedIn domains. */
+function content_command_contact_valid($email,$url): bool {
+    if (!is_string($email) || !is_string($url) || strlen($email)>200 || strlen($url)>500) return false;
+    if ($email!=='' && (trim($email)!==$email || filter_var($email,FILTER_VALIDATE_EMAIL)===false || preg_match('/[^\x21-\x7e]/',$email))) return false;
+    if ($url==='') return true;
+    if (trim($url)!==$url || preg_match('/[^\x21-\x7e]|\\\\/',$url) || filter_var($url,FILTER_VALIDATE_URL)===false) return false;
+    $parts=parse_url($url); if (!is_array($parts) || strtolower((string)($parts['scheme'] ?? ''))!=='https' || isset($parts['user']) || isset($parts['pass']) || isset($parts['fragment']) || (isset($parts['port']) && $parts['port']!==443)) return false;
+    $host=strtolower((string)($parts['host'] ?? ''));
+    return preg_match('/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*linkedin\.com$/D',$host)===1;
 }
 function content_command_validate($c,string $source): bool {
     $keys=['type','command_id','source_id','object_id','actor_id','expected_token','issued_at','expires_at','fields'];
@@ -39,6 +50,7 @@ function content_command_validate($c,string $source): bool {
     if (count($f)!==2) return false;
     if (in_array($c['type'] ?? null,['service_text_v1','service_create_v1'],true)) return !array_diff(array_keys($f),['title_fa','description_fa']) && content_command_text($f['title_fa'] ?? null,2,200) && content_command_text($f['description_fa'] ?? null,1,1000,true);
     if (($c['type'] ?? null)==='service_english_text_v1') return !array_diff(array_keys($f),['title_en','description_en']) && content_command_text($f['title_en'] ?? null,0,200) && content_command_text($f['description_en'] ?? null,0,1000,true);
+    if (($c['type'] ?? null)==='team_contact_v1') return !array_diff(array_keys($f),['email','linkedin_url']) && content_command_contact_valid($f['email'] ?? null,$f['linkedin_url'] ?? null);
     if (($c['type'] ?? null)==='team_profile_v1') return !array_diff(array_keys($f),['handle','bio']) && content_command_text($f['handle'] ?? null,0,100) && content_command_text($f['bio'] ?? null,0,1000,true);
     if (in_array($c['type'] ?? null,['team_text_v1','team_create_v1'],true)) return !array_diff(array_keys($f),['name','role']) && content_command_text($f['name'] ?? null,2,100) && content_command_text($f['role'] ?? null,2,200);
     return false;
@@ -53,11 +65,12 @@ function content_command_mode(array $c): string {
     if (($c['type'] ?? '')==='service_text_v1') return 'service';
     if (($c['type'] ?? '')==='service_english_text_v1') return 'service_en';
     if (($c['type'] ?? '')==='team_text_v1') return 'team';
+    if (($c['type'] ?? '')==='team_contact_v1') return 'team_contact';
     if (($c['type'] ?? '')==='team_profile_v1') return 'team_profile';
     return '';
 }
-function content_command_kind(array $c): string { $mode=content_command_mode($c); return in_array($mode,['service_en','service_visibility','service_create','service_order'],true)?'service':(in_array($mode,['team_profile','team_visibility','team_create','team_order'],true)?'team':$mode); }
-function content_command_type(string $mode): string { if ($mode==='service_order') return 'service_order_v1'; if ($mode==='team_order') return 'team_order_v1'; if ($mode==='service_create') return 'service_create_v1'; if ($mode==='team_create') return 'team_create_v1'; if ($mode==='service_visibility') return 'service_visibility_v1'; if ($mode==='team_visibility') return 'team_visibility_v1'; return $mode==='service'?'service_text_v1':($mode==='service_en'?'service_english_text_v1':($mode==='team'?'team_text_v1':($mode==='team_profile'?'team_profile_v1':''))); }
+function content_command_kind(array $c): string { $mode=content_command_mode($c); return in_array($mode,['service_en','service_visibility','service_create','service_order'],true)?'service':(in_array($mode,['team_profile','team_visibility','team_create','team_order','team_contact'],true)?'team':$mode); }
+function content_command_type(string $mode): string { if ($mode==='team_contact') return 'team_contact_v1'; if ($mode==='service_order') return 'service_order_v1'; if ($mode==='team_order') return 'team_order_v1'; if ($mode==='service_create') return 'service_create_v1'; if ($mode==='team_create') return 'team_create_v1'; if ($mode==='service_visibility') return 'service_visibility_v1'; if ($mode==='team_visibility') return 'team_visibility_v1'; return $mode==='service'?'service_text_v1':($mode==='service_en'?'service_english_text_v1':($mode==='team'?'team_text_v1':($mode==='team_profile'?'team_profile_v1':''))); }
 function content_command_signature_valid(string $key,string $ts,string $sig,string $body,int $now): bool {
     return strlen($key)>=32 && preg_match('/^[0-9]{10}$/D',$ts)===1 && abs($now-(int)$ts)<=300 && preg_match('/^[a-f0-9]{64}$/D',$sig)===1 && hash_equals(hash_hmac('sha256','site-content-command-v1.'.$ts.'.'.$body,$key),$sig);
 }
