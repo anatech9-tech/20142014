@@ -62,7 +62,7 @@ if (($argv[1] ?? '')==='blocked') {
  $called=false; $r=crm_content_command_pump($crm,function($text) use (&$called) { $called=true; return [0,null]; },$now+10);
  check(!$called && $r['blocked']===1 && $crm->query("SELECT state FROM crm_site_content_commands WHERE command_id='".str_repeat('e',32)."'")->fetchColumn()==='queued','disabled team pending command not sent');
  $crm->prepare('UPDATE crm_site_content_commands SET payload=? WHERE command_id=?')->execute([$blockedBody.' ', $blocked['command_id']]);
- try { crm_content_command_pump($crm,function($text) use (&$called) { $called=true; return [0,null]; },$now+11); check(false,'tampered queue'); } catch (RuntimeException $e) { check(!$called,'tampered queue rejected before sending'); }
+ try { crm_content_command_pump($crm,function($text) use (&$called) { $called=true; return [0,null]; },$now+311); check(false,'tampered queue'); } catch (RuntimeException $e) { check(!$called,'tampered queue rejected before sending'); }
 }
 else {
  $team=crm_content_command_enqueue($crm,1,true,'team',1,$teamToken,['name'=>'New name','role'=>'New role'],$now+5,true);

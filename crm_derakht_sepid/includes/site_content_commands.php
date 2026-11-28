@@ -97,14 +97,23 @@ function crm_content_command_transition(PDO $pdo,int $actor,bool $admin,string $
         } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
     } finally { try { crm_content_command_unlock($pdo); } catch (Throwable $e) { error_log('Content command lock release failed'); } }
 }
-/** Single worker must hold advisory lock; disabled kind is not sent. */
+/** Single worker must hold advisory lock. Blocked commands are deferred without incrementing send attempts. */
 function crm_content_command_pump(PDO $pdo,callable $send,int $now,int $limit=10): array {
     if (!content_command_configured(true)) throw new RuntimeException('Transport disabled');
-    $limit=max(1,min(20,$limit)); $st=$pdo->prepare("SELECT * FROM crm_site_content_commands WHERE state='queued' AND next_attempt_at<=? ORDER BY created_at,command_id LIMIT $limit"); $st->execute([date('Y-m-d H:i:s',$now)]); $result=['settled'=>0,'failed'=>0,'blocked'=>0];
+    $limit=max(1,min(20,$limit)); $st=$pdo->prepare("SELECT * FROM crm_site_content_commands WHERE state='queued' AND next_attempt_at<=? ORDER BY next_attempt_at,created_at,command_id LIMIT $limit"); $st->execute([date('Y-m-d H:i:s',$now)]); $result=['settled'=>0,'failed'=>0,'blocked'=>0];
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
         $body=(string)$row['payload']; $c=json_decode($body,true);
         if (strlen($body)>8192 || !is_string($row['payload_hash']) || !hash_equals($row['payload_hash'],hash('sha256',$body)) || !content_command_validate($c,SITE_CONTENT_COMMAND_SOURCE_ID) || $c['command_id']!==$row['command_id'] || content_command_kind($c)!==$row['kind'] || $c['object_id']!==(int)$row['object_id'] || $c['actor_id']!==(int)$row['actor_id'] || $c['source_id']!==$row['source_id']) throw new RuntimeException('Invalid queued command');
-        if (!content_command_kind_enabled(content_command_mode($c))) { $result['blocked']++; continue; }
+        // A revoked/deleted actor cannot authorize a fresh send. This is a point-in-time check,
+        // not a guarantee against revocation racing with the remote request.
+        $actorCheck=$pdo->prepare('SELECT status,role FROM users WHERE id=?'); $actorCheck->execute([$c['actor_id']]); $actor=$actorCheck->fetch(PDO::FETCH_ASSOC);
+        if (!content_command_kind_enabled(content_command_mode($c)) || !$actor || $actor['status']!=='active' || $actor['role']!=='admin') {
+            // Avoid an indefinitely blocked head of queue starving every later command.
+            // The same command remains queued and blocks its target; no delivery is implied.
+            $defer=$pdo->prepare("UPDATE crm_site_content_commands SET next_attempt_at=? WHERE command_id=? AND state='queued'");
+            $defer->execute([date('Y-m-d H:i:s',$now+300),$row['command_id']]);
+            $result['blocked']++; continue;
+        }
         [$http,$reply]=$send($body);
         if (crm_content_command_settle($pdo,$row,$reply,(int)$http,$now)) $result['settled']++;
         else { $attempt=(int)$row['attempts']+1; $delay=min(1800,30*(2 ** min($attempt,6))); $pdo->prepare("UPDATE crm_site_content_commands SET attempts=?,next_attempt_at=? WHERE command_id=? AND state='queued'")->execute([$attempt,date('Y-m-d H:i:s',$now+$delay),$row['command_id']]); $result['failed']++; }
