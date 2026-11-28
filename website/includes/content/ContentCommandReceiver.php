@@ -1,5 +1,5 @@
 <?php
-/** Opt-in CRM service/team text and independently opt-in visibility, display order, and team contact updates. Creation is inactive and opt-in. No deletion, media or account changes. */
+/** Opt-in CRM service/team text and independently opt-in visibility, display order, team contact, and existing image path updates. Creation is inactive and opt-in. No deletion, file upload or account changes. */
 require_once __DIR__.'/ContentCommandContract.php';
 require_once __DIR__.'/../ContentEditGuard.php';
 function content_receiver_schema(): string {
@@ -18,6 +18,23 @@ function content_receiver_created_id(PDO $pdo,string $commandId,string $hash): i
     $id=$st->fetchColumn();
     if ((!is_string($id) && !is_int($id)) || !preg_match('/^[1-9][0-9]{0,9}$/D',(string)$id) || (int)$id>4294967295) throw new RuntimeException('Receipt unavailable');
     return (int)$id;
+}
+/** Best-effort check at command application time. Does not make the file immutable or safe. */
+function content_receiver_image_available(string $kind,string $path): bool {
+    if (!content_command_image_path_valid($kind,$path)) return false;
+    if ($path==='') return true;
+    if (!function_exists('getimagesize')) return false;
+    $root=realpath(dirname(__DIR__,2)); if ($root===false) return false;
+    $relative=ltrim($path,'/'); $candidate=$root;
+    clearstatcache(true);
+    foreach (explode('/',$relative) as $part) { $candidate.='/'.$part; if (is_link($candidate)) return false; }
+    $real=realpath($candidate);
+    if ($real===false || !str_starts_with($real,$root.'/') || !is_file($real) || !is_readable($real)) return false;
+    $size=@filesize($real); if ($size===false || $size<=0 || $size>5*1024*1024) return false;
+    $info=@getimagesize($real); if (!is_array($info) || ($info[0] ?? 0)<=0 || ($info[1] ?? 0)<=0 || $info[0]>4096 || $info[1]>4096) return false;
+    $ext=strtolower(pathinfo($real,PATHINFO_EXTENSION));
+    $expected=['png'=>IMAGETYPE_PNG,'jpg'=>IMAGETYPE_JPEG,'jpeg'=>IMAGETYPE_JPEG,'gif'=>IMAGETYPE_GIF,'webp'=>IMAGETYPE_WEBP];
+    return isset($expected[$ext]) && ($info[2] ?? null)===$expected[$ext];
 }
 /** Receiver checks authenticated source/config and InnoDB before calling. Same receipt+write transaction. */
 function content_receiver_apply(PDO $pdo,array $c,string $source,string $hash,int $now): string {
@@ -53,15 +70,21 @@ function content_receiver_apply(PDO $pdo,array $c,string $source,string $hash,in
             $result='conflict'; $st=$pdo->prepare('SELECT '.implode(',',content_edit_fields($kind)).' FROM '.$table.' WHERE id=? FOR UPDATE'); $st->execute([$c['object_id']]); $row=$st->fetch(PDO::FETCH_ASSOC);
             if ($row && hash_equals(content_edit_token($kind,$row),$c['expected_token'])) {
                 $mode=content_command_mode($c); $f=$c['fields'];
-                if ($mode==='service_order' || $mode==='team_order') { $st=$pdo->prepare('UPDATE '.$table.' SET display_order=? WHERE id=?'); $args=[$f['display_order'],$c['object_id']]; }
-                elseif ($mode==='service_visibility' || $mode==='team_visibility') { $st=$pdo->prepare('UPDATE '.$table.' SET is_active=? WHERE id=?'); $args=[$f['is_active'],$c['object_id']]; }
-                elseif ($mode==='service') { $st=$pdo->prepare('UPDATE services SET title_fa=?,description_fa=? WHERE id=?'); $args=[$f['title_fa'],$f['description_fa'],$c['object_id']]; }
-                elseif ($mode==='service_en') { $st=$pdo->prepare('UPDATE services SET title_en=?,description_en=? WHERE id=?'); $args=[$f['title_en'],$f['description_en'],$c['object_id']]; }
-                elseif ($mode==='team_contact') { $st=$pdo->prepare('UPDATE team_members SET email=?,linkedin_url=? WHERE id=?'); $args=[$f['email'],$f['linkedin_url'],$c['object_id']]; }
-                elseif ($mode==='team_profile') { $st=$pdo->prepare('UPDATE team_members SET handle=?,bio=? WHERE id=?'); $args=[$f['handle'],$f['bio'],$c['object_id']]; }
-                else { $st=$pdo->prepare('UPDATE team_members SET name=?,role=? WHERE id=?'); $args=[$f['name'],$f['role'],$c['object_id']]; }
-                $st->execute($args);
-                $result='applied';
+                $imagePath=$mode==='service_image'?($f['icon_path'] ?? null):($mode==='team_image'?($f['image_path'] ?? null):null);
+                // An unavailable image leaves the default durable conflict; never write it unchecked.
+                if ($imagePath===null || content_receiver_image_available($kind,$imagePath)) {
+                    if ($mode==='service_image') { $st=$pdo->prepare('UPDATE services SET icon_path=? WHERE id=?'); $args=[$f['icon_path'],$c['object_id']]; }
+                    elseif ($mode==='team_image') { $st=$pdo->prepare('UPDATE team_members SET image_path=? WHERE id=?'); $args=[$f['image_path'],$c['object_id']]; }
+                    elseif ($mode==='service_order' || $mode==='team_order') { $st=$pdo->prepare('UPDATE '.$table.' SET display_order=? WHERE id=?'); $args=[$f['display_order'],$c['object_id']]; }
+                    elseif ($mode==='service_visibility' || $mode==='team_visibility') { $st=$pdo->prepare('UPDATE '.$table.' SET is_active=? WHERE id=?'); $args=[$f['is_active'],$c['object_id']]; }
+                    elseif ($mode==='service') { $st=$pdo->prepare('UPDATE services SET title_fa=?,description_fa=? WHERE id=?'); $args=[$f['title_fa'],$f['description_fa'],$c['object_id']]; }
+                    elseif ($mode==='service_en') { $st=$pdo->prepare('UPDATE services SET title_en=?,description_en=? WHERE id=?'); $args=[$f['title_en'],$f['description_en'],$c['object_id']]; }
+                    elseif ($mode==='team_contact') { $st=$pdo->prepare('UPDATE team_members SET email=?,linkedin_url=? WHERE id=?'); $args=[$f['email'],$f['linkedin_url'],$c['object_id']]; }
+                    elseif ($mode==='team_profile') { $st=$pdo->prepare('UPDATE team_members SET handle=?,bio=? WHERE id=?'); $args=[$f['handle'],$f['bio'],$c['object_id']]; }
+                    else { $st=$pdo->prepare('UPDATE team_members SET name=?,role=? WHERE id=?'); $args=[$f['name'],$f['role'],$c['object_id']]; }
+                    $st->execute($args);
+                    $result='applied';
+                }
             }
         }
         if ($createdId>0) { $st=$pdo->prepare("UPDATE site_content_command_receipts SET result=?,completed_at=?,object_id=? WHERE command_id=? AND result='processing'"); $st->execute([$result,date('Y-m-d H:i:s',$now),$createdId,$c['command_id']]); }

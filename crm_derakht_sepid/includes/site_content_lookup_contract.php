@@ -14,11 +14,13 @@ function content_lookup_configured(bool $outgoing): bool {
 }
 function content_lookup_kind_enabled(string $kind): bool {
     if ($kind==='service') return defined('SITE_CONTENT_SERVICE_LOOKUP_ENABLED') && SITE_CONTENT_SERVICE_LOOKUP_ENABLED===true;
+    if ($kind==='service_image') return content_lookup_kind_enabled('service') && defined('SITE_CONTENT_SERVICE_IMAGE_LOOKUP_ENABLED') && SITE_CONTENT_SERVICE_IMAGE_LOOKUP_ENABLED===true;
     if ($kind==='service_order') return PHP_INT_SIZE>=8 && content_lookup_kind_enabled('service') && defined('SITE_CONTENT_SERVICE_ORDER_LOOKUP_ENABLED') && SITE_CONTENT_SERVICE_ORDER_LOOKUP_ENABLED===true;
     if ($kind==='service_visibility') return content_lookup_kind_enabled('service') && defined('SITE_CONTENT_SERVICE_VISIBILITY_LOOKUP_ENABLED') && SITE_CONTENT_SERVICE_VISIBILITY_LOOKUP_ENABLED===true;
     if ($kind==='service_en') return content_lookup_kind_enabled('service') && defined('SITE_CONTENT_SERVICE_EN_LOOKUP_ENABLED') && SITE_CONTENT_SERVICE_EN_LOOKUP_ENABLED===true;
     if ($kind==='team') return defined('SITE_CONTENT_TEAM_LOOKUP_ENABLED') && SITE_CONTENT_TEAM_LOOKUP_ENABLED===true;
     if ($kind==='team_contact') return content_lookup_kind_enabled('team') && defined('SITE_CONTENT_TEAM_CONTACT_LOOKUP_ENABLED') && SITE_CONTENT_TEAM_CONTACT_LOOKUP_ENABLED===true;
+    if ($kind==='team_image') return content_lookup_kind_enabled('team') && defined('SITE_CONTENT_TEAM_IMAGE_LOOKUP_ENABLED') && SITE_CONTENT_TEAM_IMAGE_LOOKUP_ENABLED===true;
     if ($kind==='team_order') return PHP_INT_SIZE>=8 && content_lookup_kind_enabled('team') && defined('SITE_CONTENT_TEAM_ORDER_LOOKUP_ENABLED') && SITE_CONTENT_TEAM_ORDER_LOOKUP_ENABLED===true;
     if ($kind==='team_visibility') return content_lookup_kind_enabled('team') && defined('SITE_CONTENT_TEAM_VISIBILITY_LOOKUP_ENABLED') && SITE_CONTENT_TEAM_VISIBILITY_LOOKUP_ENABLED===true;
     if ($kind==='team_profile') return content_lookup_kind_enabled('team') && defined('SITE_CONTENT_TEAM_PROFILE_LOOKUP_ENABLED') && SITE_CONTENT_TEAM_PROFILE_LOOKUP_ENABLED===true;
@@ -27,7 +29,7 @@ function content_lookup_kind_enabled(string $kind): bool {
 function content_lookup_request_valid($r,string $source): bool {
     return is_array($r) && count($r)===5 && !array_diff(array_keys($r),['type','request_id','source_id','kind','object_id']) && ($r['type'] ?? null)==='site_content_lookup_v1'
         && preg_match('/^[a-f0-9]{32}$/D',$source)===1 && ($r['source_id'] ?? null)===$source && is_string($r['request_id'] ?? null) && preg_match('/^[a-f0-9]{32}$/D',$r['request_id'])===1
-        && in_array($r['kind'] ?? null,['service','service_en','team','team_profile','team_contact','service_visibility','team_visibility','service_order','team_order'],true) && is_int($r['object_id'] ?? null) && $r['object_id']>0;
+        && in_array($r['kind'] ?? null,['service','service_en','team','team_profile','team_contact','service_image','team_image','service_visibility','team_visibility','service_order','team_order'],true) && is_int($r['object_id'] ?? null) && $r['object_id']>0;
 }
 function content_lookup_signature_valid(string $domain,string $key,string $ts,string $sig,string $body,int $now): bool {
     return in_array($domain,['site-content-lookup-request-v1','site-content-lookup-response-v1'],true) && strlen($key)>=32 && preg_match('/^[0-9]{10}$/D',$ts)===1 && abs($now-(int)$ts)<=300 && preg_match('/^[a-f0-9]{64}$/D',$sig)===1 && hash_equals(hash_hmac('sha256',$domain.'.'.$ts.'.'.$body,$key),$sig);

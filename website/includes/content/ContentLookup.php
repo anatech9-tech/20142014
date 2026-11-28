@@ -3,11 +3,13 @@
 require_once __DIR__.'/ContentLookupContract.php'; require_once __DIR__.'/../ContentEditGuard.php';
 function content_lookup_read(PDO $pdo,array $request): array {
     if (!content_lookup_request_valid($request,SITE_CONTENT_LOOKUP_SOURCE_ID) || !content_lookup_kind_enabled($request['kind'])) throw new DomainException('Invalid lookup');
-    $kind=$request['kind']; $rowKind=in_array($kind,['service_en','service_visibility','service_order'],true)?'service':(in_array($kind,['team_profile','team_contact','team_visibility','team_order'],true)?'team':$kind); $sql='SELECT '.implode(',',content_edit_fields($rowKind)).' FROM '.content_edit_table($rowKind).' WHERE id=? LIMIT 1';
+    $kind=$request['kind']; $rowKind=in_array($kind,['service_en','service_visibility','service_order','service_image'],true)?'service':(in_array($kind,['team_profile','team_contact','team_visibility','team_order','team_image'],true)?'team':$kind); $sql='SELECT '.implode(',',content_edit_fields($rowKind)).' FROM '.content_edit_table($rowKind).' WHERE id=? LIMIT 1';
     $st=$pdo->prepare($sql); $st->execute([$request['object_id']]); $row=$st->fetch(PDO::FETCH_ASSOC);
     $response=['type'=>'site_content_lookup_result_v1','source_id'=>$request['source_id'],'request_id'=>$request['request_id'],'kind'=>$kind,'object_id'=>$request['object_id'],'found'=>(bool)$row];
     if ($row) {
-        if (in_array($kind,['service_order','team_order'],true)) {
+        if (in_array($kind,['service_image','team_image'],true)) {
+            $first=$rowKind==='service'?$row['title_fa']:$row['name']; $second=($rowKind==='service'?$row['icon_path']:$row['image_path']) ?? '';
+        } elseif (in_array($kind,['service_order','team_order'],true)) {
             $first=$rowKind==='service'?$row['title_fa']:$row['name']; $order=$row['display_order'];
             if ((!is_int($order) && !is_string($order)) || !content_lookup_order_valid((string)$order)) throw new RuntimeException('Order unavailable');
             $second=(string)$order;
