@@ -3,7 +3,7 @@
 require_once __DIR__.'/ContentLookupContract.php'; require_once __DIR__.'/../ContentEditGuard.php';
 function content_lookup_read(PDO $pdo,array $request): array {
     if (!content_lookup_request_valid($request,SITE_CONTENT_LOOKUP_SOURCE_ID) || !content_lookup_kind_enabled($request['kind'])) throw new DomainException('Invalid lookup');
-    $kind=$request['kind']; $rowKind=in_array($kind,['service_en','service_visibility','service_order','service_image'],true)?'service':(in_array($kind,['team_profile','team_contact','team_visibility','team_order','team_image'],true)?'team':$kind); $sql='SELECT '.implode(',',content_edit_fields($rowKind)).' FROM '.content_edit_table($rowKind).' WHERE id=? LIMIT 1';
+    $kind=$request['kind']; $rowKind=in_array($kind,['service_en','service_visibility','service_order','service_image','service_delete'],true)?'service':(in_array($kind,['team_profile','team_contact','team_visibility','team_order','team_image','team_delete'],true)?'team':$kind); $sql='SELECT '.implode(',',content_edit_fields($rowKind)).' FROM '.content_edit_table($rowKind).' WHERE id=? LIMIT 1';
     $st=$pdo->prepare($sql); $st->execute([$request['object_id']]); $row=$st->fetch(PDO::FETCH_ASSOC);
     $response=['type'=>'site_content_lookup_result_v1','source_id'=>$request['source_id'],'request_id'=>$request['request_id'],'kind'=>$kind,'object_id'=>$request['object_id'],'found'=>(bool)$row];
     if ($row) {
@@ -13,7 +13,7 @@ function content_lookup_read(PDO $pdo,array $request): array {
             $first=$rowKind==='service'?$row['title_fa']:$row['name']; $order=$row['display_order'];
             if ((!is_int($order) && !is_string($order)) || !content_lookup_order_valid((string)$order)) throw new RuntimeException('Order unavailable');
             $second=(string)$order;
-        } elseif (in_array($kind,['service_visibility','team_visibility'],true)) {
+        } elseif (in_array($kind,['service_visibility','team_visibility','service_delete','team_delete'],true)) {
             $first=$rowKind==='service'?$row['title_fa']:$row['name']; $active=$row['is_active'];
             if ((!is_int($active) && !is_string($active)) || !in_array((string)$active,['0','1'],true)) throw new RuntimeException('Visibility unavailable');
             $second=(string)$active;

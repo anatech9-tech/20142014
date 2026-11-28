@@ -1,5 +1,5 @@
 <?php
-/** Opt-in CRM service/team text and independently opt-in visibility, display order, team contact, and existing image path updates. Creation is inactive and opt-in. No deletion, file upload or account changes. */
+/** Opt-in CRM service/team text and independently opt-in visibility, display order, team contact, and existing image path updates. Creation is inactive and opt-in. Inactive-record deletion is separately opt-in; no file upload or account changes. */
 require_once __DIR__.'/ContentCommandContract.php';
 require_once __DIR__.'/../ContentEditGuard.php';
 function content_receiver_schema(): string {
@@ -36,6 +36,21 @@ function content_receiver_image_available(string $kind,string $path): bool {
     $expected=['png'=>IMAGETYPE_PNG,'jpg'=>IMAGETYPE_JPEG,'jpeg'=>IMAGETYPE_JPEG,'gif'=>IMAGETYPE_GIF,'webp'=>IMAGETYPE_WEBP];
     return isset($expected[$ext]) && ($info[2] ?? null)===$expected[$ext];
 }
+/** Conservative metadata check; visibility and concurrent schema changes are not guaranteed. */
+function content_receiver_delete_metadata_clear(PDO $pdo,string $kind): bool {
+    if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME)!=='mysql') throw new RuntimeException('MySQL required');
+    $table=content_edit_table($kind);
+    $queries=[
+        'SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA=DATABASE() AND REFERENCED_TABLE_NAME=?',
+        'SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE EVENT_OBJECT_SCHEMA=DATABASE() AND EVENT_OBJECT_TABLE=?'
+    ];
+    foreach ($queries as $query) {
+        $st=$pdo->prepare($query); $st->execute([$table]); $count=$st->fetchColumn();
+        if ((!is_int($count) && !is_string($count)) || !preg_match('/^[0-9]+$/D',(string)$count)) throw new RuntimeException('Metadata unavailable');
+        if ((int)$count>0) return false;
+    }
+    return true;
+}
 /** Receiver checks authenticated source/config and InnoDB before calling. Same receipt+write transaction. */
 function content_receiver_apply(PDO $pdo,array $c,string $source,string $hash,int $now): string {
     if (!content_command_validate($c,$source) || !preg_match('/^[a-f0-9]{64}$/D',$hash)) throw new InvalidArgumentException('Invalid command');
@@ -70,20 +85,28 @@ function content_receiver_apply(PDO $pdo,array $c,string $source,string $hash,in
             $result='conflict'; $st=$pdo->prepare('SELECT '.implode(',',content_edit_fields($kind)).' FROM '.$table.' WHERE id=? FOR UPDATE'); $st->execute([$c['object_id']]); $row=$st->fetch(PDO::FETCH_ASSOC);
             if ($row && hash_equals(content_edit_token($kind,$row),$c['expected_token'])) {
                 $mode=content_command_mode($c); $f=$c['fields'];
-                $imagePath=$mode==='service_image'?($f['icon_path'] ?? null):($mode==='team_image'?($f['image_path'] ?? null):null);
-                // An unavailable image leaves the default durable conflict; never write it unchecked.
-                if ($imagePath===null || content_receiver_image_available($kind,$imagePath)) {
-                    if ($mode==='service_image') { $st=$pdo->prepare('UPDATE services SET icon_path=? WHERE id=?'); $args=[$f['icon_path'],$c['object_id']]; }
-                    elseif ($mode==='team_image') { $st=$pdo->prepare('UPDATE team_members SET image_path=? WHERE id=?'); $args=[$f['image_path'],$c['object_id']]; }
-                    elseif ($mode==='service_order' || $mode==='team_order') { $st=$pdo->prepare('UPDATE '.$table.' SET display_order=? WHERE id=?'); $args=[$f['display_order'],$c['object_id']]; }
-                    elseif ($mode==='service_visibility' || $mode==='team_visibility') { $st=$pdo->prepare('UPDATE '.$table.' SET is_active=? WHERE id=?'); $args=[$f['is_active'],$c['object_id']]; }
-                    elseif ($mode==='service') { $st=$pdo->prepare('UPDATE services SET title_fa=?,description_fa=? WHERE id=?'); $args=[$f['title_fa'],$f['description_fa'],$c['object_id']]; }
-                    elseif ($mode==='service_en') { $st=$pdo->prepare('UPDATE services SET title_en=?,description_en=? WHERE id=?'); $args=[$f['title_en'],$f['description_en'],$c['object_id']]; }
-                    elseif ($mode==='team_contact') { $st=$pdo->prepare('UPDATE team_members SET email=?,linkedin_url=? WHERE id=?'); $args=[$f['email'],$f['linkedin_url'],$c['object_id']]; }
-                    elseif ($mode==='team_profile') { $st=$pdo->prepare('UPDATE team_members SET handle=?,bio=? WHERE id=?'); $args=[$f['handle'],$f['bio'],$c['object_id']]; }
-                    else { $st=$pdo->prepare('UPDATE team_members SET name=?,role=? WHERE id=?'); $args=[$f['name'],$f['role'],$c['object_id']]; }
-                    $st->execute($args);
-                    $result='applied';
+                if (in_array($mode,['service_delete','team_delete'],true)) {
+                    if ((string)$row['is_active']==='0' && content_receiver_delete_metadata_clear($pdo,$kind)) {
+                        $st=$pdo->prepare('DELETE FROM '.$table.' WHERE id=?'); $st->execute([$c['object_id']]);
+                        if ($st->rowCount()!==1) throw new RuntimeException('Delete failed');
+                        $result='applied';
+                    }
+                } else {
+                    $imagePath=$mode==='service_image'?($f['icon_path'] ?? null):($mode==='team_image'?($f['image_path'] ?? null):null);
+                    // An unavailable image leaves the default durable conflict; never write it unchecked.
+                    if ($imagePath===null || content_receiver_image_available($kind,$imagePath)) {
+                        if ($mode==='service_image') { $st=$pdo->prepare('UPDATE services SET icon_path=? WHERE id=?'); $args=[$f['icon_path'],$c['object_id']]; }
+                        elseif ($mode==='team_image') { $st=$pdo->prepare('UPDATE team_members SET image_path=? WHERE id=?'); $args=[$f['image_path'],$c['object_id']]; }
+                        elseif ($mode==='service_order' || $mode==='team_order') { $st=$pdo->prepare('UPDATE '.$table.' SET display_order=? WHERE id=?'); $args=[$f['display_order'],$c['object_id']]; }
+                        elseif ($mode==='service_visibility' || $mode==='team_visibility') { $st=$pdo->prepare('UPDATE '.$table.' SET is_active=? WHERE id=?'); $args=[$f['is_active'],$c['object_id']]; }
+                        elseif ($mode==='service') { $st=$pdo->prepare('UPDATE services SET title_fa=?,description_fa=? WHERE id=?'); $args=[$f['title_fa'],$f['description_fa'],$c['object_id']]; }
+                        elseif ($mode==='service_en') { $st=$pdo->prepare('UPDATE services SET title_en=?,description_en=? WHERE id=?'); $args=[$f['title_en'],$f['description_en'],$c['object_id']]; }
+                        elseif ($mode==='team_contact') { $st=$pdo->prepare('UPDATE team_members SET email=?,linkedin_url=? WHERE id=?'); $args=[$f['email'],$f['linkedin_url'],$c['object_id']]; }
+                        elseif ($mode==='team_profile') { $st=$pdo->prepare('UPDATE team_members SET handle=?,bio=? WHERE id=?'); $args=[$f['handle'],$f['bio'],$c['object_id']]; }
+                        else { $st=$pdo->prepare('UPDATE team_members SET name=?,role=? WHERE id=?'); $args=[$f['name'],$f['role'],$c['object_id']]; }
+                        $st->execute($args);
+                        $result='applied';
+                    }
                 }
             }
         }
