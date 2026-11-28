@@ -13,3 +13,18 @@ function content_lookup_read(PDO $pdo,array $request): array {
     }
     return $response;
 }
+/** Read only identity, label and active flag, at most ten records per request. */
+function content_lookup_list(PDO $pdo,array $request): array {
+    if (!content_lookup_list_request_valid($request,SITE_CONTENT_LOOKUP_SOURCE_ID) || !content_lookup_list_enabled($request['kind'])) throw new DomainException('Invalid list');
+    $kind=$request['kind']; $table=content_edit_table($kind); $name=$kind==='service'?'title_fa':'name';
+    $st=$pdo->prepare('SELECT id,'.$name.',is_active FROM '.$table.' WHERE id>? ORDER BY id ASC LIMIT 11'); $st->execute([$request['after_id']]); $rows=$st->fetchAll(PDO::FETCH_ASSOC);
+    $more=count($rows)>10; if ($more) array_pop($rows); $items=[];
+    foreach ($rows as $row) {
+        $id=$row['id']; $active=$row['is_active']; $label=$row[$name];
+        if ((!is_int($id) && !is_string($id)) || !preg_match('/^[1-9][0-9]{0,17}$/D',(string)$id) || !in_array((string)$active,['0','1'],true) || !content_lookup_text_valid($label) || strlen($label)>800) throw new RuntimeException('List unavailable');
+        $items[]=['id'=>(int)$id,'label'=>$label,'is_active'=>(int)$active];
+    }
+    $result=['type'=>'site_content_list_result_v1','source_id'=>$request['source_id'],'request_id'=>$request['request_id'],'kind'=>$kind,'after_id'=>$request['after_id'],'items'=>$items,'next_after'=>$more ? $items[count($items)-1]['id'] : null];
+    if (!content_lookup_list_response_valid($result,$request)) throw new RuntimeException('List invalid');
+    return $result;
+}

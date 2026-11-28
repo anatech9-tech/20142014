@@ -5,11 +5,21 @@ function crm_content_lookup_fetch(string $kind,int $id,?callable $transport=null
     if (!content_lookup_configured(true) || !content_lookup_kind_enabled($kind) || $id<=0) throw new DomainException('دریافت این نوع داده فعال یا آماده نیست.');
     $request=['type'=>'site_content_lookup_v1','request_id'=>bin2hex(random_bytes(16)),'source_id'=>SITE_CONTENT_LOOKUP_SOURCE_ID,'kind'=>$kind,'object_id'=>$id];
     if (!content_lookup_request_valid($request,SITE_CONTENT_LOOKUP_SOURCE_ID)) throw new DomainException('درخواست نامعتبر است.');
+    return crm_content_lookup_exchange($request,'content_lookup_response_valid',$transport);
+}
+function crm_content_lookup_list_fetch(string $kind,int $after,?callable $transport=null): array {
+    if (!content_lookup_configured(true) || !content_lookup_list_enabled($kind) || $after<0) throw new DomainException('فهرست این نوع داده فعال یا آماده نیست.');
+    $request=['type'=>'site_content_list_v1','request_id'=>bin2hex(random_bytes(16)),'source_id'=>SITE_CONTENT_LOOKUP_SOURCE_ID,'kind'=>$kind,'after_id'=>$after];
+    if (!content_lookup_list_request_valid($request,SITE_CONTENT_LOOKUP_SOURCE_ID)) throw new DomainException('درخواست نامعتبر است.');
+    return crm_content_lookup_exchange($request,'content_lookup_list_response_valid',$transport);
+}
+/** Validate authenticated response and bind it to exactly one request. */
+function crm_content_lookup_exchange(array $request,callable $validate,?callable $transport=null): array {
     $body=json_encode($request,JSON_UNESCAPED_SLASHES); if ($body===false) throw new RuntimeException('Encoding failed');
     [$http,$outer]=($transport ?? 'crm_content_lookup_transport')($body);
     if ($http!==200 || !is_array($outer) || count($outer)!==3 || array_diff(array_keys($outer),['data','timestamp','signature']) || !is_string($outer['data'] ?? null) || strlen($outer['data'])>20000 || !is_string($outer['timestamp'] ?? null) || !is_string($outer['signature'] ?? null)
         || !content_lookup_signature_valid('site-content-lookup-response-v1',SITE_CONTENT_LOOKUP_KEY,$outer['timestamp'],$outer['signature'],$outer['data'],time())) throw new RuntimeException('Lookup response unavailable');
-    $result=json_decode($outer['data'],true); if (!content_lookup_response_valid($result,$request)) throw new RuntimeException('Lookup response invalid');
+    $result=json_decode($outer['data'],true); if (!$validate($result,$request)) throw new RuntimeException('Lookup response invalid');
     return $result;
 }
 function crm_content_lookup_transport(string $body): array {

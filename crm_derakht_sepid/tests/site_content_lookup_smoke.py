@@ -44,4 +44,10 @@ assert pair_config("define('SITE_CONTENT_LOOKUP_URL','https://example.test:444/a
 mismatch=base.replace("str_repeat('a',32)","str_repeat('b',32)")+"define('SITE_CONTENT_COMMAND_ENABLED',true);define('SITE_CONTENT_COMMAND_SOURCE_ID',str_repeat('a',32));define('SITE_CONTENT_COMMAND_KEY',str_repeat('c',32));define('SITE_CONTENT_COMMAND_URL','https://example.test/api/command');define('SITE_CONTENT_LOOKUP_URL','https://example.test/api/lookup');"
 r=subprocess.run([php,'-r',mismatch+' require '+repr(str(command))+'; require '+repr(str(lookup_contract))+'; echo (int)content_lookup_matches_command();'],capture_output=True,text=True,check=True); assert r.stdout=='0' and 'Fatal error' not in r.stdout+r.stderr
 
-print('PASS contracts agree, lookup endpoint closed by default, key reuse, wrong origin, unauthenticated requests and HTTP refused')
+assert run(base+"define('SITE_CONTENT_SERVICE_LOOKUP_ENABLED',true);",contract,' echo (int)content_lookup_list_enabled(\"service\");')=='0'
+assert run(base+"define('SITE_CONTENT_SERVICE_LIST_ENABLED',true);",contract,' echo (int)content_lookup_list_enabled(\"service\");')=='0'
+assert run(base+"define('SITE_CONTENT_SERVICE_LIST_ENABLED',true); define('SITE_CONTENT_SERVICE_LOOKUP_ENABLED',true);",contract,' echo (int)content_lookup_list_enabled(\"service\").(int)content_lookup_list_enabled(\"team\");')=='10'
+crm_lookup=crm/'site_content_lookup.php'
+code=base+"define('SITE_CONTENT_LOOKUP_URL','https://example.test'); define('SITE_CONTENT_SERVICE_LOOKUP_ENABLED',true);"+' require '+repr(str(crm_lookup))+"; try { crm_content_lookup_list_fetch('service',0,function(){echo 'SENT';}); } catch (DomainException $e) { echo 'BLOCKED'; }"
+r=subprocess.run([php,'-r',code],capture_output=True,text=True,check=True); assert r.stdout=='BLOCKED' and 'Fatal error' not in r.stdout+r.stderr
+print('PASS contracts agree, separate list opt-ins, disabled endpoint, key reuse, wrong origin and unauthenticated requests')

@@ -41,3 +41,28 @@ function content_lookup_matches_command(): bool {
     if (!is_array($a) || !is_array($b) || !isset($a['host'],$b['host']) || isset($a['user']) || isset($a['pass']) || isset($b['user']) || isset($b['pass'])) return false;
     return strtolower($a['host'])===strtolower($b['host']) && ($a['port'] ?? 443)===($b['port'] ?? 443);
 }
+/** Listing is additionally opt-in and page-limited; inactive items may be sensitive. */
+function content_lookup_list_enabled(string $kind): bool {
+    if (!content_lookup_kind_enabled($kind)) return false;
+    if ($kind==='service') return defined('SITE_CONTENT_SERVICE_LIST_ENABLED') && SITE_CONTENT_SERVICE_LIST_ENABLED===true;
+    if ($kind==='team') return defined('SITE_CONTENT_TEAM_LIST_ENABLED') && SITE_CONTENT_TEAM_LIST_ENABLED===true;
+    return false;
+}
+function content_lookup_list_request_valid($r,string $source): bool {
+    return is_array($r) && count($r)===5 && !array_diff(array_keys($r),['type','request_id','source_id','kind','after_id']) && ($r['type'] ?? null)==='site_content_list_v1'
+        && preg_match('/^[a-f0-9]{32}$/D',$source)===1 && ($r['source_id'] ?? null)===$source && is_string($r['request_id'] ?? null) && preg_match('/^[a-f0-9]{32}$/D',$r['request_id'])===1
+        && in_array($r['kind'] ?? null,['service','team'],true) && is_int($r['after_id'] ?? null) && $r['after_id']>=0;
+}
+function content_lookup_list_response_valid($r,array $request): bool {
+    $keys=['type','source_id','request_id','kind','after_id','items','next_after'];
+    if (!is_array($r) || count($r)!==count($keys) || array_diff(array_keys($r),$keys) || ($r['type'] ?? null)!=='site_content_list_result_v1'
+        || ($r['source_id'] ?? null)!==$request['source_id'] || ($r['request_id'] ?? null)!==$request['request_id'] || ($r['kind'] ?? null)!==$request['kind'] || ($r['after_id'] ?? null)!==$request['after_id']
+        || !is_array($r['items'] ?? null) || !array_is_list($r['items']) || count($r['items'])>10 || !array_key_exists('next_after',$r)) return false;
+    $last=$request['after_id'];
+    foreach ($r['items'] as $item) {
+        if (!is_array($item) || count($item)!==3 || array_diff(array_keys($item),['id','label','is_active']) || !is_int($item['id'] ?? null) || $item['id']<=$last
+            || !content_lookup_text_valid($item['label'] ?? null) || strlen($item['label'])>800 || !is_int($item['is_active'] ?? null) || !in_array($item['is_active'],[0,1],true)) return false;
+        $last=$item['id'];
+    }
+    return $r['next_after']===null || (count($r['items'])===10 && is_int($r['next_after']) && $r['next_after']===$last);
+}

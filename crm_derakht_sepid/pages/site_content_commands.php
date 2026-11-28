@@ -12,15 +12,20 @@ $configured=content_command_configured(true); $ready=false;
 if ($configured) $ready=crm_content_command_ensure($pdo);
 else { try { $pdo->query('SELECT 1 FROM crm_site_content_commands LIMIT 1'); $ready=true; } catch (Throwable $e) {} }
 $h=static fn($v)=>htmlspecialchars((string)$v,ENT_QUOTES | ENT_SUBSTITUTE,'UTF-8');
-$preview=null; $baseline=null; $lookup=null; $notice='';
+$preview=null; $baseline=null; $lookup=null; $listing=null; $notice='';
 if (($_SERVER['REQUEST_METHOD'] ?? '')==='POST') {
     try {
         $action=$_POST['action'] ?? null; $kind=$_POST['kind'] ?? null; $rawId=$_POST['object_id'] ?? null; $token=$_POST['token'] ?? null;
-        if ($readonly || !is_string($action) || !in_array($action,['lookup','preview','enqueue'],true) || !is_string($kind) || !in_array($kind,['service','team'],true) || !is_string($rawId) || !preg_match('/^[1-9][0-9]{0,17}$/D',$rawId)) throw new DomainException('درخواست یا پیکربندی معتبر نیست.');
+        if ($readonly || !is_string($action) || !in_array($action,['list','lookup','preview','enqueue'],true) || !is_string($kind) || !in_array($kind,['service','team'],true)) throw new DomainException('درخواست یا پیکربندی معتبر نیست.');
+        if ($action==='list') {
+            $after=$_POST['after_id'] ?? null;
+            if (!content_lookup_configured(true) || !content_lookup_list_enabled($kind) || !is_string($after) || !preg_match('/^(0|[1-9][0-9]{0,17})$/D',$after)) throw new DomainException('صفحهٔ فهرست معتبر نیست.');
+            $listing=crm_content_lookup_list_fetch($kind,(int)$after);
+        } elseif (!is_string($rawId) || !preg_match('/^[1-9][0-9]{0,17}$/D',$rawId)) throw new DomainException('شناسه معتبر نیست.');
         if ($action==='lookup') {
             $lookup=crm_content_lookup_fetch($kind,(int)$rawId);
             if (!$lookup['found']) { $lookup=null; throw new DomainException('رکورد در سایت یافت نشد؛ هویت و منبع را دوباره بررسی کنید.'); }
-        } else {
+        } elseif ($action!=='list') {
             if (!$ready || !$configured || !content_command_kind_enabled($kind) || !is_string($token)) throw new DomainException('درخواست یا پیکربندی معتبر نیست.');
             $first=$_POST['first'] ?? null; $second=$_POST['second'] ?? null; if (!is_string($first) || !is_string($second)) throw new DomainException('متن معتبر نیست.');
             $fields=$kind==='service'?['title_fa'=>$first,'description_fa'=>$second]:['name'=>$first,'role'=>$second];
@@ -50,6 +55,12 @@ include 'includes/header.php';
 <?php if ($preview): ?><h3><?= $baseline?'مقایسه دو فیلد دریافت‌شده از سایت با متن جدید':'پیش‌نمایش متن جدید (بدون مقایسه با سایت)' ?></h3><?php if ($baseline): ?><p>مقادیر سایت در زمان پیش‌نمایش دریافت شده‌اند؛ ممکن است بعداً تغییر کنند.</p><h4>دو فیلد فعلی سایت</h4><p><strong><?= $h($baseline['first']) ?></strong></p><pre style="white-space:pre-wrap;overflow-wrap:anywhere"><?= $h($baseline['second']) ?></pre><h4>مقادیر پیشنهادی جدید</h4><?php endif; ?><p>نوع: <?= $preview['kind']==='service'?'خدمت':'عضو تیم' ?> — شناسه سایت <?= $h($preview['object_id']) ?></p><p><strong><?= $h($preview['first']) ?></strong></p><pre style="white-space:pre-wrap;overflow-wrap:anywhere"><?= $h($preview['second']) ?></pre>
 <form method="post" onsubmit="return confirm('این فرمان ممکن است متن عمومی سایت را تغییر دهد. ارسال شود؟');"><?= get_csrf_field() ?><input type="hidden" name="action" value="enqueue"><?php foreach ($preview as $k=>$v): ?><input type="hidden" name="<?= $h($k) ?>" value="<?= $h($v) ?>"><?php endforeach; ?>
 <label><input type="checkbox" name="confirm_identity" value="1" required> شناسه، نسخه و هویت رکورد فعلی را مستقل بررسی کردم.</label><br><label><input type="checkbox" name="confirm_change" value="1" required> متن جدید را بررسی کردم و می‌دانم ارسال ممکن است سایت را تغییر دهد.</label><br><button class="btn" type="submit">ثبت فرمان برای ارسال</button></form><?php endif; ?>
+<?php if (!$readonly && content_lookup_configured(true)): foreach (['service'=>'خدمات','team'=>'اعضای تیم'] as $listKind=>$listLabel): if (!content_lookup_list_enabled($listKind)) continue; ?>
+<form method="post"><?= get_csrf_field() ?><input type="hidden" name="action" value="list"><input type="hidden" name="kind" value="<?= $h($listKind) ?>"><input type="hidden" name="after_id" value="0"><button class="btn">دریافت فهرست <?= $h($listLabel) ?> از سایت</button></form><?php endforeach; endif; ?>
+<?php if ($listing): ?><h3>فهرست لحظه‌ای <?= $listing['kind']==='service'?'خدمات':'اعضای تیم' ?> از سایت</h3><p>فقط شناسه، نام/عنوان و برچسب فعال نمایش داده می‌شوند. صفحه‌بندی مستقل و لحظه‌ای است؛ وضعیت، هویت، کامل‌بودن یا درستی منبع تضمین نمی‌شود. اعضای غیرفعال هم ممکن است نمایش داده شوند.</p><table class="data-table"><thead><tr><th>شناسه سایت</th><th>نام/عنوان</th><th>برچسب</th><th>مشاهده</th></tr></thead><tbody>
+<?php foreach ($listing['items'] as $item): ?><tr><td><?= (int)$item['id'] ?></td><td><?= $h($item['label']) ?></td><td><?= $item['is_active']===1?'فعال':'غیرفعال' ?></td><td><form method="post"><?= get_csrf_field() ?><input type="hidden" name="action" value="lookup"><input type="hidden" name="kind" value="<?= $h($listing['kind']) ?>"><input type="hidden" name="object_id" value="<?= (int)$item['id'] ?>"><button class="btn">دریافت دو فیلد</button></form></td></tr><?php endforeach; ?>
+<?php if (!$listing['items']): ?><tr><td colspan="4">در این صفحه رکوردی مشاهده نشد؛ این اثبات خالی‌بودن سایت نیست.</td></tr><?php endif; ?></tbody></table>
+<?php if ($listing['next_after']!==null): ?><form method="post"><?= get_csrf_field() ?><input type="hidden" name="action" value="list"><input type="hidden" name="kind" value="<?= $h($listing['kind']) ?>"><input type="hidden" name="after_id" value="<?= (int)$listing['next_after'] ?>"><button class="btn">صفحه بعد</button></form><?php endif; ?><?php endif; ?>
 <?php if (!$readonly && content_lookup_configured(true)): foreach (['service'=>'خدمت','team'=>'عضو تیم'] as $lookupKind=>$lookupLabel): if (!content_lookup_kind_enabled($lookupKind)) continue; ?>
 <h3>دریافت فقط دو فیلد <?= $h($lookupLabel) ?> از سایت</h3><form method="post"><?= get_csrf_field() ?><input type="hidden" name="action" value="lookup"><input type="hidden" name="kind" value="<?= $h($lookupKind) ?>"><label>شناسه سایت <input name="object_id" inputmode="numeric" required></label> <button class="btn">دریافت از سایت</button></form><?php endforeach; endif; ?>
 <?php if ($lookup): ?><h3>دادهٔ دریافت‌شده از سایت</h3><p>شناسه <?= (int)$lookup['object_id'] ?> — نوع <?= $lookup['kind']==='service'?'خدمت':'عضو تیم' ?>. این نتیجه snapshot لحظه‌ای است؛ بقیه فیلدها نمایش داده نشده‌اند.</p><p><strong><?= $h($lookup['first']) ?></strong></p><pre style="white-space:pre-wrap;overflow-wrap:anywhere"><?= $h($lookup['second']) ?></pre>
